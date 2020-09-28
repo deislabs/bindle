@@ -43,3 +43,13 @@ the object contains additional information.
 
 At the time of this writing, no additional information is defined. In the future, this
 is likely to hold the contents of the box's `label.toml` object
+
+## TODO
+
+It should be possible to declare a set of hashes, of which any ONE of them is sufficient.
+In other words, say that "busybox", "bash" and "zsh" could each satisfy a requirement for
+completeness in a hypothetical bindle-based package manager. It should be possible to say
+"if any one of x, y, or z is satisfied, this box is delivered".
+
+One way to do so would be to add another section in the invoice that took zero or more
+OR-joined lists of hashes/boxes.

@@ -7,13 +7,13 @@ use std::collections::BTreeMap;
 mod storage;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Invoice {
+pub struct Invoice {
     bindle: BindleSpec,
     boxes: BTreeMap<String, Label>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct BindleSpec {
+pub struct BindleSpec {
     name: String,
     description: Option<String>,
     version: String,
@@ -22,7 +22,7 @@ struct BindleSpec {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Label {
+pub struct Label {
     sha256: String,
     media_type: String,
     name: String,
