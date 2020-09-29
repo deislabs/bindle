@@ -20,7 +20,11 @@ pub trait Storage {
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
     fn delete_invoice(&self, inv: &super::Invoice) -> Result<(), std::io::Error>;
-    fn create_box();
+    fn create_box(
+        &self,
+        label: &super::Label,
+        data: std::io::BufReader<std::fs::File>,
+    ) -> Result<(), anyhow::Error>;
     fn get_box();
     fn cleanup();
 }
@@ -121,7 +125,13 @@ impl Storage for FileStorage {
     fn delete_invoice(&self, invoice: &super::Invoice) -> Result<(), std::io::Error> {
         remove_dir_all(self.invoice_path(self.canonical_invoice_name(invoice).as_str()))
     }
-    fn create_box() {}
+    fn create_box(
+        &self,
+        label: &super::Label,
+        data: std::io::BufReader<std::fs::File>,
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
     fn get_box() {}
     fn cleanup() {}
 }

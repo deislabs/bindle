@@ -9,7 +9,7 @@ mod storage;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Invoice {
     bindle: BindleSpec,
-    boxes: BTreeMap<String, Label>,
+    boxes: Option<Vec<Label>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -24,6 +24,12 @@ pub struct BindleSpec {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Label {
     sha256: String,
+    media_type: String,
+    name: String,
+    size: Option<i64>,
+}
+
+pub struct BoxSpec {
     media_type: String,
     name: String,
     size: Option<i64>,
