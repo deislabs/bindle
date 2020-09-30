@@ -70,3 +70,5 @@ Bindles are good for expressing the relationship between related chunks of data.
  - The [Parcel Specification](parcel-spec.md) describes the parts of a parcel
  - The [Label Specification](label-spec) descries a parcel's label TOML file
  - The [Protocol Specification](protocol-spec) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.
+
+ And for reference, if TOML is new for you, read the [TOML specification](https://toml.io/en/v1.0.0-rc.2).

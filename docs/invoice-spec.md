@@ -176,13 +176,7 @@ To satisfy `cli`, then, either `first` or `second` must be processed.
 
 So either `first` or `second` can be installed.
 
-In the example above, `third` is optional.
+If the `server` group is installed (for example, if a user requests that group be installed), then the `daemon` parcel will be installed. However, installing that will also `require` the `utility` group. This creates an interesting case:
 
-In the example above, if `first` is installed, then `second` need not be installed. However, _because `first` is in the group "shell-command"_, if `second` is installed, `first` must still be installed because it is the sole member that can satisfy the group "shell-command".
-
-## TODO
-
-It should be possible to declare a set of hashes, of which any ONE of them is sufficient. In other words, say that "busybox", "bash" and "zsh" could each satisfy a requirement for completeness in a hypothetical bindle-based package manager. It should be possible to say "if any one of x, y, or z is satisfied, this box is delivered".
-
-One way to do so would be to add another section in the invoice that took zero or more
-OR-joined lists of hashes/boxes.
+- if `first` is chosen to satisfy `cli`, then it also satisfied `utility`.
+- if `second` is chosen to satisfy `cli`, then one of `first` or `third` must be processed to satisfy the `utility` group.

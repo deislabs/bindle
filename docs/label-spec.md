@@ -1,7 +1,6 @@
 # Label Specification
 
-A _label_ (`label.toml`) contains metadata about a box. It is in TOML format, and
-is considered immutable once stored.
+A _label_ (`label.toml`) contains metadata about a box. It is in TOML format, and is considered immutable once stored.
 
 ```toml
 sha256 = 5b992e90b71d5fadab3cd3777230ef370df75f5b...

@@ -8,12 +8,15 @@ use std::path::{Path, PathBuf};
 const INVOICE_DIRECTORY: &str = "invoices";
 /// The folder name for the boxes directory
 const BOX_DIRECTORY: &str = "boxes";
+const INVOICE_TOML: &str = "invoice.toml";
+const PARCEL_DAT: &str = "parcel.dat";
+const LABEL_TOML: &str = "label.toml";
 
 pub trait Storage {
     /// This takes an invoice and creates it in storage.
     /// It must verify that each referenced box is present in storage. Any box that
     /// is not present must be returned in the list of IDs.
-    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<String>, anyhow::Error>;
+    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, anyhow::Error>;
     fn get_invoice(&self);
     // Remove an invoice
     //
@@ -54,25 +57,25 @@ impl FileStorage {
             .join(invoice_id)
     }
     fn invoice_toml_path(&self, invoice_id: &str) -> PathBuf {
-        self.invoice_path(invoice_id).join("invoice.toml")
+        self.invoice_path(invoice_id).join(INVOICE_TOML)
     }
     /// Return the path to the box.toml file for the given box ID
-    fn box_path(&self, box_id: &str) -> PathBuf {
+    fn parcel_path(&self, box_id: &str) -> PathBuf {
         Path::new(self.root.as_str())
             .join(BOX_DIRECTORY)
             .join(box_id)
     }
-    fn box_toml_path(&self, box_id: &str) -> PathBuf {
-        self.box_path(box_id).join("box.toml")
+    fn label_toml_path(&self, box_id: &str) -> PathBuf {
+        self.parcel_path(box_id).join(LABEL_TOML)
     }
     /// Return the path to the box.dat file for the given box ID
-    fn box_data_path(&self, box_id: &str) -> PathBuf {
-        self.box_path(box_id).join("box.dat")
+    fn parcel_data_path(&self, box_id: &str) -> PathBuf {
+        self.parcel_path(box_id).join(PARCEL_DAT)
     }
 }
 
 impl Storage for FileStorage {
-    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<String>, anyhow::Error> {
+    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, anyhow::Error> {
         let invoice_cname = self.canonical_invoice_name(inv);
         let invoice_id = invoice_cname.as_str();
 
@@ -103,23 +106,22 @@ impl Storage for FileStorage {
 
         // TODO: Hash the contents of the file to make sure they match a given SHA.
 
-        // Loop through the boxes and see what exists
-        let mut missing = Vec::new();
+        // if there are no parcels, bail early
+        if inv.parcels.is_none() {
+            return Ok(vec![]);
+        }
 
-        inv.boxes.iter().for_each(|k| {
-            let boxpath = self.box_path(k.0);
+        // Loop through the boxes and see what exists
+        let missing = inv.parcels.as_ref().unwrap().iter().filter(|k| {
+            let parcel_path = self.parcel_path(k.label.name.as_str());
             // Stat k to see if it exists. If it does not exist, add it.
-            match std::fs::metadata(boxpath) {
-                Ok(stat) => {
-                    if !stat.is_dir() {
-                        missing.push(k.0.to_owned())
-                    }
-                }
-                Err(_e) => missing.push(k.0.to_owned()),
+            match std::fs::metadata(parcel_path) {
+                Ok(stat) => !stat.is_dir(),
+                Err(_e) => true,
             }
         });
 
-        Ok(missing)
+        Ok(missing.map(|p| p.label.clone()).collect())
     }
     fn get_invoice(&self) {}
     fn delete_invoice(&self, invoice: &super::Invoice) -> Result<(), std::io::Error> {
@@ -140,7 +142,6 @@ impl Storage for FileStorage {
 mod test {
     use super::*;
     use crate::Invoice;
-    use std::collections::BTreeMap;
     use tempfile::tempdir;
 
     #[test]
@@ -154,16 +155,16 @@ mod test {
             f.invoice_toml_path("123").to_str().unwrap()
         );
         assert_eq!(
-            "test/boxes/123".to_owned(),
-            f.box_path("123").to_string_lossy()
+            "test/parcels/123".to_owned(),
+            f.parcel_path("123").to_string_lossy()
         );
         assert_eq!(
-            "test/boxes/123/box.toml".to_owned(),
-            f.box_toml_path("123").to_string_lossy()
+            "test/parcels/123/label.toml".to_owned(),
+            f.label_toml_path("123").to_string_lossy()
         );
         assert_eq!(
-            "test/boxes/123/box.dat".to_owned(),
-            f.box_data_path("123").to_string_lossy()
+            "test/parcels/123/parcel.dat".to_owned(),
+            f.parcel_data_path("123").to_string_lossy()
         );
     }
 
@@ -195,45 +196,44 @@ mod test {
     }
 
     fn invoice_fixture() -> Invoice {
-        let mut boxen = BTreeMap::new();
-
-        {
-            let label = crate::Label {
+        let labels = vec![
+            crate::Label {
                 sha256: "abcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo.toml".to_owned(),
                 size: Some(101),
-            };
-            boxen.insert(label.sha256.to_string(), label);
-        }
-        {
-            let label = crate::Label {
+            },
+            crate::Label {
                 sha256: "bbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo2.toml".to_owned(),
                 size: Some(101),
-            };
-            boxen.insert(label.sha256.to_string(), label);
-        }
-        {
-            let label = crate::Label {
+            },
+            crate::Label {
                 sha256: "cbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo3.toml".to_owned(),
                 size: Some(101),
-            };
-            boxen.insert(label.sha256.to_string(), label);
-        }
+            },
+        ];
 
         Invoice {
+            bindle_version: crate::BINDLE_VERSION_1.to_owned(),
             bindle: crate::BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),
                 version: "v1.2.3".to_owned(),
                 authors: Some(vec!["m butcher".to_owned()]),
-                sha256: "abcdef1234567890987654321".to_owned(),
             },
-            boxes: boxen,
+            parcels: Some(
+                labels
+                    .iter()
+                    .map(|l| crate::Parcel {
+                        label: l.clone(),
+                        conditions: None,
+                    })
+                    .collect(),
+            ),
         }
     }
 }
