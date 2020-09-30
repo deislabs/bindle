@@ -21,24 +21,26 @@ This is a Rust project. Use `cargo run` to execute Bindle.
 
 ## Concepts
 
-In the Bindle system, the term _bindle_ refers to a _bundle of related data called boxes_.
+In the Bindle system, the term _bindle_ refers to a _bundle of related data called parcels_.
 A _bindle_ might be simple, containing only a single binary file. Or it may be complex, 
 containing hundreds of discrete data objects (files, libraries, or whatnot). It can
-represent a layer diagram, like Docker, or just a regular file download.
+represent a layer diagram, like Docker, or just a regular file download. With experimental
+conditions, it can even represent packages containing mandatory, optional, and conditional
+components.
 
 A bindle is composed of several parts:
 
 - The _invoice_ (`invoice.toml`) contains information about the bindle (`name`, `description`...)
-  as well as a manifest of boxes (individual data items).
-- A _box_ contains two parts:
-  - The _label_ (`label.toml`) that contains data about the box
-  - the _box contents_ (`box.dat`) that contains the opaque data ("what's in the box")
+  as well as a manifest of parcels (individual data items).
+- A _parcel_ contains two parts:
+  - The _label_ (`label.toml`) that contains data about the parcel
+  - the _parcel contents_ (`box.dat`) that contains the opaque data ("what's in the box")
 
 A _bindle hub_ is a service that manages storage and retrieval of bindles. It is available
 via an HTTP/3 connection (almost always over TLS). A hub supports the following actions:
 
-- GET: Get a bindle and any of its boxes that you don't currently have
-- POST: Push a bindle and any of its boxes that the hub currently doesn't have
+- GET: Get a bindle and any of its parcels that you don't currently have
+- POST: Push a bindle and any of its parcels that the hub currently doesn't have
 - DELTE: Remove a bindle
 
 Note that you cannot modify any part of a bindle. Not the payload. Not the name. Not even
@@ -77,6 +79,13 @@ Version ranges must be explicitly requested _as queries_. A direct fetch against
 will only return a bindle whose version string is an exact match to `v1.2`. But a version
 query for `v1.2` will return what Bindle thinks is the most appropriate matching version.
 
+## The Bindle Specification
+
+The [docs](docs/) folder on this site contains the beginnings of a formal specification
+for Bindle. The best place to start is with the [Bindle Specification](docs/bindle-spec.md).
+
 ## Okay, IRL what's a "bindle"
 
-The word "bindle" means a cloth-wrapped parcel, typically of clothing. Also, it sounds cute.
+The word "bindle" means a cloth-wrapped parcel, typically of clothing. In popular U.S. 
+culture, hobos were portrayed as carrying bindles represented as a stick with a
+handkerchief-wrapped bindle at the end. Also, it sounds cute.
