@@ -10,6 +10,7 @@ pub const BINDLE_VERSION_1: &str = "v1.0.0";
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Invoice {
     bindle_version: String,
+    yanked: Option<bool>,
     bindle: BindleSpec,
     parcels: Option<Vec<Parcel>>,
 }
@@ -70,6 +71,7 @@ mod test {
         let parcels = Some(vec![parcel]);
         let inv = Invoice {
             bindle_version: BINDLE_VERSION_1.to_owned(),
+            yanked: None,
             bindle: BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),

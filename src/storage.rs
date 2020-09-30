@@ -3,11 +3,12 @@ use sha2::{Digest, Sha256};
 use std::fs::{create_dir_all, remove_dir_all, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
-/// The folder name for the boxes directory
-const BOX_DIRECTORY: &str = "boxes";
+/// The folder name for the parcels directory
+const BOX_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
 const LABEL_TOML: &str = "label.toml";
@@ -16,13 +17,18 @@ pub trait Storage {
     /// This takes an invoice and creates it in storage.
     /// It must verify that each referenced box is present in storage. Any box that
     /// is not present must be returned in the list of IDs.
-    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, anyhow::Error>;
-    fn get_invoice(&self);
+    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError>;
+    // Load an invoice and return it
+    //
+    // This will return an invoice if the bindle exists and is not yanked
+    fn get_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
+    // Load an invoice, even if it is yanked.
+    fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
     // Remove an invoice
     //
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
-    fn delete_invoice(&self, inv: &super::Invoice) -> Result<(), std::io::Error>;
+    fn yank_invoice(&self, inv: &super::Invoice) -> Result<(), std::io::Error>;
     fn create_box(
         &self,
         label: &super::Label,
@@ -30,6 +36,22 @@ pub trait Storage {
     ) -> Result<(), anyhow::Error>;
     fn get_box();
     fn cleanup();
+}
+
+#[derive(Error, Debug)]
+pub enum StorageError {
+    #[error("bindle is yanked")]
+    Yanked,
+    #[error("resource not found")]
+    NotFound,
+    #[error("resource could not be loaded")]
+    IO(#[from] std::io::Error),
+    #[error("resource already exists")]
+    Exists,
+
+    // TODO: Investigate how to make this more helpful
+    #[error("resource is malformed")]
+    Malformed(#[from] toml::ser::Error),
 }
 
 pub struct FileStorage {
@@ -75,7 +97,7 @@ impl FileStorage {
 }
 
 impl Storage for FileStorage {
-    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, anyhow::Error> {
+    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError> {
         let invoice_cname = self.canonical_invoice_name(inv);
         let invoice_id = invoice_cname.as_str();
 
@@ -84,10 +106,7 @@ impl Storage for FileStorage {
         if !inv_path.is_dir() {
             // If it exists and is a regular file, we have a problem
             if inv_path.is_file() {
-                return Err(anyhow!(
-                    "path already exists: {}",
-                    inv_path.to_string_lossy()
-                ));
+                return Err(StorageError::Exists);
             }
             create_dir_all(inv_path)?;
         }
@@ -123,9 +142,19 @@ impl Storage for FileStorage {
 
         Ok(missing.map(|p| p.label.clone()).collect())
     }
-    fn get_invoice(&self) {}
-    fn delete_invoice(&self, invoice: &super::Invoice) -> Result<(), std::io::Error> {
-        remove_dir_all(self.invoice_path(self.canonical_invoice_name(invoice).as_str()))
+    fn get_invoice(&self, id: String) -> Result<super::Invoice, StorageError> {
+        match self.get_yanked_invoice(id) {
+            Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
+            Err(e) => Err(e),
+            _ => Err(StorageError::Yanked),
+        }
+    }
+    fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError> {
+        Err(StorageError::NotFound)
+    }
+    fn yank_invoice(&self, invoice: &super::Invoice) -> Result<(), std::io::Error> {
+        // Load the invoice and mark it as yanked.
+        Ok(())
     }
     fn create_box(
         &self,
@@ -185,8 +214,8 @@ mod test {
         // Out-of-band read the invoice
         assert!(store.invoice_toml_path(inv_name).exists());
 
-        // Delete the invoice
-        store.delete_invoice(&inv).unwrap();
+        // Yank the invoice
+        store.yank_invoice(&inv).unwrap();
 
         // Make sure the invoice is gone
         assert!(!store.invoice_path(inv_name).exists());
@@ -219,6 +248,7 @@ mod test {
 
         Invoice {
             bindle_version: crate::BINDLE_VERSION_1.to_owned(),
+            yanked: None,
             bindle: crate::BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),

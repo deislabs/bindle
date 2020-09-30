@@ -39,6 +39,7 @@ The above bindle declares its metadata, and then declares a manifest containing 
 ## Top-level Fields
 
 - `bindleVersion` is required, and should be `v1.0.0` for this version of the specification.
+- `yanked` is a boolean field that indicates whether a Bindle has been yanked. This field appears outside of the `bindle` because it is mutable, though it can only be toggled on. Once set to true, a Bindle MUST NOT be un-yanked. A yanked bundle should never be served in an index or search, but MAY be accessed directly.
 
 ## `bindle` Fields
 
