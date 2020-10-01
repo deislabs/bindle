@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use sha2::{Digest, Sha256};
 use std::fs::{create_dir_all, remove_dir_all, OpenOptions};
 use std::io::Write;
@@ -28,7 +27,7 @@ pub trait Storage {
     //
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
-    fn yank_invoice(&self, inv: &super::Invoice) -> Result<(), std::io::Error>;
+    fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<(), StorageError>;
     fn create_box(
         &self,
         label: &super::Label,
@@ -36,6 +35,11 @@ pub trait Storage {
     ) -> Result<(), anyhow::Error>;
     fn get_box();
     fn cleanup();
+}
+
+/// TODO: Move this to Bindle package
+fn invoice_to_name(inv: &super::Invoice) -> String {
+    format!("{}/{}", inv.bindle.name, inv.bindle.version)
 }
 
 #[derive(Error, Debug)]
@@ -51,7 +55,9 @@ pub enum StorageError {
 
     // TODO: Investigate how to make this more helpful
     #[error("resource is malformed")]
-    Malformed(#[from] toml::ser::Error),
+    Malformed(#[from] toml::de::Error),
+    #[error("resource cannot be stored")]
+    Unserializable(#[from] toml::ser::Error),
 }
 
 pub struct FileStorage {
@@ -63,11 +69,13 @@ impl FileStorage {
     ///
     /// This is designed to create a repeatable opaque name when given an invoice.
     fn canonical_invoice_name(&self, inv: &crate::Invoice) -> String {
-        // For now, hash name and version. Probably we should serialize the invoice and
-        // generate the hash from that.
+        self.canonical_invoice_name_strings(inv.bindle.name.as_str(), inv.bindle.version.as_str())
+    }
+
+    fn canonical_invoice_name_strings(&self, name: &str, version: &str) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(inv.bindle.name.as_bytes());
-        hasher.update(inv.bindle.version.as_bytes());
+        hasher.update(name.as_bytes());
+        hasher.update(version.as_bytes());
         let result = hasher.finalize();
         format!("{:x}", result)
     }
@@ -150,10 +158,56 @@ impl Storage for FileStorage {
         }
     }
     fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError> {
-        Err(StorageError::NotFound)
+        // TODO: Parse the id into an invoice name and version.
+        let id_path = Path::new(&id);
+        let parent = id_path.parent();
+        if parent.is_none() {
+            return Err(StorageError::NotFound);
+        }
+
+        let name = parent.unwrap().to_str().unwrap();
+
+        let version_part = id_path.file_name();
+        if version_part.is_none() {
+            return Err(StorageError::NotFound);
+        }
+        let version = version_part.unwrap().to_str().unwrap();
+
+        let invoice_cname = self.canonical_invoice_name_strings(name, version);
+        let invoice_id = invoice_cname.as_str();
+
+        // Now construct a path and read it
+        let invoice_path = self.invoice_toml_path(invoice_id);
+
+        println!(
+            "Trying to load {} {} at {}",
+            name,
+            version,
+            invoice_path.to_str().unwrap()
+        );
+
+        // Open file
+        let inv_toml = std::fs::read_to_string(invoice_path)?;
+
+        // Parse
+        let invoice: crate::Invoice = toml::from_str(inv_toml.as_str())?;
+
+        // Return object
+        Ok(invoice)
     }
-    fn yank_invoice(&self, invoice: &super::Invoice) -> Result<(), std::io::Error> {
+    fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<(), StorageError> {
+        let invoice_cname = self.canonical_invoice_name(inv);
+        let invoice_id = invoice_cname.as_str();
         // Load the invoice and mark it as yanked.
+        inv.yanked = Some(true);
+
+        // Open the destination or error out if it already exists.
+        let dest = self.invoice_toml_path(invoice_id);
+
+        // Encode the invoice into a TOML object
+        let data = toml::to_vec(inv)?;
+        //out.write_all(data.as_slice())?;
+        std::fs::write(dest, data)?;
         Ok(())
     }
     fn create_box(
@@ -198,10 +252,10 @@ mod test {
     }
 
     #[test]
-    fn test_should_create_delete_invoice() {
+    fn test_should_create_yank_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
-        let inv = invoice_fixture();
+        let mut inv = invoice_fixture();
         let store = FileStorage {
             root: root.path().to_str().unwrap().to_owned(),
         };
@@ -215,10 +269,20 @@ mod test {
         assert!(store.invoice_toml_path(inv_name).exists());
 
         // Yank the invoice
-        store.yank_invoice(&inv).unwrap();
+        store.yank_invoice(&mut inv).unwrap();
 
-        // Make sure the invoice is gone
-        assert!(!store.invoice_path(inv_name).exists());
+        println!(
+            "Invoice name: {} (should be subpath of {})",
+            invoice_to_name(&inv),
+            inv_name
+        );
+
+        // Make sure the invoice is yanked
+        let inv2 = store.get_yanked_invoice(invoice_to_name(&inv)).unwrap();
+        assert!(inv2.yanked.unwrap_or(false));
+
+        // Sanity check that this produces an error
+        assert!(store.get_invoice(invoice_to_name(&inv)).is_err());
 
         // Drop the temporary directory
         assert!(root.close().is_ok());
