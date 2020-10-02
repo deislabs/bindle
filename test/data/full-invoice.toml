@@ -1,0 +1,45 @@
+# TODO: Hashes are totally faked
+bindleVersion = "v1.0.0"
+
+[bindle]
+name = "mybindle"
+version = "v0.1.0"
+
+[[group]]
+name = "server"
+satisfiedBy = "allOf"
+
+[[group]]
+name = "cli"
+satisfiedBy = "oneOf"
+required = true
+
+[[group]]
+name = "utility"
+satisfiedBy = "optional"
+
+[[parcel]]
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.mediaType = "application/bin"
+label.name = "daemon"
+conditions.memberOf = ["server"]
+conditions.requires = ["utility"]
+
+# One of a group
+[[parcel]]
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.mediaType = "application/bin"
+label.name = "first"
+conditions.memberOf = ["cli", "utility"]
+
+[[parcel]]
+label.sha256 = "a1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.mediaType = "application/bin"
+label.name = "second"
+conditions.memberOf = ["cli"]
+
+[[parcel]]
+label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
+label.mediaType = "application/x-javascript"
+label.name = "third"
+conditions.memberOf = ["utility"]

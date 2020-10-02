@@ -1,0 +1,29 @@
+bindleVersion = "v1.0.0"
+
+[bindle]
+name = "mybindle"
+version = "v0.1.0"
+authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+description = "My first bindle"
+
+[annotations]
+myname = "myvalue"
+
+[[parcel]]
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.mediaType = "text/html"
+label.name = "myparcel.html"
+
+# Experimental support for conditional inclusions
+conditions.memberOf = ["server"]
+
+[[parcel]]
+label.sha256 = "098fa798779ac88094b6d54a3f5cdba41fe5a901"
+label.name = "style.css"
+label.mediaType = "text/css"
+
+[[parcel]]
+label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
+label.mediaType = "application/x-javascript"
+label.name = "foo.js"
+label.size = 248098

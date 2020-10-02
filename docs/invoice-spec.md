@@ -5,7 +5,7 @@ This specification describes the invoice (`invoice.toml`).
 An invoice is the top-level descriptor of a bindle. Every bindle has exactly one invoice.
 
 ```toml
-specVersion = v1.0.0
+bindleVersion = "v1.0.0"
 
 [bindle]
 name = "mybindle"
@@ -17,22 +17,25 @@ description = "My first bindle"
 myname = "myvalue"
 
 [[parcel]]
-label.sha256 = e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
 label.mediaType = "text/html"
+label.name = "myparcel.html"
 
 # Experimental support for conditional inclusions
-condition.oneOf = "server"
-condition.memberOf = "server"
+conditions.memberOf = ["server"]
 
 [[parcel]]
-label.sha256 = 098fa798779ac88094b6d54a3f5cdba41fe5a901
+label.sha256 = "098fa798779ac88094b6d54a3f5cdba41fe5a901"
+label.name = "style.css"
+label.mediaType = "text/css"
 
 [[parcel]]
-label.sha256 = 5b992e90b71d5fadab3cd3777230ef370df75f5b...
+label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
 label.mediaType = "application/x-javascript"
 label.name = "foo.js"
 label.size = 248098
 ```
+(Source)[../test/data/simple-invoice.toml]
 
 The above bindle declares its metadata, and then declares a manifest containing three parcels.
 
@@ -75,18 +78,24 @@ By default, all parcels are part of the global (unnamed) group and are required.
 The `[[group]]` list is used to create a group. In the following example, three groups are defined: `server`, `cli`, and `utility`.
 
 ```toml
-[[group]]
-name = server
-satisfiedBy = allOf
+bindleVersion = "v1.0.0"
+
+[bindle]
+name = "mybindle"
+version = "v0.1.0"
 
 [[group]]
-name = cli
-satisfiedBy = oneOf
+name = "server"
+satisfiedBy = "allOf"
+
+[[group]]
+name = "cli"
+satisfiedBy = "oneOf"
 required = true
 
 [[group]]
-name = utility
-satisfiedBy = optional
+name = "utility"
+satisfiedBy = "optional"
 ```
 
 Group fields:
@@ -110,51 +119,52 @@ By default, if no condition is provided, an item is a member of the "global" gro
 Example:
 
 ```toml
-specVersion = v1.0.0
+bindleVersion = "v1.0.0"
 
 [bindle]
 name = "mybindle"
 version = "v0.1.0"
 
 [[group]]
-name = server
-satisfiedBy = allOf
+name = "server"
+satisfiedBy = "allOf"
 
 [[group]]
-name = cli
-satisfiedBy = oneOf
+name = "cli"
+satisfiedBy = "oneOf"
 required = true
 
 [[group]]
-name = utility
-satisfiedBy = optional
+name = "utility"
+satisfiedBy = "optional"
 
 [[parcel]]
-label.sha256 = e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
 label.mediaType = "application/bin"
-label.name = daemon
-conditions.memberOf = [server]
-conditions.requires = [utility]
+label.name = "daemon"
+conditions.memberOf = ["server"]
+conditions.requires = ["utility"]
 
 # One of a group
 [[parcel]]
-label.sha256 = e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
 label.mediaType = "application/bin"
-label.name = first
+label.name = "first"
 conditions.memberOf = ["cli", "utility"]
 
 [[parcel]]
-label.sha256 = a1706ab0a39ac88094b6d54a3f5cdba41fe5a901
+label.sha256 = "a1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
 label.mediaType = "application/bin"
-label.name = second
+label.name = "second"
 conditions.memberOf = ["cli"]
 
 [[parcel]]
-label.sha256 = 5b992e90b71d5fadab3cd3777230ef370df75f5b...
+label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
 label.mediaType = "application/x-javascript"
-label.name = third
-conditions.memberOf = [utility]
+label.name = "third"
+conditions.memberOf = ["utility"]
 ```
+(Source)[../test/data/full-invoice.toml]
 
 IN the example above, three groups are declared:
 

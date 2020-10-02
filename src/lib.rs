@@ -2,20 +2,27 @@
 extern crate serde;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 mod storage;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Invoice {
     bindle_version: String,
     yanked: Option<bool>,
     bindle: BindleSpec,
+    annotations: Option<BTreeMap<String, String>>,
+    #[serde(alias = "parcel")]
     parcels: Option<Vec<Parcel>>,
+    // TODO: Should this be renamed "groups" or should "parcels" be renamed to "parcel"
+    group: Option<Vec<Group>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
     name: String,
     description: Option<String>,
@@ -24,30 +31,43 @@ pub struct BindleSpec {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Parcel {
     label: Label,
     conditions: Option<Condition>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Label {
     sha256: String,
     media_type: String,
     name: String,
     size: Option<i64>,
+    annotations: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Condition {
     member_of: Option<Vec<String>>,
     requires: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Group {
     name: String,
-    required: bool,
+    required: Option<bool>,
     satisfied_by: Option<String>,
+}
+
+/// Given an invoice, produce a slash-delimited "invoice name"
+///
+/// For example, an invoice with the name "hello" and the version "v1.2.3" will produce
+/// "hello/v1.2.3"
+pub fn invoice_to_name(inv: &Invoice) -> String {
+    format!("{}/{}", inv.bindle.name, inv.bindle.version)
 }
 
 // TODO: Version should be a SemVer
@@ -55,14 +75,17 @@ pub struct Group {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::fs::read_to_string;
+    use std::path::Path;
 
     #[test]
-    fn test_invoice() {
+    fn test_invoice_should_serialize() {
         let label = Label {
             sha256: "abcdef1234567890987654321".to_owned(),
             media_type: "text/toml".to_owned(),
             name: "foo.toml".to_owned(),
             size: Some(101),
+            annotations: None,
         };
         let parcel = Parcel {
             label,
@@ -72,6 +95,7 @@ mod test {
         let inv = Invoice {
             bindle_version: BINDLE_VERSION_1.to_owned(),
             yanked: None,
+            annotations: None,
             bindle: BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),
@@ -79,6 +103,7 @@ mod test {
                 authors: Some(vec!["m butcher".to_owned()]),
             },
             parcels,
+            group: None,
         };
 
         let res = toml::to_string(&inv).unwrap();
@@ -100,5 +125,27 @@ mod test {
         assert_eq!(lab.media_type, "text/toml".to_owned());
         assert_eq!(lab.sha256, "abcdef1234567890987654321".to_owned());
         assert_eq!(lab.size.unwrap(), 101)
+    }
+
+    #[test]
+    fn test_examples_in_spec_parse() {
+        let test_files = vec![
+            "test/data/simple-invoice.toml",
+            "test/data/full-invoice.toml",
+        ];
+        test_files.iter().for_each(|file| test_parsing_a_file(file));
+    }
+
+    fn test_parsing_a_file(filename: &str) {
+        let invoice_path = Path::new(filename);
+        let raw = read_to_string(invoice_path).expect("read file contents");
+
+        let invoice = toml::from_str::<Invoice>(raw.as_str()).expect("clean parse of invoice");
+
+        // Now we serialize it and compare it to the original version
+        let raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
+        println!("===========\n{}\n===========", raw2);
+        // FIXME: Do we care about this detail?
+        //assert_eq!(raw, raw2);
     }
 }

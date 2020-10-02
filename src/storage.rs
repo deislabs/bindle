@@ -37,11 +37,7 @@ pub trait Storage {
     fn cleanup();
 }
 
-/// TODO: Move this to Bindle package
-fn invoice_to_name(inv: &super::Invoice) -> String {
-    format!("{}/{}", inv.bindle.name, inv.bindle.version)
-}
-
+/// StorageError describes the possible error states when storing and retrieving bindles.
 #[derive(Error, Debug)]
 pub enum StorageError {
     #[error("bindle is yanked")]
@@ -60,6 +56,10 @@ pub enum StorageError {
     Unserializable(#[from] toml::ser::Error),
 }
 
+/// A file system backend for storing and retriving bindles and parcles.
+///
+/// Given a root directory, FileStorage brings its own storage layout for keeping track
+/// of Bindles.
 pub struct FileStorage {
     root: String, // TODO: this should be a path
 }
@@ -72,6 +72,13 @@ impl FileStorage {
         self.canonical_invoice_name_strings(inv.bindle.name.as_str(), inv.bindle.version.as_str())
     }
 
+    /// Given a name and a version, this returns a repeatable name for an on-disk location.
+    ///
+    /// We don't typically want to store a bindle with its name and version number. This
+    /// would impose both naming constraints on the bindle and security issues on the
+    /// storage layout. So this function hashes the name/version data (which together
+    /// MUST be unique in the system) and uses the resulting hash as the canonical
+    /// name. The hash is guaranteed to be in the character set [a-zA-Z0-9].
     fn canonical_invoice_name_strings(&self, name: &str, version: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(name.as_bytes());
@@ -80,25 +87,27 @@ impl FileStorage {
         format!("{:x}", result)
     }
 
-    /// Return the path to the invoice.toml file for the given invoice ID
+    /// Return the path to the invoice directory for a particular bindle.
     fn invoice_path(&self, invoice_id: &str) -> PathBuf {
         Path::new(self.root.as_str())
             .join(INVOICE_DIRECTORY)
             .join(invoice_id)
     }
+    /// Return the path for an invoice.toml for a particular bindle.
     fn invoice_toml_path(&self, invoice_id: &str) -> PathBuf {
         self.invoice_path(invoice_id).join(INVOICE_TOML)
     }
-    /// Return the path to the box.toml file for the given box ID
+    /// Return the parcel-specific path for storing a parcel.
     fn parcel_path(&self, box_id: &str) -> PathBuf {
         Path::new(self.root.as_str())
             .join(BOX_DIRECTORY)
             .join(box_id)
     }
+    /// Return the path to a parcel.toml for a specific parcel.
     fn label_toml_path(&self, box_id: &str) -> PathBuf {
         self.parcel_path(box_id).join(LABEL_TOML)
     }
-    /// Return the path to the box.dat file for the given box ID
+    /// Return the path to the parcel.dat file for the given box ID
     fn parcel_data_path(&self, box_id: &str) -> PathBuf {
         self.parcel_path(box_id).join(PARCEL_DAT)
     }
@@ -106,6 +115,11 @@ impl FileStorage {
 
 impl Storage for FileStorage {
     fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError> {
+        // It is illegal to create a yanked invoice.
+        if inv.yanked.unwrap_or(false) {
+            return Err(StorageError::Yanked);
+        }
+
         let invoice_cname = self.canonical_invoice_name(inv);
         let invoice_id = invoice_cname.as_str();
 
@@ -130,8 +144,6 @@ impl Storage for FileStorage {
         // Encode the invoice into a TOML object
         let data = toml::to_vec(inv)?;
         out.write_all(data.as_slice())?;
-
-        // TODO: Hash the contents of the file to make sure they match a given SHA.
 
         // if there are no parcels, bail early
         if inv.parcels.is_none() {
@@ -179,13 +191,6 @@ impl Storage for FileStorage {
         // Now construct a path and read it
         let invoice_path = self.invoice_toml_path(invoice_id);
 
-        println!(
-            "Trying to load {} {} at {}",
-            name,
-            version,
-            invoice_path.to_str().unwrap()
-        );
-
         // Open file
         let inv_toml = std::fs::read_to_string(invoice_path)?;
 
@@ -206,7 +211,12 @@ impl Storage for FileStorage {
 
         // Encode the invoice into a TOML object
         let data = toml::to_vec(inv)?;
-        //out.write_all(data.as_slice())?;
+        // NOTE: Right now, this just force-overwites the existing invoice. We are assuming
+        // that the bindle has already been confirmed to be present. However, we have not
+        // ensured that here. So it is theoretically possible (if get_invoice was not used)
+        // to build the invoice) that this could _create_ a new file. We could probably change
+        // this behavior with OpenOptions.
+
         std::fs::write(dest, data)?;
         Ok(())
     }
@@ -271,20 +281,30 @@ mod test {
         // Yank the invoice
         store.yank_invoice(&mut inv).unwrap();
 
-        println!(
-            "Invoice name: {} (should be subpath of {})",
-            invoice_to_name(&inv),
-            inv_name
-        );
-
         // Make sure the invoice is yanked
-        let inv2 = store.get_yanked_invoice(invoice_to_name(&inv)).unwrap();
+        let inv2 = store
+            .get_yanked_invoice(crate::invoice_to_name(&inv))
+            .unwrap();
         assert!(inv2.yanked.unwrap_or(false));
 
         // Sanity check that this produces an error
-        assert!(store.get_invoice(invoice_to_name(&inv)).is_err());
+        assert!(store.get_invoice(crate::invoice_to_name(&inv)).is_err());
 
         // Drop the temporary directory
+        assert!(root.close().is_ok());
+    }
+
+    #[test]
+    fn test_should_reject_yanked_invoice() {
+        // Create a temporary directory
+        let root = tempdir().unwrap();
+        let mut inv = invoice_fixture();
+        inv.yanked = Some(true);
+        let store = FileStorage {
+            root: root.path().to_str().unwrap().to_owned(),
+        };
+        // Create an file
+        assert!(store.create_invoice(&inv).is_err());
         assert!(root.close().is_ok());
     }
 
@@ -295,24 +315,28 @@ mod test {
                 media_type: "text/toml".to_owned(),
                 name: "foo.toml".to_owned(),
                 size: Some(101),
+                annotations: None,
             },
             crate::Label {
                 sha256: "bbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo2.toml".to_owned(),
                 size: Some(101),
+                annotations: None,
             },
             crate::Label {
                 sha256: "cbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo3.toml".to_owned(),
                 size: Some(101),
+                annotations: None,
             },
         ];
 
         Invoice {
             bindle_version: crate::BINDLE_VERSION_1.to_owned(),
             yanked: None,
+            annotations: None,
             bindle: crate::BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),
@@ -328,6 +352,7 @@ mod test {
                     })
                     .collect(),
             ),
+            group: None,
         }
     }
 }
