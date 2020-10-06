@@ -64,6 +64,12 @@ Bindles are good for expressing the relationship between related chunks of data.
 
  If that doesn't make sense, you haven't seen Stargazer Tian-yan yet.
 
+ ## Top-level Generalizations
+
+ - Unless stated otherwise, all text MUST be encoded as UTF-8
+ - Bindle uses the TOML format for text files. See the [TOML specification](https://toml.io/en/v1.0.0-rc.2).
+ - The specification is intended to be cross-platform, covering Windows, macOS, and a variety of UNIXes
+
  ## The Specifications
 
  - Start with the [Invoice Specification](invoice-spec.md) to learn about the top-level description of a Bindle
@@ -71,4 +77,4 @@ Bindles are good for expressing the relationship between related chunks of data.
  - The [Label Specification](label-spec) descries a parcel's label TOML file
  - The [Protocol Specification](protocol-spec) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.
 
- And for reference, if TOML is new for you, read the [TOML specification](https://toml.io/en/v1.0.0-rc.2).
+ And for reference, if TOML is new for you, read the 
