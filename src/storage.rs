@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::fs::{create_dir_all, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -31,9 +31,13 @@ pub trait Storage {
     fn create_parcel(
         &self,
         label: &super::Label,
-        data: &mut std::io::BufReader<std::fs::File>,
+        data: &mut std::fs::File,
     ) -> Result<(), StorageError>;
     fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError>;
+    // Get the label for a parcel
+    //
+    // This reads the label from storage and then parses it into a Label object.
+    fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError>;
 }
 
 /// StorageError describes the possible error states when storing and retrieving bindles.
@@ -222,7 +226,7 @@ impl Storage for FileStorage {
     fn create_parcel(
         &self,
         label: &super::Label,
-        data: &mut std::io::BufReader<std::fs::File>,
+        data: &mut std::fs::File,
     ) -> Result<(), StorageError> {
         let sha = label.sha256.as_str();
         // Test if a dir with that SHA exists. If so, this is an error.
@@ -254,7 +258,6 @@ impl Storage for FileStorage {
                 .read(true)
                 .open(dest)?;
 
-            // Encode the invoice into a TOML object
             let data = toml::to_vec(label)?;
             out.write_all(data.as_slice())?;
         }
@@ -264,6 +267,14 @@ impl Storage for FileStorage {
         let name = self.parcel_data_path(label.sha256.as_str());
         let reader = File::open(name)?;
         Ok(reader)
+    }
+    fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError> {
+        let label_path = self.label_toml_path(parcel_id);
+        let label_toml = std::fs::read_to_string(label_path)?;
+        let label: crate::Label = toml::from_str(label_toml.as_str())?;
+
+        // Return object
+        Ok(label)
     }
 }
 
@@ -342,6 +353,54 @@ mod test {
         // Create an file
         assert!(store.create_invoice(&inv).is_err());
         assert!(root.close().is_ok());
+    }
+
+    #[test]
+    fn test_should_write_read_parcel() {
+        let id = "abcdef1234567890987654321";
+        let (label, mut data) = parcel_fixture(id);
+        let root = tempdir().expect("create tempdir");
+        let store = FileStorage {
+            root: root.path().to_str().expect("root path").to_owned(),
+        };
+
+        store
+            .create_parcel(&label, &mut data)
+            .expect("create parcel");
+
+        // Now attempt to read just the label
+
+        let label2 = store.get_label(id).expect("fetch label after saving");
+        let mut data = String::new();
+        store
+            .get_parcel(&label2)
+            .expect("load parcel data")
+            .read_to_string(&mut data)
+            .expect("read file into string");
+        assert_eq!(data, "hello\n");
+    }
+
+    #[test]
+    fn test_should_store_and_retrieve_bindle() {
+        panic!("not implemented")
+    }
+
+    fn parcel_fixture(id: &str) -> (crate::Label, std::fs::File) {
+        let mut data = tempfile::tempfile().unwrap();
+        writeln!(data, "hello").expect("data written");
+        data.flush().expect("flush the file");
+        data.seek(SeekFrom::Start(0))
+            .expect("reset read pointer to head");
+        (
+            crate::Label {
+                sha256: id.to_owned(),
+                media_type: "text/toml".to_owned(),
+                name: "foo.toml".to_owned(),
+                size: Some(6),
+                annotations: None,
+            },
+            data,
+        )
     }
 
     fn invoice_fixture() -> Invoice {
