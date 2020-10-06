@@ -1,13 +1,13 @@
 use sha2::{Digest, Sha256};
-use std::fs::{create_dir_all, remove_dir_all, OpenOptions};
-use std::io::Write;
+use std::fs::{create_dir_all, File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
 /// The folder name for the parcels directory
-const BOX_DIRECTORY: &str = "parcels";
+const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
 const LABEL_TOML: &str = "label.toml";
@@ -28,13 +28,12 @@ pub trait Storage {
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
     fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<(), StorageError>;
-    fn create_box(
+    fn create_parcel(
         &self,
         label: &super::Label,
-        data: std::io::BufReader<std::fs::File>,
-    ) -> Result<(), anyhow::Error>;
-    fn get_box();
-    fn cleanup();
+        data: &mut std::io::BufReader<std::fs::File>,
+    ) -> Result<(), StorageError>;
+    fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError>;
 }
 
 /// StorageError describes the possible error states when storing and retrieving bindles.
@@ -98,18 +97,18 @@ impl FileStorage {
         self.invoice_path(invoice_id).join(INVOICE_TOML)
     }
     /// Return the parcel-specific path for storing a parcel.
-    fn parcel_path(&self, box_id: &str) -> PathBuf {
+    fn parcel_path(&self, parcel_id: &str) -> PathBuf {
         Path::new(self.root.as_str())
-            .join(BOX_DIRECTORY)
-            .join(box_id)
+            .join(PARCEL_DIRECTORY)
+            .join(parcel_id)
     }
     /// Return the path to a parcel.toml for a specific parcel.
-    fn label_toml_path(&self, box_id: &str) -> PathBuf {
-        self.parcel_path(box_id).join(LABEL_TOML)
+    fn label_toml_path(&self, parcel_id: &str) -> PathBuf {
+        self.parcel_path(parcel_id).join(LABEL_TOML)
     }
     /// Return the path to the parcel.dat file for the given box ID
-    fn parcel_data_path(&self, box_id: &str) -> PathBuf {
-        self.parcel_path(box_id).join(PARCEL_DAT)
+    fn parcel_data_path(&self, parcel_id: &str) -> PathBuf {
+        self.parcel_path(parcel_id).join(PARCEL_DAT)
     }
 }
 
@@ -220,15 +219,52 @@ impl Storage for FileStorage {
         std::fs::write(dest, data)?;
         Ok(())
     }
-    fn create_box(
+    fn create_parcel(
         &self,
         label: &super::Label,
-        data: std::io::BufReader<std::fs::File>,
-    ) -> Result<(), anyhow::Error> {
+        data: &mut std::io::BufReader<std::fs::File>,
+    ) -> Result<(), StorageError> {
+        let sha = label.sha256.as_str();
+        // Test if a dir with that SHA exists. If so, this is an error.
+        let par_path = self.parcel_path(sha);
+        if par_path.is_file() {
+            return Err(StorageError::Exists);
+        }
+        // Create box dir
+        create_dir_all(par_path)?;
+
+        // Write data
+        {
+            let data_file = self.parcel_data_path(sha);
+            let mut out = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .read(true)
+                .open(data_file)?;
+
+            std::io::copy(data, &mut out)?;
+        }
+
+        // Write label
+        {
+            let dest = self.label_toml_path(sha);
+            let mut out = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .read(true)
+                .open(dest)?;
+
+            // Encode the invoice into a TOML object
+            let data = toml::to_vec(label)?;
+            out.write_all(data.as_slice())?;
+        }
         Ok(())
     }
-    fn get_box() {}
-    fn cleanup() {}
+    fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError> {
+        let name = self.parcel_data_path(label.sha256.as_str());
+        let reader = File::open(name)?;
+        Ok(reader)
+    }
 }
 
 #[cfg(test)]
