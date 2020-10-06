@@ -46,10 +46,10 @@ The above bindle declares its metadata, and then declares a manifest containing 
 
 ## `bindle` Fields
 
-- name: Alpha-numeric name of the bindle, designed for humans (REQUIRED)
-- version: SemVer version, with the `v` prefix recommended, but not required (REQUIRED)
-- authors: Optional list of authors, where each field is a string conventionally containing a name and email address (OPTIONAL)
-- description: A one-line description (OPTIONAL)
+- `name`: Alpha-numeric name of the bindle, designed for humans (REQUIRED)
+- `version`: SemVer version, with the `v` prefix recommended, but not required (REQUIRED)
+- `authors`: Optional list of authors, where each field is a string conventionally containing a name and email address (OPTIONAL)
+- `description`: A one-line description intended to be viewed by end users (OPTIONAL)
 
 ## `annotations` Fields
 

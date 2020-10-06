@@ -69,6 +69,7 @@ Bindles are good for expressing the relationship between related chunks of data.
  - Unless stated otherwise, all text MUST be encoded as UTF-8
  - Bindle uses the TOML format for text files. See the [TOML specification](https://toml.io/en/v1.0.0-rc.2).
  - The specification is intended to be cross-platform, covering Windows, macOS, and a variety of UNIXes
+ - The term _version_ in this spec refers to [Semantic Versioning](https://semver.org) unless stated otherwise
 
  ## The Specifications
 
