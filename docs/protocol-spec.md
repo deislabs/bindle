@@ -46,6 +46,7 @@ The following query parameters are defined by this specification:
 - `o`: (OPTIONAL) The offset marker as an unsigned 64-bit integer. This is used for paging results
 - `l`: (OPTIONAL) The upper limit of results that may be returned on a query page as an unsigned 8-bit integer
 - `strict`: (OPTIONAL) A boolean flag (`true`|`false`) indicating whether the strict matching mode must be applied
+- `v`: (OPTIONAL) SemVer constraint match operator
 
 ### Processing queries and determining matches
 
@@ -79,6 +80,8 @@ If the query string has multiple components, all components must be present in t
 - An invoice named `foo-bar-baz` matches
 - An invoice named `hello` and with the description `foo/bar/baz` does not match
 
+Additionally, if a `v` SemVer range modified is present, the query engine MUST exclude any results that do not match the range modifier.
+
 #### Standard Mode
 
 In standard query mode, the search terms SHOULD all _match_ in the list of `bindle` fields. Here, _match_ allows for fuzzy matching algorithms. The purpose of this statement, though, is to indicate that queries are considered an AND-ed list of required terms, not an OR-ed list of disjunctive terms.
@@ -100,6 +103,16 @@ Annotations SHOULD NOT be included in search indices because the data stored in 
 Parcel information MUST NOT be included in search indices. Inclusion of such information introduces security concerns.
 
 In strict mode "fuzzy matching" (e.g. soundex or similar) MAY be applied to some or all query terms.
+
+Additionally, if a `v` SemVer range modified is present, the query engine MUST exclude any results that do not match the range modifier.
+
+#### The SemVer Range Modifier
+
+The `v` query parameter, if supplied, MUST contain a valid SemVer range modifier.
+
+For example, the range modifier `v=1.0.0-beta.1` indicates that a version MUST match version `1.0.0-beta.1`. Version `1.0.0-beta.12` does NOT match this modifier. 
+
+TODO: Specify the range modifiers.
 
 ## Returning Matches
 
