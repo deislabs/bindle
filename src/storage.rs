@@ -382,7 +382,42 @@ mod test {
 
     #[test]
     fn test_should_store_and_retrieve_bindle() {
-        panic!("not implemented")
+        let root = tempdir().expect("create tempdir");
+        let store = FileStorage {
+            root: root.path().to_str().expect("root path").to_owned(),
+        };
+
+        // Store a parcel
+        let id = "abcdef1234567890987654321";
+        let (label, mut data) = parcel_fixture(id);
+        let mut invoice = invoice_fixture();
+        let inv_name = crate::invoice_to_name(&invoice);
+
+        let parcel = crate::Parcel {
+            label: label.clone(),
+            conditions: None,
+        };
+        invoice.parcels = Some(vec![parcel]);
+
+        store
+            .create_parcel(&label, &mut data)
+            .expect("stored the parcel");
+
+        // Store an invoice that points to that parcel
+
+        store.create_invoice(&invoice).expect("create parcel");
+
+        // Get the bindle
+        let inv = store
+            .get_invoice(inv_name)
+            .expect("get the invoice we just stored");
+
+        let first_parcel = inv
+            .parcels
+            .expect("parsel vector")
+            .pop()
+            .expect("got a parcel");
+        assert_eq!(first_parcel.label.name, "foo.toml".to_owned())
     }
 
     fn parcel_fixture(id: &str) -> (crate::Label, std::fs::File) {
