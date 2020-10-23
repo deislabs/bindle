@@ -44,7 +44,7 @@ via an HTTP/3 connection (almost always over TLS). A hub supports the following 
 
 - GET: Get a bindle and any of its parcels that you don't currently have
 - POST: Push a bindle and any of its parcels that the hub currently doesn't have
-- DELTE: Remove a bindle
+- DELETE: Remove a bindle
 
 Note that you cannot modify any part of a bindle. Not the payload. Not the name. Not even
 the description. Bindles are truly immutable. It's like the post office: Once you ship a

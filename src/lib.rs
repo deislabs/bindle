@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 mod search;
 mod storage;
+mod server;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 

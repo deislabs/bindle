@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::fs::{create_dir_all, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -299,6 +299,7 @@ mod test {
     use super::*;
     use crate::Invoice;
     use tempfile::tempdir;
+    use std::io::{Read, Seek, SeekFrom, Write};
 
     #[test]
     fn test_should_generate_paths() {
