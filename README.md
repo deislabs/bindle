@@ -1,4 +1,4 @@
-# Bindle: Next-Gen Object Storage
+# Bindle: Aggregate Object Storage
 
 This repository is a :100: experimental code created by the DeisLab team on a whim. We
 really don't think you should use this in production.

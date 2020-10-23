@@ -1,7 +1,6 @@
 # The Bindle Protocol
 
-Bindle uses HTTP/3 with TLS as a transport protocol. HTTP/3 has many advantages, and is
-what makes Bindle as robust and speedy as it is.
+Bindle uses HTTP/3 with TLS as a transport protocol. HTTP/3 has many advantages, and is what makes Bindle as robust and speedy as it is.
 
 HTTP Endpoints:
 - `/_i/{bindle-name}`: The path to a bindle's invoice. Note that {bindle-name} can be pathy. For example, `/_i/example.com/mybindle/v1.2.3` is a valid path to a bindle named `example.com/mybindle/v1.2.3`.
@@ -14,6 +13,8 @@ HTTP Endpoints:
     - `HEAD`: Send just the headers of a GET request
     - `POST`: Create a parcel if it does not already exist. This may be disallowed.
 - `/_q`: The query endpoint
+
+While bindle names MAY be hierarchical, neither the `_i` nor the `_b` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
 
 ## Yanked Bindles
 
@@ -53,6 +54,10 @@ This section describes two modes for querying. An implementation of Bindle MUST 
 If a service supports both strict and standard modes, then strict mode SHOULD only be applied when the `strict` parameter is set to `true`. In all other cases, the standard mode SHOULD be applied.
 
 Whether strict or standard, a query MUST NOT match a yanked bindle.
+
+Whether strict or standard, a query MAY choose to treat an empty query string as a universal match, matching all non-yanked bindles.
+
+Whether strict or standard, if a Bindle server supports authorization controls, the query engine SHOULD omit results that the agent is not authorized to see.
 
 #### Strict Mode
 
@@ -100,7 +105,7 @@ In strict mode "fuzzy matching" (e.g. soundex or similar) MAY be applied to some
 
 When a query is executed without error, the following structure MUST be used for responses. In this specification, the format is TOML. However, if the `ACCEPT` header indicates otherwise, implementations MAY select different encoding formats.
 
-```
+```toml
 query = "foo/bar/baz"
 strict = true
 offset = 0
@@ -124,12 +129,18 @@ description = "Another bindle example"
 
 The top-level search fields are:
 
-- `query`
-- `strict`
-- `offset`
-- `limit`
-- `timestamp`
-- `total`
-- `more`
+- `query`: (REQUIRED) The query string, as parsed by the search engine
+- `strict`: (REQUIRED) An indication of whether the query engine processed the query in strict mode
+- `offset`: (REQUIRED) The offset (as an unsigned 64-bit integer) for the first record in the returned results
+- `limit`: (REQUIRED) The maximum number of results that this query would return on this page
+- `timestamp`: (REQUIRED) The UNIX timestamp (as a 64-bit integer) at which the query was processed
+- `total`: (OPTIONAL) The total number of matches found. If this is set to 0, it means no matches were found. If it is unset, it MAY be interpreted that the match count was not tallied.
+- `more`: (OPTIONAL) A boolean flag indicating whether more matches are available on the server at the time indicated by `timestamp`.
 
-The attached list of bindles MUST contain the `[bindle]` fields of the `invoice` object. Results MAY also contain `[annotations]` data (in a separate annotations section) if the query engine allows
+The attached list of bindles MUST contain the `[bindle]` fields of the `invoice` object. Results MAY also contain `[annotations]` data (in a separate annotations section) if the query engine allows queries to search annotations data.
+
+See the [Invoice Specification](invoice-spec.md) for a description of the `[bindle]` fields.
+
+### Ordering of Results
+
+The specification does not provide any guidance on ordering of search results. It is a desirable, but not required, property of search results that under the same circumstances, two identical queries return identical results, including identical ordering.
