@@ -66,12 +66,20 @@ pub enum StorageError {
 ///
 /// A FileStorage needs a search engine implementation. When invoices are created or yanked,
 /// the index will be updated.
-pub struct FileStorage<T: crate::search::Search> {
-    root: String, // TODO: this should be a path
+#[derive(Clone)]
+pub struct FileStorage<T> {
+    root: PathBuf,
     index: T,
 }
 
 impl<T: crate::search::Search> FileStorage<T> {
+    pub fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
+        FileStorage {
+            root: path.as_ref().to_owned(),
+            index,
+        }
+    }
+
     /// Create a standard name for an invoice
     ///
     /// This is designed to create a repeatable opaque name when given an invoice.
@@ -96,9 +104,9 @@ impl<T: crate::search::Search> FileStorage<T> {
 
     /// Return the path to the invoice directory for a particular bindle.
     fn invoice_path(&self, invoice_id: &str) -> PathBuf {
-        Path::new(self.root.as_str())
-            .join(INVOICE_DIRECTORY)
-            .join(invoice_id)
+        let mut path = self.root.join(INVOICE_DIRECTORY);
+        path.push(invoice_id);
+        path
     }
     /// Return the path for an invoice.toml for a particular bindle.
     fn invoice_toml_path(&self, invoice_id: &str) -> PathBuf {
@@ -106,9 +114,9 @@ impl<T: crate::search::Search> FileStorage<T> {
     }
     /// Return the parcel-specific path for storing a parcel.
     fn parcel_path(&self, parcel_id: &str) -> PathBuf {
-        Path::new(self.root.as_str())
-            .join(PARCEL_DIRECTORY)
-            .join(parcel_id)
+        let mut path = self.root.join(PARCEL_DIRECTORY);
+        path.push(parcel_id);
+        path
     }
     /// Return the path to a parcel.toml for a specific parcel.
     fn label_toml_path(&self, parcel_id: &str) -> PathBuf {
@@ -165,7 +173,7 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
 
         // Loop through the boxes and see what exists
         let missing = inv.parcels.as_ref().unwrap().iter().filter(|k| {
-            let parcel_path = self.parcel_path(k.label.name.as_str());
+            let parcel_path = self.parcel_path(k.label.sha256.as_str());
             // Stat k to see if it exists. If it does not exist, add it.
             match std::fs::metadata(parcel_path) {
                 Ok(stat) => !stat.is_dir(),
@@ -298,19 +306,19 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
 mod test {
     use super::*;
     use crate::Invoice;
-    use tempfile::tempdir;
     use std::io::{Read, Seek, SeekFrom, Write};
+    use tempfile::tempdir;
 
     #[test]
     fn test_should_generate_paths() {
         let f = FileStorage {
-            root: "test".to_owned(),
+            root: "test".into(),
             index: crate::search::StrictEngine::default(),
         };
-        assert_eq!("test/invoices/123", f.invoice_path("123").to_str().unwrap());
+        assert_eq!("test/invoices/123", f.invoice_path("123").to_string_lossy());
         assert_eq!(
             "test/invoices/123/invoice.toml",
-            f.invoice_toml_path("123").to_str().unwrap()
+            f.invoice_toml_path("123").to_string_lossy()
         );
         assert_eq!(
             "test/parcels/123".to_owned(),
@@ -332,7 +340,7 @@ mod test {
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         let mut store = FileStorage {
-            root: root.path().to_str().unwrap().to_owned(),
+            root: root.path().to_owned(),
             index: crate::search::StrictEngine::default(),
         };
         let inv_cname = store.canonical_invoice_name(&inv);
@@ -367,7 +375,7 @@ mod test {
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
         let mut store = FileStorage {
-            root: root.path().to_str().unwrap().to_owned(),
+            root: root.path().to_owned(),
             index: crate::search::StrictEngine::default(),
         };
         // Create an file
@@ -381,7 +389,7 @@ mod test {
         let (label, mut data) = parcel_fixture(id);
         let root = tempdir().expect("create tempdir");
         let store = FileStorage {
-            root: root.path().to_str().expect("root path").to_owned(),
+            root: root.path().to_owned(),
             index: crate::search::StrictEngine::default(),
         };
 
@@ -405,7 +413,7 @@ mod test {
     fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
         let mut store = FileStorage {
-            root: root.path().to_str().expect("root path").to_owned(),
+            root: root.path().to_owned(),
             index: crate::search::StrictEngine::default(),
         };
 
