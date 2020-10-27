@@ -161,7 +161,7 @@ The top-level search fields are:
 - `total`: (OPTIONAL) The total number of matches found. If this is set to 0, it means no matches were found. If it is unset, it MAY be interpreted that the match count was not tallied.
 - `more`: (OPTIONAL) A boolean flag indicating whether more matches are available on the server at the time indicated by `timestamp`.
 
-The attached list of bindles MUST contain the `[bindle]` fields of the `invoice` object. Results MAY also contain `[annotations]` data (in a separate annotations section) if the query engine allows queries to search annotations data.
+The attached list of bindles MUST contain the `[bindle]` fields of the `invoice` object. Results MAY also contain `[annotations]` data (in a separate annotations section). Results MAY contain `[[parcel]]` definitions.
 
 See the [Invoice Specification](invoice-spec.md) for a description of the `[bindle]` fields.
 
