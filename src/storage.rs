@@ -65,11 +65,21 @@ impl Default for SearchOptions {
 
 /// Describes the matches that are returned
 pub struct Matches {
+    /// Whether the search engine used strict mode
     pub strict: bool,
+    /// The offset of the first result in the matches
     pub offset: u64,
+    /// The maximum number of results this query would have returned
     pub limit: u8,
+    /// The total number of matches the search engine located
+    ///
+    /// In many cases, this will not match the number of results returned on this query
     pub total: u64,
+    /// Whether there are more results than the ones returned here
     pub more: bool,
+    /// The list of invoices returned as this part of the query
+    ///
+    /// The length of this Vec will be less than or equal to the limit.
     pub invoices: Vec<crate::Invoice>,
 }
 
