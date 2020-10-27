@@ -9,8 +9,11 @@ A specter is haunting the cloud-native ecosystem -- the specter of object storag
 long, we have stored our binary artifacts using technologies now decades old. Old
 protocols, poor security, and complicated JSON have resulted in inferior performance and
 dangerous information leaks.
+With no way to associated related objects, we waste valuable runtime trying to re-assemble dependencies... or worse, we blindly re-download the same thing.
+But the sun breaks over the horizon as a new day dawns.
+Now is the daybreak of aggregate object storage.
 
-Bindle is a next-generation object storage system based on HTTP/3, strong TLS encryption,
+Bindle is a next-generation object storage system based on HTTP/2 and HTTP/3, strong TLS encryption,
 Merkel-tree hashing, and immutable storage. While inspired in part by OCI registries, it
 remedies the common problems of that system. Hashing is not volatile, there are no "mutable
 tags", SemVer is supported first-class, and access controls are hierarchical.
