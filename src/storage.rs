@@ -40,6 +40,70 @@ pub trait Storage {
     fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError>;
 }
 
+/// The search options for performing this query and returning results
+pub struct SearchOptions {
+    /// The offset from the last search results
+    pub offset: u64,
+    /// The maximum number of results to return
+    pub limit: u8,
+    /// Whether to use strict mode (if there are multiple modes supported)
+    pub strict: bool,
+    /// Whether to return yanked bindles
+    pub yanked: bool,
+}
+
+impl Default for SearchOptions {
+    fn default() -> Self {
+        SearchOptions {
+            offset: 0,
+            limit: 50,
+            strict: false,
+            yanked: false,
+        }
+    }
+}
+
+/// Describes the matches that are returned
+pub struct Matches {
+    pub strict: bool,
+    pub offset: u64,
+    pub limit: u8,
+    pub total: u64,
+    pub more: bool,
+    pub invoices: Vec<crate::Invoice>,
+}
+
+/// This trait describes the minimal set of features a Bindle provider must implement
+/// to provide query support.
+pub trait Search {
+    /// A high-level function that can take raw search strings (queries and filters) and options.
+    ///
+    /// This will parse the terms and filters according to its internal rules, and return
+    /// a set of matches.
+    ///
+    /// An error is returned if either there is something incorrect in the terms/filters,
+    /// or if the search engine itself fails to process the query.
+    fn query(
+        term: String,
+        filter: String,
+        options: SearchOptions,
+    ) -> Result<Matches, anyhow::Error>;
+
+    /// Given an invoice, extract information from it that will be useful for searching.
+    ///
+    /// This high-level feature does not provide any guarantees about how it will
+    /// process the invoice. But it may implement Strict and/or Standard modes
+    /// described in the protocol specification.
+    ///
+    /// If the index function is given an invoice it has already indexed, it treats
+    /// the call as an update. Otherwise, it adds a new entry to the index.
+    ///
+    /// As a special note, if an invoice is yanked, the index function will mark it
+    /// as such, following the protocol specification's requirements for yanked
+    /// invoices.
+    fn index(document: &crate::Invoice) -> Result<(), anyhow::Error>;
+}
+
 /// StorageError describes the possible error states when storing and retrieving bindles.
 #[derive(Error, Debug)]
 pub enum StorageError {
