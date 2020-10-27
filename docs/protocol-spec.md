@@ -112,7 +112,14 @@ The `v` query parameter, if supplied, MUST contain a valid SemVer range modifier
 
 For example, the range modifier `v=1.0.0-beta.1` indicates that a version MUST match version `1.0.0-beta.1`. Version `1.0.0-beta.12` does NOT match this modifier. 
 
-TODO: Specify the range modifiers.
+The range modifiers will include the following modifiers, all based on [the Node.js _de facto_ behaviors](https://www.npmjs.com/package/semver):
+
+- `<`, `>`, `<=`, `>=`, `=` -- all approximately their mathematical equivalents
+- `-` (`1.2.3 - 1.5.6`) -- range declaration
+- `^` -- patch/minor updates allow (`^1.2.3` would accept `1.2.4` and `1.3.0`)
+- `~` -- at least the given version
+
+An example Rust implementation of the above is the [`semver` crate](https://crates.io/crates/semver)
 
 ## Returning Matches
 
