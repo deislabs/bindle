@@ -4,11 +4,12 @@ extern crate serde;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod search;
 mod storage;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Invoice {
     bindle_version: String,
@@ -21,7 +22,7 @@ pub struct Invoice {
     group: Option<Vec<Group>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
     name: String,
@@ -30,7 +31,7 @@ pub struct BindleSpec {
     authors: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Parcel {
     label: Label,
@@ -47,14 +48,14 @@ pub struct Label {
     annotations: Option<BTreeMap<String, String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Condition {
     member_of: Option<Vec<String>>,
     requires: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Group {
     name: String,
