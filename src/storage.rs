@@ -16,7 +16,7 @@ pub trait Storage {
     /// This takes an invoice and creates it in storage.
     /// It must verify that each referenced box is present in storage. Any box that
     /// is not present must be returned in the list of IDs.
-    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError>;
+    fn create_invoice(&mut self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError>;
     // Load an invoice and return it
     //
     // This will return an invoice if the bindle exists and is not yanked
@@ -27,7 +27,7 @@ pub trait Storage {
     //
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
-    fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<(), StorageError>;
+    fn yank_invoice(&mut self, inv: &mut super::Invoice) -> Result<(), StorageError>;
     fn create_parcel(
         &self,
         label: &super::Label,
@@ -63,11 +63,15 @@ pub enum StorageError {
 ///
 /// Given a root directory, FileStorage brings its own storage layout for keeping track
 /// of Bindles.
-pub struct FileStorage {
+///
+/// A FileStorage needs a search engine implementation. When invoices are created or yanked,
+/// the index will be updated.
+pub struct FileStorage<T: crate::search::Search> {
     root: String, // TODO: this should be a path
+    index: T,
 }
 
-impl FileStorage {
+impl<T: crate::search::Search> FileStorage<T> {
     /// Create a standard name for an invoice
     ///
     /// This is designed to create a repeatable opaque name when given an invoice.
@@ -116,8 +120,8 @@ impl FileStorage {
     }
 }
 
-impl Storage for FileStorage {
-    fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError> {
+impl<T: crate::search::Search> Storage for FileStorage<T> {
+    fn create_invoice(&mut self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError> {
         // It is illegal to create a yanked invoice.
         if inv.yanked.unwrap_or(false) {
             return Err(StorageError::Yanked);
@@ -147,6 +151,12 @@ impl Storage for FileStorage {
         // Encode the invoice into a TOML object
         let data = toml::to_vec(inv)?;
         out.write_all(data.as_slice())?;
+
+        // Attempt to update the index. Right now, we log an error if the index update
+        // fails.
+        if let Err(e) = self.index.index(&inv) {
+            eprintln!("Error indexing {}: {}", invoice_id, e);
+        }
 
         // if there are no parcels, bail early
         if inv.parcels.is_none() {
@@ -203,11 +213,17 @@ impl Storage for FileStorage {
         // Return object
         Ok(invoice)
     }
-    fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<(), StorageError> {
+    fn yank_invoice(&mut self, inv: &mut super::Invoice) -> Result<(), StorageError> {
         let invoice_cname = self.canonical_invoice_name(inv);
         let invoice_id = invoice_cname.as_str();
         // Load the invoice and mark it as yanked.
         inv.yanked = Some(true);
+
+        // Attempt to update the index. Right now, we log an error if the index update
+        // fails.
+        if let Err(e) = self.index.index(&inv) {
+            eprintln!("Error indexing {}: {}", invoice_id, e);
+        }
 
         // Open the destination or error out if it already exists.
         let dest = self.invoice_toml_path(invoice_id);
@@ -288,6 +304,7 @@ mod test {
     fn test_should_generate_paths() {
         let f = FileStorage {
             root: "test".to_owned(),
+            index: crate::search::StrictEngine::default(),
         };
         assert_eq!("test/invoices/123", f.invoice_path("123").to_str().unwrap());
         assert_eq!(
@@ -313,8 +330,9 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
-        let store = FileStorage {
+        let mut store = FileStorage {
             root: root.path().to_str().unwrap().to_owned(),
+            index: crate::search::StrictEngine::default(),
         };
         let inv_cname = store.canonical_invoice_name(&inv);
         let inv_name = inv_cname.as_str();
@@ -347,8 +365,9 @@ mod test {
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
-        let store = FileStorage {
+        let mut store = FileStorage {
             root: root.path().to_str().unwrap().to_owned(),
+            index: crate::search::StrictEngine::default(),
         };
         // Create an file
         assert!(store.create_invoice(&inv).is_err());
@@ -362,6 +381,7 @@ mod test {
         let root = tempdir().expect("create tempdir");
         let store = FileStorage {
             root: root.path().to_str().expect("root path").to_owned(),
+            index: crate::search::StrictEngine::default(),
         };
 
         store
@@ -383,8 +403,9 @@ mod test {
     #[test]
     fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage {
+        let mut store = FileStorage {
             root: root.path().to_str().expect("root path").to_owned(),
+            index: crate::search::StrictEngine::default(),
         };
 
         // Store a parcel
