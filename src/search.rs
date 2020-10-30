@@ -1,5 +1,6 @@
+use semver::{Version, VersionReq};
 use std::collections::BTreeMap;
-use std::ops::{Range, RangeInclusive};
+use std::ops::RangeInclusive;
 
 /// The search options for performing this query and returning results
 pub struct SearchOptions {
@@ -124,7 +125,7 @@ impl Search for StrictEngine {
             .filter(|(key, value)| {
                 // Term and version have to be exact matches.
                 // TODO: Version should have matching turned on.
-                *key == &term && (filter.is_empty() || value.bindle.version.eq(&filter))
+                *key == &term && version_compare(value.bindle.version.as_str(), &filter)
             })
             .map(|(_, v)| (*v).clone())
             .collect();
@@ -172,14 +173,68 @@ impl Search for StrictEngine {
     }
 }
 
+/// Check whether the given version is within the legal range.
+///
+/// An empty range matches anything.
+///
+/// A range that fails to parse matches nothing.
+///
+/// An empty version matches nothing (unless the requirement is empty)
+///
+/// A version that fails to parse matches nothing (unless the requirement is empty).
+///
+/// In all other cases, if the version satisfies the requirement, this returns true.
+/// And if it fails to satisfy the requirement, this returns false.
+pub fn version_compare(version: &str, requirement: &str) -> bool {
+    if requirement.is_empty() {
+        return true;
+    }
+
+    if let Ok(req) = VersionReq::parse(requirement) {
+        println!("Parsed {}", req);
+        return match Version::parse(version) {
+            Ok(ver) => req.matches(&ver),
+            Err(e) => {
+                eprintln!("Match failed with an error: {}", e);
+                false
+            }
+        };
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::Invoice;
 
     #[test]
+    fn test_version_comparisons() {
+        // Do not need an exhaustive list of matches -- just a sampling to make sure
+        // the outer logic is correct.
+        let reqs = vec!["= 1.2.3", "1.2.3", "1.2.3", "^1.1", "~1.2", ""];
+
+        reqs.iter().for_each(|r| {
+            if !version_compare("1.2.3", r) {
+                panic!("Should have passed: {}", r)
+            }
+        });
+
+        // Again, we do not need to test the SemVer crate -- just make sure some
+        // outliers and obvious cases are covered.
+        let reqs = vec!["2", "%^&%^&%"];
+        reqs.iter()
+            .for_each(|r| assert!(!version_compare("1.2.3", r)));
+
+        // Finally, test the outliers having to do with version strings
+        let vers = vec!["", "%^&%^&%"];
+        vers.iter().for_each(|v| assert!(!version_compare(v, "^1")));
+    }
+
+    #[test]
     fn strict_engine_should_index() {
-        let inv = invoice_fixture("my/bindle".to_owned(), "v1.2.3".to_owned());
+        let inv = invoice_fixture("my/bindle".to_owned(), "1.2.3".to_owned());
         let mut searcher = StrictEngine::default();
         searcher.index(&inv).expect("succesfully indexed my/bindle");
         assert_eq!(1, searcher.index.len());
@@ -188,7 +243,7 @@ mod test {
         let matches = searcher
             .query(
                 "my/bindle".to_owned(),
-                "v1.2.3".to_owned(),
+                "1.2.3".to_owned(),
                 SearchOptions::default(),
             )
             .expect("found some matches");
@@ -199,7 +254,7 @@ mod test {
         let matches = searcher
             .query(
                 "my/bindle2".to_owned(),
-                "v1.2.3".to_owned(),
+                "1.2.3".to_owned(),
                 SearchOptions::default(),
             )
             .expect("found some matches");
@@ -209,7 +264,7 @@ mod test {
         let matches = searcher
             .query(
                 "my/bindle".to_owned(),
-                "v1.2.99".to_owned(),
+                "1.2.99".to_owned(),
                 SearchOptions::default(),
             )
             .expect("found some matches");

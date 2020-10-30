@@ -1,9 +1,9 @@
 # TODO: Hashes are totally faked
-bindleVersion = "v1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"
-version = "v0.1.0"
+version = "0.1.0"
 
 [[group]]
 name = "server"

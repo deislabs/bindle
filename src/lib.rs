@@ -100,7 +100,7 @@ mod test {
             bindle: BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),
-                version: "v1.2.3".to_owned(),
+                version: "1.2.3".to_owned(),
                 authors: Some(vec!["m butcher".to_owned()]),
             },
             parcels,
@@ -112,7 +112,7 @@ mod test {
 
         let b = inv2.bindle;
         assert_eq!(b.name, "foo".to_owned());
-        assert_eq!(b.version.as_str(), "v1.2.3");
+        assert_eq!(b.version.as_str(), "1.2.3");
         assert_eq!(b.description.unwrap().as_str(), "bar");
         assert_eq!(b.authors.unwrap()[0], "m butcher".to_owned());
 

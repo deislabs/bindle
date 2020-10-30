@@ -1,8 +1,8 @@
-bindleVersion = "v1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"
-version = "v0.1.0"
+version = "0.1.0"
 authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
 description = "My first bindle"
 

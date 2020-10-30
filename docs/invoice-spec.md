@@ -41,13 +41,13 @@ The above bindle declares its metadata, and then declares a manifest containing 
 
 ## Top-level Fields
 
-- `bindleVersion` is required, and should be `v1.0.0` for this version of the specification.
+- `bindleVersion` is required, and should be `1.0.0` for this version of the specification.
 - `yanked` is a boolean field that indicates whether a Bindle has been yanked. This field appears outside of the `bindle` because it is mutable, though it can only be toggled on. Once set to true, a Bindle MUST NOT be un-yanked. A yanked bundle should never be served in an index or search, but MAY be accessed directly.
 
 ## `bindle` Fields
 
 - `name`: Alpha-numeric name of the bindle, designed for humans (REQUIRED)
-- `version`: SemVer version, with the `v` prefix recommended, but not required (REQUIRED)
+- `version`: [SemVer](https://semver.org) version (REQUIRED)
 - `authors`: Optional list of authors, where each field is a string conventionally containing a name and email address (OPTIONAL)
 - `description`: A one-line description intended to be viewed by end users (OPTIONAL)
 
@@ -78,11 +78,11 @@ By default, all parcels are part of the global (unnamed) group and are required.
 The `[[group]]` list is used to create a group. In the following example, three groups are defined: `server`, `cli`, and `utility`.
 
 ```toml
-bindleVersion = "v1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"
-version = "v0.1.0"
+version = "0.1.0"
 
 [[group]]
 name = "server"
@@ -119,11 +119,11 @@ By default, if no condition is provided, an item is a member of the "global" gro
 Example:
 
 ```toml
-bindleVersion = "v1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"
-version = "v0.1.0"
+version = "0.1.0"
 
 [[group]]
 name = "server"
