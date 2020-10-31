@@ -15,10 +15,10 @@ pub mod v1 {
 
     pub async fn create_invoice<S: Storage>(
         id: String,
-        store: &mut S,
+        store: S,
         inv: crate::Invoice,
     ) -> Result<impl warp::Reply, Infallible> {
-        let labels = match store.create_invoice(&inv) {
+        let labels = match store.create_invoice(&inv).await {
             Ok(l) => l,
             // TODO: Actually inspect the error to return the right code
             Err(e) => {
@@ -59,7 +59,7 @@ pub mod v1 {
         } else {
             store.get_invoice(id)
         };
-        let inv = match res {
+        let inv = match res.await {
             Ok(i) => i,
             // TODO: Actually inspect the error to return the right code
             Err(e) => {

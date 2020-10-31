@@ -4,9 +4,9 @@ extern crate serde;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-mod search;
 mod server;
 
+pub mod search;
 pub mod storage;
 pub use server::server;
 

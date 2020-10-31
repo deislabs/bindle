@@ -20,6 +20,7 @@ pub async fn server<S: Storage + Clone + Send + Sync + 'static>(
         routes::v1::list(store.clone())
             .or(routes::v1::create(store.clone()))
             .or(routes::v1::get(store.clone()))
+            .or(routes::v1::head(store.clone()))
             .or(routes::v1::yank(store)),
     );
 

@@ -1,5 +1,4 @@
 use super::filters;
-use super::TOML_MIME_TYPE;
 use crate::storage::Storage;
 
 use warp::Filter;
