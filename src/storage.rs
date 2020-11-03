@@ -60,6 +60,8 @@ pub enum StorageError {
     IO(#[from] std::io::Error),
     #[error("resource already exists")]
     Exists,
+    #[error("digest does not match")]
+    DigestMismatch,
 
     // TODO: Investigate how to make this more helpful
     #[error("resource is malformed")]
@@ -307,10 +309,12 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
                 .create_new(true)
                 .write(true)
                 .read(false)
-                .open(data_file)
+                .open(data_file.clone())
                 .await?;
 
             tokio::io::copy(data, &mut out).await?;
+            // Verify parcel
+            validate_sha256(data_file, label.sha256.as_str())?;
         }
 
         // Write label
@@ -342,6 +346,22 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Return object
         Ok(label)
     }
+}
+
+/// Validate that the file at the given path matches the given SHA256
+///
+/// TODO: This should be async.
+fn validate_sha256(path: PathBuf, sha: &str) -> Result<()> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    let result = hasher.finalize();
+
+    if format!("{:x}", result) != sha {
+        return Err(StorageError::DigestMismatch);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -429,8 +449,9 @@ mod test {
 
     #[tokio::test]
     async fn test_should_write_read_parcel() {
-        let id = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(id).await;
+        let content = "abcdef1234567890987654321";
+        let (label, mut data) = parcel_fixture(content).await;
+        let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
         let store = FileStorage::new(
             root.path().to_owned(),
@@ -453,7 +474,7 @@ mod test {
             .read_to_string(&mut data)
             .await
             .expect("read file into string");
-        assert_eq!(data, "hello\n");
+        assert_eq!(data, content);
     }
 
     #[tokio::test]
@@ -465,8 +486,8 @@ mod test {
         );
 
         // Store a parcel
-        let id = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(id).await;
+        let content = "abcdef1234567890987654321";
+        let (label, mut data) = parcel_fixture(content).await;
         let mut invoice = invoice_fixture();
         let inv_name = crate::invoice_to_name(&invoice);
 
@@ -499,10 +520,11 @@ mod test {
         assert_eq!(first_parcel.label.name, "foo.toml".to_owned())
     }
 
-    async fn parcel_fixture(id: &str) -> (crate::Label, tokio::fs::File) {
+    async fn parcel_fixture(content: &str) -> (crate::Label, tokio::fs::File) {
         let data = tempfile::tempfile().unwrap();
+        let sha = format!("{:x}", Sha256::digest(content.as_bytes()));
         let mut data = File::from_std(data);
-        data.write_all("hello\n".as_bytes())
+        data.write_all(content.as_bytes())
             .await
             .expect("unable to write test data");
         data.flush().await.expect("unable to flush the test file");
@@ -511,7 +533,7 @@ mod test {
             .expect("unable to reset read pointer to head");
         (
             crate::Label {
-                sha256: id.to_owned(),
+                sha256: sha.to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo.toml".to_owned(),
                 size: Some(6),
