@@ -6,14 +6,14 @@ The HTTP endpoints defined above MAY exist as a subpath on a server, or in the s
 
 HTTP Endpoints:
 - `/_i/{bindle-name}`: The path to a bindle's invoice. Note that {bindle-name} can be pathy. For example, `/_i/example.com/mybindle/v1.2.3` is a valid path to a bindle named `example.com/mybindle/v1.2.3`.
-    - `GET`: Get a bindle by name
+    - `GET`: Get a bindle by name. This returns an invoice object.
     - `HEAD`: Send just the headers of a GET request
     - `POST`: Create a new bindle, optionally also sending some or all of the parcels. If all of the parcels specified in the bindle exist, a 201 status will be returned. If 1 or more of the parcels are missing, a 202 status will be returned with a reference to the missing parcels
     - `DELETE`: Yank a bindle. This will set the `yank` field on a bindle to `true`. This is the only mutation allowed on a Bindle.
 - `/_b/{parcel-id}`: The path to a parcel ID, where `{parcel-id}` is an exact SHA to a parcel.
-    - `GET`: Directly fetch a parcel
+    - `GET`: Directly fetch a parcel's opaque data.
     - `HEAD`: Send just the headers of a GET request
-    - `POST`: Create a parcel if it does not already exist. This may be disallowed.
+    - `POST`: Create a parcel if it does not already exist. This may be disallowed. This MUST post both the label and the parcel data.
 - `/_q`: The query endpoint
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_b` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
