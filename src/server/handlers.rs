@@ -20,12 +20,8 @@ pub mod v1 {
     ) -> Result<impl warp::Reply, Infallible> {
         let labels = match store.create_invoice(&inv).await {
             Ok(l) => l,
-            // TODO: Actually inspect the error to return the right code
             Err(e) => {
-                return Ok(warp::reply::with_status(
-                    reply::toml(&format!("error = \"{}\"", e.to_string())),
-                    warp::http::StatusCode::NOT_FOUND,
-                ));
+                return Ok(reply::into_reply(e));
             }
         };
         // If there are missing parcels that still need to be created, return a 202 to indicate that
@@ -61,12 +57,8 @@ pub mod v1 {
         };
         let inv = match res.await {
             Ok(i) => i,
-            // TODO: Actually inspect the error to return the right code
             Err(e) => {
-                return Ok(warp::reply::with_status(
-                    reply::toml(&format!("error = \"{}\"", e.to_string())),
-                    warp::http::StatusCode::NOT_FOUND,
-                ));
+                return Ok(reply::into_reply(e));
             }
         };
         Ok(warp::reply::with_status(

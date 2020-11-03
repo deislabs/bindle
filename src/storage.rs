@@ -52,6 +52,8 @@ pub trait Storage {
 pub enum StorageError {
     #[error("bindle is yanked")]
     Yanked,
+    #[error("bindle cannot be created as yanked")]
+    CreateYanked,
     #[error("resource not found")]
     NotFound,
     #[error("resource could not be loaded")]
@@ -149,7 +151,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>> {
         // It is illegal to create a yanked invoice.
         if inv.yanked.unwrap_or(false) {
-            return Err(StorageError::Yanked);
+            return Err(StorageError::CreateYanked);
         }
 
         let invoice_cname = self.canonical_invoice_name(inv);
