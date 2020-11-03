@@ -1,8 +1,11 @@
-use sha2::{Digest, Sha256};
-use std::fs::{create_dir_all, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+use tokio::fs::{create_dir_all, File, OpenOptions};
+use tokio::io::{AsyncRead, AsyncWriteExt};
+use tokio::sync::RwLock;
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
@@ -12,32 +15,36 @@ const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
 const LABEL_TOML: &str = "label.toml";
 
+type Result<T> = core::result::Result<T, StorageError>;
+
+#[async_trait::async_trait]
 pub trait Storage {
     /// This takes an invoice and creates it in storage.
     /// It must verify that each referenced box is present in storage. Any box that
     /// is not present must be returned in the list of IDs.
-    fn create_invoice(&mut self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError>;
+    async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>>;
     // Load an invoice and return it
     //
     // This will return an invoice if the bindle exists and is not yanked
-    fn get_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
+    async fn get_invoice(&self, id: String) -> Result<super::Invoice>;
     // Load an invoice, even if it is yanked.
-    fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
+    async fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice>;
     // Remove an invoice
     //
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
-    fn yank_invoice(&mut self, inv: &mut super::Invoice) -> Result<(), StorageError>;
-    fn create_parcel(
+    async fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<()>;
+    async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
         &self,
         label: &super::Label,
-        data: &mut std::fs::File,
-    ) -> Result<(), StorageError>;
-    fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError>;
+        data: &mut R,
+    ) -> Result<()>;
+
+    async fn get_parcel(&self, label: &crate::Label) -> Result<Box<dyn AsyncRead + Unpin>>;
     // Get the label for a parcel
     //
     // This reads the label from storage and then parses it into a Label object.
-    fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError>;
+    async fn get_label(&self, parcel_id: &str) -> Result<crate::Label>;
 }
 
 /// StorageError describes the possible error states when storing and retrieving bindles.
@@ -66,12 +73,29 @@ pub enum StorageError {
 ///
 /// A FileStorage needs a search engine implementation. When invoices are created or yanked,
 /// the index will be updated.
-pub struct FileStorage<T: crate::search::Search> {
-    root: String, // TODO: this should be a path
-    index: T,
+pub struct FileStorage<T> {
+    root: PathBuf,
+    index: Arc<RwLock<T>>,
 }
 
-impl<T: crate::search::Search> FileStorage<T> {
+// Manual implementation for Clone due to derive putting a clone constraint on generic parameters
+impl<T> Clone for FileStorage<T> {
+    fn clone(&self) -> Self {
+        FileStorage {
+            root: self.root.clone(),
+            index: self.index.clone(),
+        }
+    }
+}
+
+impl<T> FileStorage<T> {
+    pub fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
+        FileStorage {
+            root: path.as_ref().to_owned(),
+            index: Arc::new(RwLock::new(index)),
+        }
+    }
+
     /// Create a standard name for an invoice
     ///
     /// This is designed to create a repeatable opaque name when given an invoice.
@@ -96,9 +120,9 @@ impl<T: crate::search::Search> FileStorage<T> {
 
     /// Return the path to the invoice directory for a particular bindle.
     fn invoice_path(&self, invoice_id: &str) -> PathBuf {
-        Path::new(self.root.as_str())
-            .join(INVOICE_DIRECTORY)
-            .join(invoice_id)
+        let mut path = self.root.join(INVOICE_DIRECTORY);
+        path.push(invoice_id);
+        path
     }
     /// Return the path for an invoice.toml for a particular bindle.
     fn invoice_toml_path(&self, invoice_id: &str) -> PathBuf {
@@ -106,9 +130,9 @@ impl<T: crate::search::Search> FileStorage<T> {
     }
     /// Return the parcel-specific path for storing a parcel.
     fn parcel_path(&self, parcel_id: &str) -> PathBuf {
-        Path::new(self.root.as_str())
-            .join(PARCEL_DIRECTORY)
-            .join(parcel_id)
+        let mut path = self.root.join(PARCEL_DIRECTORY);
+        path.push(parcel_id);
+        path
     }
     /// Return the path to a parcel.toml for a specific parcel.
     fn label_toml_path(&self, parcel_id: &str) -> PathBuf {
@@ -120,8 +144,9 @@ impl<T: crate::search::Search> FileStorage<T> {
     }
 }
 
-impl<T: crate::search::Search> Storage for FileStorage<T> {
-    fn create_invoice(&mut self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError> {
+#[async_trait::async_trait]
+impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
+    async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>> {
         // It is illegal to create a yanked invoice.
         if inv.yanked.unwrap_or(false) {
             return Err(StorageError::Yanked);
@@ -137,7 +162,7 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
             if inv_path.is_file() {
                 return Err(StorageError::Exists);
             }
-            create_dir_all(inv_path)?;
+            create_dir_all(inv_path).await?;
         }
 
         // Open the destination or error out if it already exists.
@@ -146,16 +171,20 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
             .create_new(true)
             .write(true)
             .read(true)
-            .open(dest)?;
+            .open(dest)
+            .await?;
 
         // Encode the invoice into a TOML object
         let data = toml::to_vec(inv)?;
-        out.write_all(data.as_slice())?;
+        out.write_all(data.as_slice()).await?;
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
-        if let Err(e) = self.index.index(&inv) {
-            eprintln!("Error indexing {}: {}", invoice_id, e);
+        {
+            let mut lock = self.index.write().await;
+            if let Err(e) = lock.index(&inv) {
+                eprintln!("Error indexing {}: {}", invoice_id, e);
+            }
         }
 
         // if there are no parcels, bail early
@@ -163,26 +192,38 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
             return Ok(vec![]);
         }
 
+        // Note: this will not allocate
+        let zero_vec = Vec::with_capacity(0);
         // Loop through the boxes and see what exists
-        let missing = inv.parcels.as_ref().unwrap().iter().filter(|k| {
-            let parcel_path = self.parcel_path(k.label.name.as_str());
-            // Stat k to see if it exists. If it does not exist, add it.
-            match std::fs::metadata(parcel_path) {
-                Ok(stat) => !stat.is_dir(),
-                Err(_e) => true,
-            }
-        });
+        let missing = inv
+            .parcels
+            .as_ref()
+            .unwrap_or(&zero_vec)
+            .into_iter()
+            .map(|k| async move {
+                let parcel_path = self.parcel_path(k.label.sha256.as_str());
+                // Stat k to see if it exists. If it does not exist, add it.
+                match tokio::fs::metadata(parcel_path).await {
+                    Ok(stat) if !stat.is_dir() => Some(k.label.clone()),
+                    Err(_e) => None,
+                    _ => None,
+                }
+            });
 
-        Ok(missing.map(|p| p.label.clone()).collect())
+        Ok(futures::future::join_all(missing)
+            .await
+            .into_iter()
+            .filter_map(|x| x)
+            .collect())
     }
-    fn get_invoice(&self, id: String) -> Result<super::Invoice, StorageError> {
-        match self.get_yanked_invoice(id) {
+    async fn get_invoice(&self, id: String) -> Result<super::Invoice> {
+        match self.get_yanked_invoice(id).await {
             Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
             Err(e) => Err(e),
             _ => Err(StorageError::Yanked),
         }
     }
-    fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError> {
+    async fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice> {
         // TODO: Parse the id into an invoice name and version.
         let id_path = Path::new(&id);
         let parent = id_path.parent();
@@ -213,7 +254,7 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
         // Return object
         Ok(invoice)
     }
-    fn yank_invoice(&mut self, inv: &mut super::Invoice) -> Result<(), StorageError> {
+    async fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<()> {
         let invoice_cname = self.canonical_invoice_name(inv);
         let invoice_id = invoice_cname.as_str();
         // Load the invoice and mark it as yanked.
@@ -221,8 +262,11 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
-        if let Err(e) = self.index.index(&inv) {
-            eprintln!("Error indexing {}: {}", invoice_id, e);
+        {
+            let mut lock = self.index.write().await;
+            if let Err(e) = lock.index(&inv) {
+                eprintln!("Error indexing {}: {}", invoice_id, e);
+            }
         }
 
         // Open the destination or error out if it already exists.
@@ -239,11 +283,11 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
         std::fs::write(dest, data)?;
         Ok(())
     }
-    fn create_parcel(
+    async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
         &self,
         label: &super::Label,
-        data: &mut std::fs::File,
-    ) -> Result<(), StorageError> {
+        data: &mut R,
+    ) -> Result<()> {
         let sha = label.sha256.as_str();
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(sha);
@@ -251,7 +295,7 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
             return Err(StorageError::Exists);
         }
         // Create box dir
-        create_dir_all(par_path)?;
+        create_dir_all(par_path).await?;
 
         // Write data
         {
@@ -259,10 +303,11 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
             let mut out = OpenOptions::new()
                 .create_new(true)
                 .write(true)
-                .read(true)
-                .open(data_file)?;
+                .read(false)
+                .open(data_file)
+                .await?;
 
-            std::io::copy(data, &mut out)?;
+            tokio::io::copy(data, &mut out).await?;
         }
 
         // Write label
@@ -272,19 +317,21 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
                 .create_new(true)
                 .write(true)
                 .read(true)
-                .open(dest)?;
+                .open(dest)
+                .await?;
 
             let data = toml::to_vec(label)?;
-            out.write_all(data.as_slice())?;
+            out.write_all(data.as_slice()).await?;
         }
         Ok(())
     }
-    fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError> {
+    async fn get_parcel(&self, label: &crate::Label) -> Result<Box<dyn AsyncRead + Unpin>> {
         let name = self.parcel_data_path(label.sha256.as_str());
-        let reader = File::open(name)?;
-        Ok(reader)
+        let reader = File::open(name).await?;
+        Ok(Box::new(reader))
     }
-    fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError> {
+
+    async fn get_label(&self, parcel_id: &str) -> Result<crate::Label> {
         let label_path = self.label_toml_path(parcel_id);
         let label_toml = std::fs::read_to_string(label_path)?;
         let label: crate::Label = toml::from_str(label_toml.as_str())?;
@@ -298,18 +345,17 @@ impl<T: crate::search::Search> Storage for FileStorage<T> {
 mod test {
     use super::*;
     use crate::Invoice;
+    use std::io::SeekFrom;
     use tempfile::tempdir;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
     fn test_should_generate_paths() {
-        let f = FileStorage {
-            root: "test".to_owned(),
-            index: crate::search::StrictEngine::default(),
-        };
-        assert_eq!("test/invoices/123", f.invoice_path("123").to_str().unwrap());
+        let f = FileStorage::new("test", crate::search::StrictEngine::default());
+        assert_eq!("test/invoices/123", f.invoice_path("123").to_string_lossy());
         assert_eq!(
             "test/invoices/123/invoice.toml",
-            f.invoice_toml_path("123").to_str().unwrap()
+            f.invoice_toml_path("123").to_string_lossy()
         );
         assert_eq!(
             "test/parcels/123".to_owned(),
@@ -325,92 +371,99 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_should_create_yank_invoice() {
+    #[tokio::test]
+    async fn test_should_create_yank_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
-        let mut store = FileStorage {
-            root: root.path().to_str().unwrap().to_owned(),
-            index: crate::search::StrictEngine::default(),
-        };
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        );
         let inv_cname = store.canonical_invoice_name(&inv);
         let inv_name = inv_cname.as_str();
         // Create an file
-        let missing = store.create_invoice(&inv).unwrap();
+        let missing = store.create_invoice(&inv).await.unwrap();
         assert_eq!(3, missing.len());
 
         // Out-of-band read the invoice
         assert!(store.invoice_toml_path(inv_name).exists());
 
         // Yank the invoice
-        store.yank_invoice(&mut inv).unwrap();
+        store.yank_invoice(&mut inv).await.unwrap();
 
         // Make sure the invoice is yanked
         let inv2 = store
             .get_yanked_invoice(crate::invoice_to_name(&inv))
+            .await
             .unwrap();
         assert!(inv2.yanked.unwrap_or(false));
 
         // Sanity check that this produces an error
-        assert!(store.get_invoice(crate::invoice_to_name(&inv)).is_err());
+        assert!(store
+            .get_invoice(crate::invoice_to_name(&inv))
+            .await
+            .is_err());
 
         // Drop the temporary directory
         assert!(root.close().is_ok());
     }
 
-    #[test]
-    fn test_should_reject_yanked_invoice() {
+    #[tokio::test]
+    async fn test_should_reject_yanked_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
-        let mut store = FileStorage {
-            root: root.path().to_str().unwrap().to_owned(),
-            index: crate::search::StrictEngine::default(),
-        };
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        );
         // Create an file
-        assert!(store.create_invoice(&inv).is_err());
+        assert!(store.create_invoice(&inv).await.is_err());
         assert!(root.close().is_ok());
     }
 
-    #[test]
-    fn test_should_write_read_parcel() {
+    #[tokio::test]
+    async fn test_should_write_read_parcel() {
         let id = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(id);
+        let (label, mut data) = parcel_fixture(id).await;
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage {
-            root: root.path().to_str().expect("root path").to_owned(),
-            index: crate::search::StrictEngine::default(),
-        };
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        );
 
         store
             .create_parcel(&label, &mut data)
+            .await
             .expect("create parcel");
 
         // Now attempt to read just the label
 
-        let label2 = store.get_label(id).expect("fetch label after saving");
+        let label2 = store.get_label(id).await.expect("fetch label after saving");
         let mut data = String::new();
         store
             .get_parcel(&label2)
+            .await
             .expect("load parcel data")
             .read_to_string(&mut data)
+            .await
             .expect("read file into string");
         assert_eq!(data, "hello\n");
     }
 
-    #[test]
-    fn test_should_store_and_retrieve_bindle() {
+    #[tokio::test]
+    async fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let mut store = FileStorage {
-            root: root.path().to_str().expect("root path").to_owned(),
-            index: crate::search::StrictEngine::default(),
-        };
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        );
 
         // Store a parcel
         let id = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(id);
+        let (label, mut data) = parcel_fixture(id).await;
         let mut invoice = invoice_fixture();
         let inv_name = crate::invoice_to_name(&invoice);
 
@@ -422,15 +475,17 @@ mod test {
 
         store
             .create_parcel(&label, &mut data)
+            .await
             .expect("stored the parcel");
 
         // Store an invoice that points to that parcel
 
-        store.create_invoice(&invoice).expect("create parcel");
+        store.create_invoice(&invoice).await.expect("create parcel");
 
         // Get the bindle
         let inv = store
             .get_invoice(inv_name)
+            .await
             .expect("get the invoice we just stored");
 
         let first_parcel = inv
@@ -441,12 +496,16 @@ mod test {
         assert_eq!(first_parcel.label.name, "foo.toml".to_owned())
     }
 
-    fn parcel_fixture(id: &str) -> (crate::Label, std::fs::File) {
-        let mut data = tempfile::tempfile().unwrap();
-        writeln!(data, "hello").expect("data written");
-        data.flush().expect("flush the file");
+    async fn parcel_fixture(id: &str) -> (crate::Label, tokio::fs::File) {
+        let data = tempfile::tempfile().unwrap();
+        let mut data = File::from_std(data);
+        data.write_all("hello".as_bytes())
+            .await
+            .expect("unable to write test data");
+        data.flush().await.expect("unable to flush the test file");
         data.seek(SeekFrom::Start(0))
-            .expect("reset read pointer to head");
+            .await
+            .expect("unable to reset read pointer to head");
         (
             crate::Label {
                 sha256: id.to_owned(),

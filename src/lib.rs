@@ -4,8 +4,11 @@ extern crate serde;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-mod search;
-mod storage;
+mod server;
+
+pub mod search;
+pub mod storage;
+pub use server::server;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 
