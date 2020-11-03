@@ -201,13 +201,14 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             .parcels
             .as_ref()
             .unwrap_or(&zero_vec)
-            .into_iter()
+            .iter()
             .map(|k| async move {
                 let parcel_path = self.parcel_path(k.label.sha256.as_str());
-                // Stat k to see if it exists. If it does not exist, add it.
-                match tokio::fs::metadata(parcel_path).await {
+                // Stat k to see if it exists. If it does not exist or is not a directory, add it.
+                let res = tokio::fs::metadata(parcel_path).await;
+                match res {
                     Ok(stat) if !stat.is_dir() => Some(k.label.clone()),
-                    Err(_e) => None,
+                    Err(_e) => Some(k.label.clone()),
                     _ => None,
                 }
             });
@@ -501,7 +502,7 @@ mod test {
     async fn parcel_fixture(id: &str) -> (crate::Label, tokio::fs::File) {
         let data = tempfile::tempfile().unwrap();
         let mut data = File::from_std(data);
-        data.write_all("hello".as_bytes())
+        data.write_all("hello\n".as_bytes())
             .await
             .expect("unable to write test data");
         data.flush().await.expect("unable to flush the test file");
