@@ -14,7 +14,7 @@ pub mod v1 {
     }
 
     pub async fn create_invoice<S: Storage>(
-        id: String,
+        tail: warp::path::Tail,
         store: S,
         inv: crate::Invoice,
     ) -> Result<impl warp::Reply, Infallible> {
@@ -46,11 +46,12 @@ pub mod v1 {
     }
 
     pub async fn get_invoice<S: Storage>(
-        id: String,
+        tail: warp::path::Tail,
         query: InvoiceQuery,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
-        let res = if query.yanked {
+        let id = tail.as_str().to_owned();
+        let res = if query.yanked.unwrap_or_default() {
             store.get_yanked_invoice(id)
         } else {
             store.get_invoice(id)
@@ -68,7 +69,7 @@ pub mod v1 {
     }
 
     pub async fn yank_invoice<S: Storage>(
-        id: String,
+        tail: warp::path::Tail,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
         // Do this once we figure out what we actually need for the yank_invoice method on storage
@@ -76,11 +77,11 @@ pub mod v1 {
     }
 
     pub async fn head_invoice<S: Storage>(
-        id: String,
+        tail: warp::path::Tail,
         query: InvoiceQuery,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
-        let inv = get_invoice(id, query, store).await?;
+        let inv = get_invoice(tail, query, store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();

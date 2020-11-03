@@ -12,7 +12,7 @@ use super::TOML_MIME_TYPE;
 
 #[derive(Debug, Deserialize)]
 pub struct InvoiceQuery {
-    pub yanked: bool,
+    pub yanked: Option<bool>,
 }
 
 // Lovingly borrowed from https://docs.rs/warp/0.2.5/src/warp/filters/body.rs.html
