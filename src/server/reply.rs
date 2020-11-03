@@ -1,8 +1,10 @@
 use serde::Serialize;
+use warp::http::status::StatusCode;
 use warp::reply::Response;
 use warp::Reply;
 
 use super::TOML_MIME_TYPE;
+use crate::storage::StorageError;
 use crate::{Invoice, Label};
 
 /// A custom wrapper for responding to invoice creation responses. Because invoices can be created
@@ -47,4 +49,26 @@ impl Reply for Toml {
             Err(()) => warp::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
+}
+
+/// A helper function for converting a [`StorageError`](crate::storage::StorageError) into a Warp
+/// `Reply` with the proper status code. It will return a TOML body that looks like:
+/// ```toml
+/// error = "bindle is yanked"
+/// ```
+pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
+    let status_code = match &error {
+        StorageError::Yanked => StatusCode::BAD_REQUEST,
+        StorageError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
+        StorageError::NotFound => StatusCode::NOT_FOUND,
+        StorageError::IO(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        StorageError::Exists => StatusCode::BAD_REQUEST,
+        StorageError::Malformed(_) => StatusCode::BAD_REQUEST,
+        StorageError::Unserializable(_) => StatusCode::BAD_REQUEST,
+    };
+
+    warp::reply::with_status(
+        toml(&format!("error = \"{}\"", error.to_string())),
+        status_code,
+    )
 }
