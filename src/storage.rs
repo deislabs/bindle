@@ -22,7 +22,6 @@ pub trait Storage {
     /// This takes an invoice and creates it in storage.
     /// It must verify that each referenced box is present in storage. Any box that
     /// is not present must be returned in the list of IDs.
-<<<<<<< HEAD
     async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>>;
     // Load an invoice and return it
     //
@@ -36,38 +35,8 @@ pub trait Storage {
     // the entire invoice must be passed to the deletion command.
     async fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<()>;
     async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
-||||||| merged common ancestors
-    fn create_invoice(&mut self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError>;
-    // Load an invoice and return it
-    //
-    // This will return an invoice if the bindle exists and is not yanked
-    fn get_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
-    // Load an invoice, even if it is yanked.
-    fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
-    // Remove an invoice
-    //
-    // Because invoices are not necessarily stored using just one field on the invoice,
-    // the entire invoice must be passed to the deletion command.
-    fn yank_invoice(&mut self, inv: &mut super::Invoice) -> Result<(), StorageError>;
-    fn create_parcel(
-=======
-    fn create_invoice(&mut self, inv: &super::Invoice) -> Result<Vec<super::Label>, StorageError>;
-    /// Load an invoice and return it
-    ///
-    /// This will return an invoice if the bindle exists and is not yanked
-    fn get_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
-    /// Load an invoice, even if it is yanked.
-    fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice, StorageError>;
-    /// Remove an invoice
-    ///
-    /// Because invoices are not necessarily stored using just one field on the invoice,
-    /// the entire invoice must be passed to the deletion command.
-    fn yank_invoice(&mut self, inv: &mut super::Invoice) -> Result<(), StorageError>;
-    fn create_parcel(
->>>>>>> make a few corrections on spec
         &self,
         label: &super::Label,
-<<<<<<< HEAD
         data: &mut R,
     ) -> Result<()>;
 
@@ -76,23 +45,6 @@ pub trait Storage {
     //
     // This reads the label from storage and then parses it into a Label object.
     async fn get_label(&self, parcel_id: &str) -> Result<crate::Label>;
-||||||| merged common ancestors
-        data: &mut std::fs::File,
-    ) -> Result<(), StorageError>;
-    fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError>;
-    // Get the label for a parcel
-    //
-    // This reads the label from storage and then parses it into a Label object.
-    fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError>;
-=======
-        data: &mut std::fs::File,
-    ) -> Result<(), StorageError>;
-    fn get_parcel(&self, label: &crate::Label) -> Result<std::fs::File, StorageError>;
-    /// Get the label for a parcel
-    ///
-    /// This reads the label from storage and then parses it into a Label object.
-    fn get_label(&self, parcel_id: &str) -> Result<crate::Label, StorageError>;
->>>>>>> make a few corrections on spec
 }
 
 /// StorageError describes the possible error states when storing and retrieving bindles.
