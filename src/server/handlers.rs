@@ -14,7 +14,6 @@ pub mod v1 {
     }
 
     pub async fn create_invoice<S: Storage>(
-        tail: warp::path::Tail,
         store: S,
         inv: crate::Invoice,
     ) -> Result<impl warp::Reply, Infallible> {
