@@ -49,7 +49,7 @@ pub mod v1 {
         query: InvoiceQuery,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
-        let id = tail.as_str().to_owned();
+        let id = tail.as_str();
         let res = if query.yanked.unwrap_or_default() {
             store.get_yanked_invoice(id)
         } else {
@@ -71,8 +71,16 @@ pub mod v1 {
         tail: warp::path::Tail,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
+        let id = tail.as_str();
+        if let Err(e) = store.yank_invoice(id).await {
+            return Ok(reply::into_reply(e));
+        }
+
         // Do this once we figure out what we actually need for the yank_invoice method on storage
-        Ok(reply::toml(&"yay".to_string()))
+        Ok(warp::reply::with_status(
+            reply::toml(&String::from("message = \"invoice yanked\"")),
+            warp::http::StatusCode::OK,
+        ))
     }
 
     pub async fn head_invoice<S: Storage>(

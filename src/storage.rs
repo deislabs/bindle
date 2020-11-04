@@ -1,6 +1,9 @@
+use std::convert::{TryFrom, TryInto};
+use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
@@ -29,14 +32,20 @@ pub trait Storage {
     // Load an invoice and return it
     //
     // This will return an invoice if the bindle exists and is not yanked
-    async fn get_invoice(&self, id: String) -> Result<super::Invoice>;
+    async fn get_invoice<I>(&self, id: I) -> Result<super::Invoice>
+    where
+        I: TryInto<Id, Error = StorageError> + Send;
     // Load an invoice, even if it is yanked.
-    async fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice>;
+    async fn get_yanked_invoice<I>(&self, id: I) -> Result<super::Invoice>
+    where
+        I: TryInto<Id, Error = StorageError> + Send;
     // Remove an invoice
     //
     // Because invoices are not necessarily stored using just one field on the invoice,
     // the entire invoice must be passed to the deletion command.
-    async fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<()>;
+    async fn yank_invoice<I>(&self, id: I) -> Result<()>
+    where
+        I: TryInto<Id, Error = StorageError> + Send;
     async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
         &self,
         label: &super::Label,
@@ -65,12 +74,130 @@ pub enum StorageError {
     Exists,
     #[error("digest does not match")]
     DigestMismatch,
+    #[error("Invalid ID given")]
+    InvalidId,
 
     // TODO: Investigate how to make this more helpful
     #[error("resource is malformed")]
     Malformed(#[from] toml::de::Error),
     #[error("resource cannot be stored")]
     Unserializable(#[from] toml::ser::Error),
+}
+
+/// A parsed representation of an ID string for a bindle. This is currently defined as an arbitrary
+/// path with a version string at the end. Examples of valid ID strings include:
+/// `foo/0.1.0`
+/// `example.com/foo/1.2.3`
+/// `example.com/a/longer/path/foo/1.10.0-rc.1`
+#[derive(Clone, Debug)]
+pub struct Id {
+    name: String,
+    version: String,
+}
+
+impl Id {
+    /// Returns the name part of the ID
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the version part of the ID
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    fn parse_from_path<P: AsRef<Path>>(id_path: P) -> Result<Self> {
+        let ref_path = id_path.as_ref();
+        let parent = match ref_path.parent() {
+            Some(p) => p,
+            None => return Err(StorageError::InvalidId),
+        };
+
+        let name = match parent.to_str() {
+            Some(s) if !s.is_empty() => s.to_owned(),
+            _ => return Err(StorageError::InvalidId),
+        };
+
+        let version_part = match ref_path.file_name() {
+            Some(s) => s,
+            None => return Err(StorageError::InvalidId),
+        };
+
+        let version = match version_part.to_str() {
+            Some(s) if !s.is_empty() => s.to_owned(),
+            _ => return Err(StorageError::InvalidId),
+        };
+
+        Ok(Id { name, version })
+    }
+}
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // NOTE: If we find that every Storage implementation is using the
+        // `canonical_invoice_name_strings` method of hashing, we can do that here instead
+        Path::new(&self.name).join(&self.version).display().fmt(f)
+    }
+}
+
+impl FromStr for Id {
+    type Err = StorageError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let id_path = Path::new(s);
+        Self::parse_from_path(id_path)
+    }
+}
+
+// Unfortunately I can't do a generic implementation using AsRef<str>/AsRef<Path> due to this issue
+// in Rust with the blanket implementation: https://github.com/rust-lang/rust/issues/50133. So we
+// get _all_ the implementations
+impl TryFrom<String> for Id {
+    type Error = StorageError;
+
+    fn try_from(value: String) -> Result<Self> {
+        value.parse()
+    }
+}
+
+impl TryFrom<&String> for Id {
+    type Error = StorageError;
+
+    fn try_from(value: &String) -> Result<Self> {
+        value.parse()
+    }
+}
+
+impl TryFrom<&str> for Id {
+    type Error = StorageError;
+
+    fn try_from(value: &str) -> Result<Self> {
+        value.parse()
+    }
+}
+
+impl TryFrom<&Path> for Id {
+    type Error = StorageError;
+
+    fn try_from(value: &Path) -> Result<Self> {
+        Self::parse_from_path(value)
+    }
+}
+
+impl TryFrom<PathBuf> for Id {
+    type Error = StorageError;
+
+    fn try_from(value: PathBuf) -> Result<Self> {
+        Self::parse_from_path(value)
+    }
+}
+
+impl TryFrom<&PathBuf> for Id {
+    type Error = StorageError;
+
+    fn try_from(value: &PathBuf) -> Result<Self> {
+        Self::parse_from_path(value)
+    }
 }
 
 /// A file system backend for storing and retriving bindles and parcles.
@@ -224,37 +351,29 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             .filter_map(|x| x)
             .collect())
     }
-    async fn get_invoice(&self, id: String) -> Result<super::Invoice> {
+    async fn get_invoice<I>(&self, id: I) -> Result<super::Invoice>
+    where
+        I: TryInto<Id, Error = StorageError> + Send,
+    {
         match self.get_yanked_invoice(id).await {
             Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
             Err(e) => Err(e),
             _ => Err(StorageError::Yanked),
         }
     }
-    async fn get_yanked_invoice(&self, id: String) -> Result<super::Invoice> {
-        // TODO: Parse the id into an invoice name and version.
-        let id_path = Path::new(&id);
-        let parent = id_path.parent();
-        if parent.is_none() {
-            return Err(StorageError::NotFound);
-        }
+    async fn get_yanked_invoice<I>(&self, id: I) -> Result<super::Invoice>
+    where
+        I: TryInto<Id, Error = StorageError> + Send,
+    {
+        let parsed_id: Id = id.try_into()?;
 
-        let name = parent.unwrap().to_str().unwrap();
-
-        let version_part = id_path.file_name();
-        if version_part.is_none() {
-            return Err(StorageError::NotFound);
-        }
-        let version = version_part.unwrap().to_str().unwrap();
-
-        let invoice_cname = self.canonical_invoice_name_strings(name, version);
-        let invoice_id = invoice_cname.as_str();
+        let invoice_id = self.canonical_invoice_name_strings(parsed_id.name(), parsed_id.version());
 
         // Now construct a path and read it
-        let invoice_path = self.invoice_toml_path(invoice_id);
+        let invoice_path = self.invoice_toml_path(&invoice_id);
 
         // Open file
-        let inv_toml = std::fs::read_to_string(invoice_path)?;
+        let inv_toml = tokio::fs::read_to_string(invoice_path).await?;
 
         // Parse
         let invoice: crate::Invoice = toml::from_str(inv_toml.as_str())?;
@@ -262,10 +381,13 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Return object
         Ok(invoice)
     }
-    async fn yank_invoice(&self, inv: &mut super::Invoice) -> Result<()> {
-        let invoice_cname = self.canonical_invoice_name(inv);
-        let invoice_id = invoice_cname.as_str();
-        // Load the invoice and mark it as yanked.
+    async fn yank_invoice<I>(&self, id: I) -> Result<()>
+    where
+        I: TryInto<Id, Error = StorageError> + Send,
+    {
+        let mut inv = self.get_yanked_invoice(id).await?;
+        let invoice_id = self.canonical_invoice_name(&inv);
+
         inv.yanked = Some(true);
 
         // Attempt to update the index. Right now, we log an error if the index update
@@ -278,17 +400,17 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         }
 
         // Open the destination or error out if it already exists.
-        let dest = self.invoice_toml_path(invoice_id);
+        let dest = self.invoice_toml_path(&invoice_id);
 
         // Encode the invoice into a TOML object
-        let data = toml::to_vec(inv)?;
+        let data = toml::to_vec(&inv)?;
         // NOTE: Right now, this just force-overwites the existing invoice. We are assuming
         // that the bindle has already been confirmed to be present. However, we have not
         // ensured that here. So it is theoretically possible (if get_invoice was not used)
         // to build the invoice) that this could _create_ a new file. We could probably change
         // this behavior with OpenOptions.
 
-        std::fs::write(dest, data)?;
+        tokio::fs::write(dest, data).await?;
         Ok(())
     }
     async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
@@ -461,11 +583,32 @@ mod test {
         );
     }
 
+    #[test]
+    fn test_id_parsing() {
+        // Valid paths
+        Id::parse_from_path("foo/1.0.0").expect("Should parse simple ID");
+        Id::parse_from_path("example.com/foo/1.0.0").expect("Should parse namespaced ID");
+        Id::parse_from_path("example.com/a/long/path/foo/1.0.0").expect("Should parse long ID");
+        // Obviously this doesn't matter right now, but if we want to start parsing versions in the
+        // future, it will
+        Id::parse_from_path("example.com/foo/1.0.0-rc.1").expect("Should parse RC version ID");
+
+        // Invalid paths
+        assert!(
+            Id::parse_from_path("foo/").is_err(),
+            "Missing version should fail parsing"
+        );
+        assert!(
+            Id::parse_from_path("1.0.0").is_err(),
+            "Missing name should fail parsing"
+        );
+    }
+
     #[tokio::test]
     async fn test_should_create_yank_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
-        let mut inv = invoice_fixture();
+        let inv = invoice_fixture();
         let store = FileStorage::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
@@ -480,7 +623,10 @@ mod test {
         assert!(store.invoice_toml_path(inv_name).exists());
 
         // Yank the invoice
-        store.yank_invoice(&mut inv).await.unwrap();
+        store
+            .yank_invoice(crate::invoice_to_name(&inv))
+            .await
+            .unwrap();
 
         // Make sure the invoice is yanked
         let inv2 = store
@@ -642,7 +788,7 @@ mod test {
             bindle: crate::BindleSpec {
                 name: "foo".to_owned(),
                 description: Some("bar".to_owned()),
-                version: "v1.2.3".to_owned(),
+                version: "1.2.3".to_owned(),
                 authors: Some(vec!["m butcher".to_owned()]),
             },
             parcels: Some(

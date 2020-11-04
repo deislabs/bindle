@@ -5,7 +5,7 @@ Bindle uses HTTP/2 with TLS as a transport protocol. All bodies and responses ex
 The HTTP endpoints defined above MAY exist as a subpath on a server, or in the server's root. For example, `https://example.com/v1/_i/foo` and `https://example.com/_i/foo` are both legal paths for the specification below. However, `https://example.com/_i/v1/foo` is not (or, rather, it is a legal URI for a package named `v1/foo`).
 
 HTTP Endpoints:
-- `/_i/{bindle-name}`: The path to a bindle's invoice. Note that {bindle-name} can be pathy. For example, `/_i/example.com/mybindle/v1.2.3` is a valid path to a bindle named `example.com/mybindle/v1.2.3`.
+- `/_i/{bindle-name}`: The path to a bindle's invoice. Note that {bindle-name} can be pathy. For example, `/_i/example.com/mybindle/1.2.3` is a valid path to a bindle named `example.com/mybindle/1.2.3`.
     - `GET`: Get a bindle by name. This returns an invoice object.
     - `HEAD`: Send just the headers of a GET request
     - `DELETE`: Yank a bindle. This will set the `yank` field on a bindle to `true`. This is the only mutation allowed on a Bindle.
