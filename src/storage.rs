@@ -39,10 +39,7 @@ pub trait Storage {
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<super::Invoice>
     where
         I: TryInto<Id, Error = StorageError> + Send;
-    // Remove an invoice
-    //
-    // Because invoices are not necessarily stored using just one field on the invoice,
-    // the entire invoice must be passed to the deletion command.
+    // Remove an invoice by ID
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id, Error = StorageError> + Send;
