@@ -57,10 +57,16 @@ impl Reply for Toml {
 /// error = "bindle is yanked"
 /// ```
 pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
+    let mut error = error;
     let status_code = match &error {
         StorageError::Yanked => StatusCode::BAD_REQUEST,
         StorageError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
         StorageError::NotFound => StatusCode::NOT_FOUND,
+        StorageError::IO(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Remap the error in the case this is a not found error
+            error = StorageError::NotFound;
+            StatusCode::NOT_FOUND
+        }
         StorageError::IO(_) => StatusCode::INTERNAL_SERVER_ERROR,
         StorageError::Exists => StatusCode::BAD_REQUEST,
         StorageError::Malformed(_) => StatusCode::BAD_REQUEST,

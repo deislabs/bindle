@@ -26,7 +26,8 @@ pub mod v1 {
     where
         S: Storage + Clone + Send + Sync,
     {
-        warp::path!("_i" / String)
+        warp::path("_i")
+            .and(warp::path::tail())
             .and(warp::post())
             .and(with_store(store))
             .and(filters::toml())
@@ -40,7 +41,8 @@ pub mod v1 {
         S: Storage + Clone + Send + Sync,
     {
         // TODO: Figure out how to match arbitrarily pathy bindles (multiple string params)
-        warp::path!("_i" / String)
+        warp::path("_i")
+            .and(warp::path::tail())
             .and(warp::get())
             .and(warp::query::<filters::InvoiceQuery>())
             .and(with_store(store))
@@ -53,8 +55,9 @@ pub mod v1 {
     where
         S: Storage + Clone + Send + Sync,
     {
-        warp::path!("_i" / String)
-            .and(warp::get())
+        warp::path("_i")
+            .and(warp::path::tail())
+            .and(warp::head())
             .and(warp::query::<filters::InvoiceQuery>())
             .and(with_store(store))
             .and_then(head_invoice)
@@ -66,7 +69,8 @@ pub mod v1 {
     where
         S: Storage + Clone + Send + Sync,
     {
-        warp::path!("_i" / String)
+        warp::path("_i")
+            .and(warp::path::tail())
             .and(warp::delete())
             .and(with_store(store))
             .and_then(yank_invoice)
