@@ -1,5 +1,8 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -314,7 +317,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
             tokio::io::copy(data, &mut out).await?;
             // Verify parcel
-            validate_sha256(data_file, label.sha256.as_str())?;
+            validate_sha256(data_file, label.sha256.as_str()).await?;
         }
 
         // Write label
@@ -348,13 +351,78 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     }
 }
 
+/// An internal wrapper to implement `AsyncWrite` on Sha256
+struct AsyncSha256 {
+    inner: Mutex<Sha256>,
+}
+
+impl AsyncSha256 {
+    /// Equivalent to the `Sha256::new()` function
+    fn new() -> Self {
+        AsyncSha256 {
+            inner: Mutex::new(Sha256::new()),
+        }
+    }
+
+    /// Consumes self and returns the bare Sha256. This should only be called once you are done
+    /// writing. This will only return an error if for some reason the underlying mutex was poisoned
+    fn into_inner(self) -> std::sync::LockResult<Sha256> {
+        self.inner.into_inner()
+    }
+}
+
+impl tokio::io::AsyncWrite for AsyncSha256 {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::result::Result<usize, std::io::Error>> {
+        // Because the hasher is all in memory, we only need to make sure only one caller at a time
+        // can write using the mutex
+        let mut inner = match self.inner.try_lock() {
+            Ok(l) => l,
+            Err(_) => return Poll::Pending,
+        };
+
+        Poll::Ready(inner.write(buf))
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), std::io::Error>> {
+        let mut inner = match self.inner.try_lock() {
+            Ok(l) => l,
+            Err(_) => return Poll::Pending,
+        };
+
+        Poll::Ready(inner.flush())
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), std::io::Error>> {
+        // There are no actual shutdown tasks to perform, so just flush things as defined in the
+        // trait documentation
+        self.poll_flush(cx)
+    }
+}
+
 /// Validate that the file at the given path matches the given SHA256
-///
-/// TODO: This should be async.
-fn validate_sha256(path: PathBuf, sha: &str) -> Result<()> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher)?;
+async fn validate_sha256(path: PathBuf, sha: &str) -> Result<()> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = AsyncSha256::new();
+    tokio::io::copy(&mut file, &mut hasher).await?;
+    let hasher = match hasher.into_inner() {
+        Ok(h) => h,
+        Err(_) => {
+            return Err(StorageError::IO(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "data write corruption, mutex poisoned",
+            )))
+        }
+    };
     let result = hasher.finalize();
 
     if format!("{:x}", result) != sha {
