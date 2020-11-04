@@ -319,7 +319,6 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             let mut out = OpenOptions::new()
                 .create_new(true)
                 .write(true)
-                .read(true)
                 .open(dest)
                 .await?;
 
@@ -336,7 +335,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
     async fn get_label(&self, parcel_id: &str) -> Result<crate::Label> {
         let label_path = self.label_toml_path(parcel_id);
-        let label_toml = std::fs::read_to_string(label_path)?;
+        let label_toml = tokio::fs::read_to_string(label_path).await?;
         let label: crate::Label = toml::from_str(label_toml.as_str())?;
 
         // Return object
