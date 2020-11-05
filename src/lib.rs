@@ -136,6 +136,7 @@ mod test {
         let test_files = vec![
             "test/data/simple-invoice.toml",
             "test/data/full-invoice.toml",
+            "test/data/alt-format-invoice.toml",
         ];
         test_files.iter().for_each(|file| test_parsing_a_file(file));
     }
