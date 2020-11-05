@@ -27,7 +27,7 @@ pub mod v1 {
         S: Storage + Clone + Send + Sync,
     {
         warp::path("_i")
-            .and(warp::path::tail())
+            .and(warp::path::end())
             .and(warp::post())
             .and(with_store(store))
             .and(filters::toml())
