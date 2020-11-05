@@ -71,6 +71,7 @@ pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
         StorageError::Exists => StatusCode::BAD_REQUEST,
         StorageError::Malformed(_) => StatusCode::BAD_REQUEST,
         StorageError::Unserializable(_) => StatusCode::BAD_REQUEST,
+        StorageError::DigestMismatch => StatusCode::BAD_REQUEST,
     };
 
     warp::reply::with_status(

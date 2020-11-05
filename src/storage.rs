@@ -1,5 +1,8 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -60,6 +63,8 @@ pub enum StorageError {
     IO(#[from] std::io::Error),
     #[error("resource already exists")]
     Exists,
+    #[error("digest does not match")]
+    DigestMismatch,
 
     // TODO: Investigate how to make this more helpful
     #[error("resource is malformed")]
@@ -307,10 +312,12 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
                 .create_new(true)
                 .write(true)
                 .read(false)
-                .open(data_file)
+                .open(data_file.clone())
                 .await?;
 
             tokio::io::copy(data, &mut out).await?;
+            // Verify parcel
+            validate_sha256(data_file, label.sha256.as_str()).await?;
         }
 
         // Write label
@@ -341,6 +348,87 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Return object
         Ok(label)
     }
+}
+
+/// An internal wrapper to implement `AsyncWrite` on Sha256
+struct AsyncSha256 {
+    inner: Mutex<Sha256>,
+}
+
+impl AsyncSha256 {
+    /// Equivalent to the `Sha256::new()` function
+    fn new() -> Self {
+        AsyncSha256 {
+            inner: Mutex::new(Sha256::new()),
+        }
+    }
+
+    /// Consumes self and returns the bare Sha256. This should only be called once you are done
+    /// writing. This will only return an error if for some reason the underlying mutex was poisoned
+    fn into_inner(self) -> std::sync::LockResult<Sha256> {
+        self.inner.into_inner()
+    }
+}
+
+impl tokio::io::AsyncWrite for AsyncSha256 {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::result::Result<usize, std::io::Error>> {
+        // Because the hasher is all in memory, we only need to make sure only one caller at a time
+        // can write using the mutex
+        let mut inner = match self.inner.try_lock() {
+            Ok(l) => l,
+            Err(_) => return Poll::Pending,
+        };
+
+        Poll::Ready(inner.write(buf))
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), std::io::Error>> {
+        let mut inner = match self.inner.try_lock() {
+            Ok(l) => l,
+            Err(_) => return Poll::Pending,
+        };
+
+        Poll::Ready(inner.flush())
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), std::io::Error>> {
+        // There are no actual shutdown tasks to perform, so just flush things as defined in the
+        // trait documentation
+        self.poll_flush(cx)
+    }
+}
+
+/// Validate that the file at the given path matches the given SHA256
+async fn validate_sha256(path: PathBuf, sha: &str) -> Result<()> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = AsyncSha256::new();
+    tokio::io::copy(&mut file, &mut hasher).await?;
+    let hasher = match hasher.into_inner() {
+        Ok(h) => h,
+        Err(_) => {
+            return Err(StorageError::IO(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "data write corruption, mutex poisoned",
+            )))
+        }
+    };
+    let result = hasher.finalize();
+
+    if format!("{:x}", result) != sha {
+        return Err(StorageError::DigestMismatch);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -428,8 +516,9 @@ mod test {
 
     #[tokio::test]
     async fn test_should_write_read_parcel() {
-        let id = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(id).await;
+        let content = "abcdef1234567890987654321";
+        let (label, mut data) = parcel_fixture(content).await;
+        let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
         let store = FileStorage::new(
             root.path().to_owned(),
@@ -452,7 +541,7 @@ mod test {
             .read_to_string(&mut data)
             .await
             .expect("read file into string");
-        assert_eq!(data, "hello\n");
+        assert_eq!(data, content);
     }
 
     #[tokio::test]
@@ -464,8 +553,8 @@ mod test {
         );
 
         // Store a parcel
-        let id = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(id).await;
+        let content = "abcdef1234567890987654321";
+        let (label, mut data) = parcel_fixture(content).await;
         let mut invoice = invoice_fixture();
         let inv_name = crate::invoice_to_name(&invoice);
 
@@ -498,10 +587,11 @@ mod test {
         assert_eq!(first_parcel.label.name, "foo.toml".to_owned())
     }
 
-    async fn parcel_fixture(id: &str) -> (crate::Label, tokio::fs::File) {
+    async fn parcel_fixture(content: &str) -> (crate::Label, tokio::fs::File) {
         let data = tempfile::tempfile().unwrap();
+        let sha = format!("{:x}", Sha256::digest(content.as_bytes()));
         let mut data = File::from_std(data);
-        data.write_all("hello\n".as_bytes())
+        data.write_all(content.as_bytes())
             .await
             .expect("unable to write test data");
         data.flush().await.expect("unable to flush the test file");
@@ -510,7 +600,7 @@ mod test {
             .expect("unable to reset read pointer to head");
         (
             crate::Label {
-                sha256: id.to_owned(),
+                sha256: sha.to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo.toml".to_owned(),
                 size: Some(6),
