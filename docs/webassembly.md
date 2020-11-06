@@ -6,40 +6,23 @@ This document describes the mechanics of fetching and loading WebAssembly aggreg
 
 ## Terminology
 
+In addition to the Bindle terminology (invoice, parcel, bindle, label), the following terms are used in this document:
+
 - Aggregate Application (AA): An application that functions as a single program, though it may have pieces running in different runtimes.
-- Bindle: A storage system for aggregate applications
-- Invoice: The bindle data structure that indicates the composite parts of an aggregate application
-- Module: The compiled form of a WebAssembly binary
-- Parcel: The data payload of a bindle, which holds a WASM module or supporting data that is a constituent part of an aggregate application
+- Module: The compiled form of a WebAssembly binary. In this design, modules are stored as parcels.
 - `sg1` (StarGazer One): A hypothetical CLI that executes aggregate applications without a graphical user interface
 - `sgu` (StarGazer UI): Obviously superior to sg1, this executes aggregate applications with bindings for a graphical user interface.
-- WAGI (WebAssembly Gateway Interface): A headless web runtime
+- Stargazer: The name of the overarching project for running WebAssembly modules "in the cloud."
+- Tianyan: The specific part of the Stargazer platform that executes modules in a distributed (multi-host) environment.
+- Runtime (Or Stargazer Runtime): A tool that executes WebAssembly aggregate applications. This tool includes a Bindle client as well as the WebAssembly executor.
 
 ## Overview
 
-This document explains how the concept of beaming in the Stargazer/Tian-yan platform works with the concept of bindles and parcels, and how the two can be combined to create _aggregate applications_ - applications that behave like a single program, though they are comprised of pieces that execute in separate runtimes. Sometimes these runtimes may execute on the same host, and other times the runtimes may be spread across multiple hosts.
+This document explains how the concept of beaming in the Stargazer/Tianyan platform works with the concept of bindles and parcels, and how the two can be combined to create _aggregate applications_ - applications that behave like a single program, though they are comprised of pieces that execute in separate runtimes. Sometimes these runtimes may execute on the same host, and other times the runtimes may be spread across multiple hosts.
 
-The basic idea is that an aggregated application is stored as a single bindle with multiple parcels.
+When it comes to Bindle storage, the basic idea is that an aggregated application is stored as a single bindle with multiple parcels. The parcels contain the WebAssembly modules that compose that application. Parcels may also store additional data used by these aggregated applications.
 
-```
-bindle -|
-        | - parcel 1
-        |    |
-        |    |- label (TOML)
-        |    |- data (opaque bytes)
-        |
-        | - parcel 2
-        |    |
-        |    |- label (TOML)
-        |    |- data (opaque bytes)
-        |
-        | - parcel 3
-             |
-             |- label (TOML)
-             |- data (opaque bytes)
-```
-
-The bindle describes not just all the necessary parts of an aggregated application, but all the possible parts. So an application may require one parcel, and have another optional parcel. Or it may require one of several parcels. This configuration could (in theory) get even more complicated, where if one particular optional parcel is selected, than another parcel of a set of parcels must also be selected, and so on.
+The bindle describes not just all the necessary parts of an aggregated application, but all the possible parts. So an application may require one parcel, and have another optional parcel. Or it may require one of several parcels. This configuration could (in theory) get even more complicated, where if one particular optional parcel is selected, than another parcel of a set of parcels must also be selected, and so on. The examples later in this document illustrate such cases.
 
 Regardless of the complexity of the selection, the end result is that the runtime selects the set of parcels that it needs to successfully run the application in its given context.
 
@@ -53,13 +36,13 @@ For its part, the runtime performs the following functions:
 - During execution, the runtime is responsible for delegating user interactions. (This may mean running a UI, or may mean determining what does run the UI)
 - Finally, when the aggregate application hits its stopping condition (program completes, user exits, fatal error, etc), it is the runtime's job to clean up
 
-The focus of this document is not the details of how the runtime performs these. Instead, the document focuses on how the runtime makes the decisions about how to fetch and load the constituent parts of an aggregated application.
+The focus of this document is not the details of how the runtime performs these. Instead, the document focuses on how the runtime makes the decisions about how to fetch and load the constituent parts of an aggregated application. That is, this document describes how an application is described as a bindle, and how a Stargazer runtime should interpret the information in that bindle.
 
-To discuss this, we will look at several examples
+The following example describe the aggregated application bindle, and show increasingly complicated models of applications.
 
 ## Example 1: A one-piece aggregate application
 
-There is no requirement that an aggregate application has more than one part. Given this, we can start with a simple example.
+There is no requirement that an aggregate application has more than one WebAssembly module. Given this, we can start with a simple example.
 
 In this example, a single module runs as a simple program that prints the plain text output "Hello World"
 
@@ -86,13 +69,11 @@ A Bindle invoice contains a few distinct sections of data:
 - The `bindle` section describes the bindle
 - The `parcel`s contain the labels for each parcel
 
-You can think of a bindle as a pallet of boxes, where the pallet itself has an invoice, and then each box on the pallet has a label identifying that box.
-
 To use our present parlance, each invoice describes an aggregate application, with each part of that application stored as a parcel.
 
-In the example above, the application is named `example/hello-world`. It contains only one parcel, a WASM module named `hello.wasm` and identified by the given SHA.
+In the example above, the application is named `example/hello-world`. It contains only one parcel, a WebAssembly module named `hello.wasm` and identified by the given SHA.
 
-> Note: SHAs in this document are for illustrative purposes only. They are truncated for text formatting.
+> Note: SHAs and sizes in this document are for illustrative purposes only. Most are fictional, and have been formatted for this document.
 
 Assume we have a client called `sg1` that can execute a simple command line program. And assume we have a Bindle server running at `example.com`. We might execute the above program like this:
 
@@ -105,7 +86,7 @@ In the example above, here's how SG1 executed the program:
 
 1. Fetch the Bindle invoice from example.com/example/hello-world
 2. Find which parcels need to be loaded
-    - In this case, there is only one. With no indication to the contrary, it is considered a required parcel
+    - In this case, there is only one. By default, it is required (as are all parcels in the default global group).
     - In this case, the media type is enough to tell the runtime whether or not it can execute the given parcel
 3. Fetch the parcel
 4. Start the runtime and load the parcel
@@ -113,7 +94,7 @@ In the example above, here's how SG1 executed the program:
 6. Clean up the parcel
     - In this case, this may only entail shutting down the runtime
 
-This example is the simplest case for an aggregate. In a moment, we will start to look at more advanced cases. But before that, here is a brief example on an error case.
+This example is the simplest case for an aggregate. In a moment, we will start to look at more advanced cases. But before that, here is a brief example of an error case.
 
 ## Example 2: An un-runnable aggregate application
 
@@ -151,18 +132,20 @@ Here's the process `sg1` went through:
 
 The important thing to note about this example is that the runtime can detect this problem before it has even fetched the binary data from the remote host.
 
-As we build more complicated examples, this illustrates the case where no satisfactory set of parcels can be composed to execute an aggregate application.
+As we build more complicated examples, this illustrates the case where no satisfactory set of parcels can be composed to execute an aggregate application. The error cases we consider in the remaining examples are largely of this sort. The runtime examines an invoice and determines that it cannot execute the aggregate application, so it exits.
+
+Largely, we do not discuss runtime errors in this document. Runtime errors are those that occur after the application has been loaded. These are not discussed because they do not hinge on the bindle format.
 
 ## Example 3: A two-parcel aggregate application
 
 In this example, the invoice points to an aggregate application that has two separate WASM modules (as parcels).
 
-This program takes a ZIP code and predicts the weather based on almanac data.
+This program takes a ZIP code and predicts the weather based on almanac data. We will reference variants of this program elsewhere in this document, though it is just for illustrative purposes.
 
 When it comes to the structure, the example the aggregate application consists of two modules:
 
-- The main module, which handles the CLI processing
-- The weather module, which makes predictions on the weather based on almanac data
+- The main weather module, which handles the CLI processing
+- The almanac library module, which makes predictions on the weather based on almanac data
 
 The main module takes user input and then communicates with the almanac module to get the prediction. It then formats the data, prints it, and exits.
 
@@ -208,7 +191,7 @@ The weather app above is named `example/weather`, and has two parcels attached. 
 3. Fetch the parcels
 4. Start the runtime and load the parcel
     - The `libalmanac.wasm` parcel is annotated with a label that says its `type` is `library`. So sg1 will assume that `libalmanac.wasm` is not the entry point
-    - The `weather.wasm` does not declare a type, so it is considered an entry point by default
+    - The `weather.wasm` does not declare a type, so it is considered an entrypoint by default
 5. Run the program to completion
     - The runtime will load both modules, each into its own isolated environment.
     - Because `weather.wasm` is marked as an entry point, it will be directly invoked (e.g. its `_start()` or `main()` will be called)
@@ -221,6 +204,8 @@ The weather app above is named `example/weather`, and has two parcels attached. 
 Here we do not go into any detail about the interchange between the two modules. That is a detail outside the present scope. In practice, this functions something like an RPC.
 
 The most important detail of this example is that the Bindle invoice provided sufficient information for the runtime to determine how to execute this.
+
+> This design does not dictate that an aggregate application can have only one entrypoint. When there are multiple entrypoints, the runtime is free to choose which to execute.
 
 ## Example 4: Remote execution of a library
 
@@ -634,6 +619,8 @@ When sgu inspects this invoice, it will build a more complex app. It will select
 One difficulty stems from the possibility of running part of this on a remote host: The host may not be able to determine whether a data file like `styles.css` is required by `weather-ui.wasm` or by `uibuilder.wasm` (or both). Any resources marked `data` are ambiguous in this way. Runtimes may support any number of ways to disambiguate this problem, or we may need to add some additional metadata in the `metadata.wasm` section for `type = "data"`. For example, we could add a `requiredBy = []` definition.
 
 ## Example 10: The shim parcel pattern
+
+**TODO:** Consider a polypfill `type` as an alternative approach to this.
 
 In the last few examples, we have seen cases where the runtime provides particular features that a client may take advantage of. The sgu runtime exposes an `electron+sgu` UI toolkit.
 
