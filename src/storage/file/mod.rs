@@ -253,13 +253,17 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             let mut out = OpenOptions::new()
                 .create_new(true)
                 .write(true)
-                .read(false)
+                .read(true)
                 .open(data_file.clone())
                 .await?;
 
             tokio::io::copy(data, &mut out).await?;
-            // Verify parcel
-            validate_sha256(data_file, label.sha256.as_str()).await?;
+            // Verify parcel by rewinding the parcel and then hashing it.
+            // This MUST be after the last write to out, otherwise the results will
+            // not be correct.
+            out.flush();
+            out.seek(std::io::SeekFrom::Start(0)).await?;
+            validate_sha256(&mut out, label.sha256.as_str()).await?;
         }
 
         // Write label
@@ -350,11 +354,10 @@ impl tokio::io::AsyncWrite for AsyncSha256 {
     }
 }
 
-/// Validate that the file at the given path matches the given SHA256
-async fn validate_sha256(path: PathBuf, sha: &str) -> Result<()> {
-    let mut file = tokio::fs::File::open(path).await?;
+/// Validate that the File path matches the given SHA256
+async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
     let mut hasher = AsyncSha256::new();
-    tokio::io::copy(&mut file, &mut hasher).await?;
+    tokio::io::copy(file, &mut hasher).await?;
     let hasher = match hasher.into_inner() {
         Ok(h) => h,
         Err(_) => {
