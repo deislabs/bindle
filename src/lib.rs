@@ -15,55 +15,55 @@ pub const BINDLE_VERSION_1: &str = "v1.0.0";
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Invoice {
-    bindle_version: String,
-    yanked: Option<bool>,
-    bindle: BindleSpec,
-    annotations: Option<BTreeMap<String, String>>,
+    pub bindle_version: String,
+    pub yanked: Option<bool>,
+    pub bindle: BindleSpec,
+    pub annotations: Option<BTreeMap<String, String>>,
     #[serde(alias = "parcel")]
-    parcels: Option<Vec<Parcel>>,
+    pub parcels: Option<Vec<Parcel>>,
     // TODO: Should this be renamed "groups" or should "parcels" be renamed to "parcel"
-    group: Option<Vec<Group>>,
+    pub group: Option<Vec<Group>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
-    name: String,
-    description: Option<String>,
-    version: String,
-    authors: Option<Vec<String>>,
+    pub name: String,
+    pub description: Option<String>,
+    pub version: String,
+    pub authors: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Parcel {
-    label: Label,
-    conditions: Option<Condition>,
+    pub label: Label,
+    pub conditions: Option<Condition>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Label {
-    sha256: String,
-    media_type: String,
-    name: String,
-    size: Option<i64>,
-    annotations: Option<BTreeMap<String, String>>,
+    pub sha256: String,
+    pub media_type: String,
+    pub name: String,
+    pub size: Option<i64>,
+    pub annotations: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Condition {
-    member_of: Option<Vec<String>>,
-    requires: Option<Vec<String>>,
+    pub member_of: Option<Vec<String>>,
+    pub requires: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Group {
-    name: String,
-    required: Option<bool>,
-    satisfied_by: Option<String>,
+    pub name: String,
+    pub required: Option<bool>,
+    pub satisfied_by: Option<String>,
 }
 
 /// Given an invoice, produce a slash-delimited "invoice name"
