@@ -78,7 +78,7 @@ In the example above, the application is named `example/hello-world`. It contain
 Assume we have a client called `sg1` that can execute a simple command line program. And assume we have a Bindle server running at `example.com`. We might execute the above program like this:
 
 ```console
-$ sg1 example.com/example/hello-world
+$ sg1 example.com/example/hello-world/0.1.0
 Hello World
 ```
 
@@ -119,7 +119,7 @@ label.size = 1710256
 The only changes are the bindle name on line 4 and the media type on line 11. Our mythical `sg1` client does not know how to execute an application of type `application/x-not-wasm`.
 
 ```console
-$ sg1 example.com/example/hello-world-2
+$ sg1 example.com/example/hello-world-2/0.1.0
 ERROR: Cannot execute media type "application/x-not-wasm"
 ```
 
@@ -150,7 +150,7 @@ When it comes to the structure, the example the aggregate application consists o
 The main module takes user input and then communicates with the almanac module to get the prediction. It then formats the data, prints it, and exits.
 
 ```
-$ sg1 example.com/examples/weather 80907
+$ sg1 example.com/examples/weather/0.1.0 80907
 High: 72F Low: 52F 
 ```
 
@@ -249,7 +249,7 @@ Given that, when the `sg1` program is run, it does the following:
     - Fetch the `weather.wasm` parcel that sg1 will execute locally
 4. Assign parcel to remote host
     - Request a remote host fetch `libalmanac.wasm`
-    - The exact host (and how the runtime decides) are determined by sg1's local configuration
+    - The exact host (and how the runtime decides) are determined by sg1's local configuration as well as the remote host's configuration
 5. Start the runtime and load the parcel
     - The `weather.wasm` does not declare a type, so it is considered an entry point by default.
     - sg1 executes this locally
@@ -400,7 +400,7 @@ The important thing in the example above is the new declaration on line 16: The 
 When the sg1 runtime is used, it would read the Bindle invoice and see the `ui-kit` requirement. Since it cannot satisfy that condition, it must exit with an error.
 
 ```console
-$ sg1 example.com/example/hello-world
+$ sg1 example.com/example/hello-world/0.1.0
 ERROR: sg1 does not support ui-kit "electron+sgu"
 ```
 
@@ -675,7 +675,7 @@ type = "library"
 In this case, we have two things that satisfy the entrypoint requirements, but one of them is a mock UI. THe idea is that a runtime would allow the user to select cases like this explicitly:
 
 ```console
-$ sgu example.com/example/weather-ui-shim \
+$ sgu example.com/example/weather-ui-shim/0.1.0 \
   --require-parcel-name weather-mock-ui.wasm
 ```
 

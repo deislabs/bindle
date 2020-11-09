@@ -65,15 +65,21 @@ In TOML, a list header (`[[parcel]]`) precedes each list item. Each parcel is a 
 
 Currently, each `[[parcel]]` contains `label` object (see [the label spec](label-spec.md)). Implementations SHOULD use the SHA-256 or SHA-512 on the label item to identify or validate the appropriate parcel.
 
-### `group` Lists and `conditions` Fields
+A `[[parcel]]` item may also include `conditions`. Conditions are not part of the parcel itself, and thus only appear on the invoice. They are markers that the given parcel object may have additional conditions for consideration when composing the parcels into a whole.
 
-EXPERIMENTAL--may be completely removed.
+### `group` Lists and `conditions` Fields
 
 It may be the case that not all of the parcels in a bindle are _required_. It may be the case that some are optional (based on undefined criteria) or that only one of N choices may be necessary.
 
-To support such combinations, bindles provide the concept of a `group` and various `condition`s that can be attached to each parcel.
+To support such combinations, bindles provide the concept of a top-level `group` object and various `condition`s that can be attached to individual parcels within an invoice.
 
-By default, all parcels are part of the global (unnamed) group and are required. Groups are only necessary when composing bindles that have optional or conditional parcels.
+#### Groups
+
+A group is a top-level organization object that may contain zero or more parcels. Every parcel belongs to at least one group, but may belong to others.
+
+An implicit global group exists. It has no name, and includes _only_ the parcels that are not assigned to any other group. There is no mechanism for explicitly assigning a parcel to the unnamed global group.
+
+For any explicitly created group, it is empty by default. Parcels must be placed into a group using conditions, which are discussed later in this document.
 
 The `[[group]]` list is used to create a group. In the following example, three groups are defined: `server`, `cli`, and `utility`.
 
@@ -105,11 +111,25 @@ Group fields:
 - `satisfiedBy`: The criterion by which this group's requirements can be sat to be satisfied. Possible values are:
   - `allOf` (DEFAULT): All of the packages in this group are required
   - `oneOf`: The bindle requirements are satisfied if at least one of the parcels is present
-  - `optional` (`anyOf`): The runtime may decide whether to install any of the parcels in this group  TODO: Can this be removed?
+  - `optional` (`anyOf`): The runtime may decide whether to install any of the parcels in this group.
 
-The members of the `[[parcel]]` list may declare themselves to be members of zero or more groups.
+The combination of `required` and `satisfiedBy` makes grouping a powerful way to compose bindles from parcels.
 
-With a `[[parcel]]` definition, a parcel may use a `conditions` object to express its inclusion in a group.
+The `required` field indicates whether a Bindle processor must process the group. A group that is not required need not be processed at all. A group that is required MUST be processed. (The global unnamed group is unalterably required.)
+
+The `required` field above presents one of two ways to mark a group as required. The other, discussed below, is for another required parcel to indicate this group in its `requires` field.
+
+The `satisfiedBy` field indicates the conditions under which a group's `required` state may be considered fulfilled. By default, if a group is required, then all of its parcels are also required. It is also possible to state that a group is satisfied if _one_ parcel is selected. Currently, it is possible to mark a group's satisfaction as `optional`, which means that the group can be satisfied even if none of the parcels in the group are selected. This provision is in place to provide a feature present in some package managers that _recommend_ particular dependencies, but don't force the user to select the recommended dependencies.
+
+#### Parcels and Conditions
+
+Inside of an invoice, a `[[parcel]]` describes a parcel that is considered part of the bindle. A parcel's `label` points to the actual Bindle parcel. But a parcel record in the invoice may also declare zero or more `conditions`.
+
+The `conditions` associate parcels to groups, and they can work one of two ways: They may indicate that a given parcel is part of a group, or they may indicate that this parcel requires another group.
+
+Between groups and conditions, it is possible to build tree-like dependency structures.
+
+> In the present draft, groups and conditions are acyclic. A group cannot include a parcel that depends upon that group (directly or indirectly). Bindle runtimes SHOULD produce an error when a cycle is detected.
 
 By default, if no condition is provided, an item is a member of the "global" group, and is required.
 
