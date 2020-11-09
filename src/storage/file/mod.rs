@@ -241,7 +241,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         let sha = label.sha256.as_str();
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(sha);
-        if par_path.is_file() {
+        if par_path.is_dir() {
             return Err(StorageError::Exists);
         }
         // Create box dir
@@ -276,8 +276,8 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         }
         Ok(())
     }
-    async fn get_parcel(&self, label: &crate::Label) -> Result<Box<dyn AsyncRead + Unpin>> {
-        let name = self.parcel_data_path(label.sha256.as_str());
+    async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>> {
+        let name = self.parcel_data_path(parcel_id);
         let reader = File::open(name).await?;
         Ok(Box::new(reader))
     }
@@ -474,7 +474,7 @@ mod test {
         let label2 = store.get_label(id).await.expect("fetch label after saving");
         let mut data = String::new();
         store
-            .get_parcel(&label2)
+            .get_parcel(&label2.sha256)
             .await
             .expect("load parcel data")
             .read_to_string(&mut data)

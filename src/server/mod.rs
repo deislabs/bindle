@@ -3,6 +3,8 @@ mod handlers;
 mod reply;
 mod routes;
 
+pub(crate) mod stream_util;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -25,11 +27,14 @@ where
 {
     // V1 API paths, currently the only version
     let api = warp::path("v1").and(
-        routes::v1::query(index.clone())
-            .or(routes::v1::create(store.clone()))
-            .or(routes::v1::get(store.clone()))
-            .or(routes::v1::head(store.clone()))
-            .or(routes::v1::yank(store)),
+        routes::v1::invoice::query(index.clone())
+            .or(routes::v1::invoice::create(store.clone()))
+            .or(routes::v1::invoice::get(store.clone()))
+            .or(routes::v1::invoice::head(store.clone()))
+            .or(routes::v1::invoice::yank(store.clone()))
+            .or(routes::v1::parcel::create(store.clone()))
+            .or(routes::v1::parcel::get(store.clone()))
+            .or(routes::v1::parcel::head(store)),
     );
 
     // TODO: We'll have to change this to serve_incoming_with_graceful_shutdown when we setup TLS
