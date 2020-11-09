@@ -22,6 +22,8 @@ tags", SemVer is supported first-class, and access controls are hierarchical.
 
 This is a Rust project. Use `cargo run` to execute Bindle.
 
+To run Bindle, see [the docs](docs/README.md).
+
 ## Concepts
 
 In the Bindle system, the term _bindle_ refers to a _bundle of related data called parcels_.
