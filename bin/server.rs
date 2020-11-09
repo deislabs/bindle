@@ -1,4 +1,7 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
 
 use clap::{App, Arg};
 
@@ -38,11 +41,12 @@ async fn main() -> anyhow::Result<()> {
     let raw_addr = app.value_of("addr").unwrap_or("127.0.0.1:8080");
     let dir = app.value_of("dir").unwrap_or("/tmp");
     let addr: SocketAddr = raw_addr.parse()?;
-    let store = storage::file::FileStorage::new(dir, search::StrictEngine::default());
+    let index = Arc::new(RwLock::new(search::StrictEngine::default()));
+    let store = storage::file::FileStorage::new(dir, index.clone());
 
     println!(
         "Starting server at {}, and serving bindles from {}",
         raw_addr, dir
     );
-    server(store, addr).await
+    server(store, index, addr).await
 }

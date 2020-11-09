@@ -43,10 +43,10 @@ impl<T> Clone for FileStorage<T> {
 }
 
 impl<T> FileStorage<T> {
-    pub fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
+    pub fn new<P: AsRef<Path>>(path: P, index: Arc<RwLock<T>>) -> Self {
         FileStorage {
             root: path.as_ref().to_owned(),
-            index: Arc::new(RwLock::new(index)),
+            index,
         }
     }
 
@@ -380,9 +380,13 @@ mod test {
     use tempfile::tempdir;
     use tokio::io::AsyncReadExt;
 
+    fn default_engine() -> Arc<RwLock<crate::search::StrictEngine>> {
+        Arc::new(RwLock::new(crate::search::StrictEngine::default()))
+    }
+
     #[test]
     fn test_should_generate_paths() {
-        let f = FileStorage::new("test", crate::search::StrictEngine::default());
+        let f = FileStorage::new("test", default_engine());
         assert_eq!("test/invoices/123", f.invoice_path("123").to_string_lossy());
         assert_eq!(
             "test/invoices/123/invoice.toml",
@@ -407,10 +411,7 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let inv = invoice_fixture();
-        let store = FileStorage::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        );
+        let store = FileStorage::new(root.path().to_owned(), default_engine());
         let inv_cname = super::canonical_invoice_name(&inv);
         let inv_name = inv_cname.as_str();
         // Create an file
@@ -449,10 +450,7 @@ mod test {
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
-        let store = FileStorage::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        );
+        let store = FileStorage::new(root.path().to_owned(), default_engine());
         // Create an file
         assert!(store.create_invoice(&inv).await.is_err());
         assert!(root.close().is_ok());
@@ -464,10 +462,7 @@ mod test {
         let (label, mut data) = parcel_fixture(content).await;
         let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        );
+        let store = FileStorage::new(root.path().to_owned(), default_engine());
 
         store
             .create_parcel(&label, &mut data)
@@ -491,10 +486,7 @@ mod test {
     #[tokio::test]
     async fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        );
+        let store = FileStorage::new(root.path().to_owned(), default_engine());
 
         // Store a parcel
         let content = "abcdef1234567890987654321";
