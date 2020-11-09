@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use super::filters;
+use crate::search::Search;
 use crate::storage::Storage;
 
+use tokio::sync::RwLock;
 use warp::Filter;
 
 pub mod v1 {
@@ -8,16 +12,16 @@ pub mod v1 {
 
     use crate::server::handlers::v1::*;
 
-    pub fn list<S>(
-        store: S,
+    pub fn query<S>(
+        index: Arc<RwLock<S>>,
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
     where
-        S: Storage + Clone + Send + Sync,
+        S: Search + Send + Sync,
     {
         warp::path("_q")
             .and(warp::get())
-            .and(with_store(store))
-            .and_then(list_invoices)
+            .map(move || index.clone())
+            .and_then(query_invoices)
     }
 
     pub fn create<S>(

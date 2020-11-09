@@ -1,15 +1,20 @@
 use std::convert::Infallible;
+use std::sync::Arc;
 
+use tokio::sync::RwLock;
 use warp::Reply;
 
 use super::filters::InvoiceQuery;
 use super::reply;
+use crate::search::Search;
 use crate::storage::Storage;
 
 pub mod v1 {
     use super::*;
 
-    pub async fn list_invoices<S: Storage>(store: S) -> Result<impl warp::Reply, Infallible> {
+    pub async fn query_invoices<S: Search>(
+        index: Arc<RwLock<S>>,
+    ) -> Result<impl warp::Reply, Infallible> {
         Ok(reply::toml(&"yay".to_string()))
     }
 

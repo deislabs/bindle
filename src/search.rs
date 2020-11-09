@@ -79,7 +79,7 @@ pub trait Search {
         term: String,
         filter: String,
         options: SearchOptions,
-    ) -> Result<Matches, anyhow::Error>;
+    ) -> anyhow::Result<Matches>;
 
     /// Given an invoice, extract information from it that will be useful for searching.
     ///
@@ -93,7 +93,7 @@ pub trait Search {
     /// As a special note, if an invoice is yanked, the index function will mark it
     /// as such, following the protocol specification's requirements for yanked
     /// invoices.
-    fn index(&mut self, document: &crate::Invoice) -> Result<(), anyhow::Error>;
+    fn index(&mut self, document: &crate::Invoice) -> anyhow::Result<()>;
 }
 
 /// Implements strict query processing.
@@ -118,7 +118,7 @@ impl Search for StrictEngine {
         term: String,
         filter: String,
         options: SearchOptions,
-    ) -> Result<Matches, anyhow::Error> {
+    ) -> anyhow::Result<Matches> {
         let mut found: Vec<crate::Invoice> = self
             .index
             .iter()
@@ -166,7 +166,7 @@ impl Search for StrictEngine {
     /// As a special note, if an invoice is yanked, the index function will mark it
     /// as such, following the protocol specification's requirements for yanked
     /// invoices.
-    fn index(&mut self, invoice: &crate::Invoice) -> Result<(), anyhow::Error> {
+    fn index(&mut self, invoice: &crate::Invoice) -> anyhow::Result<()> {
         self.index
             .insert(invoice.bindle.name.clone(), (*invoice).clone());
         Ok(())
