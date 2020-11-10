@@ -31,10 +31,10 @@ path = "bin/server.rs"
 name = "bindle"
 path = "bin/client.rs"
 
-#[[bin]]
-#name = "cargo2bindle"
-#path = "bin/cargo2bindle.rs"
+[[bin]]
+name = "cargo2bindle"
+path = "bin/cargo2bindle.rs"
 
-#[[bin]]
-#name = "as2bindle"
-#path = "bin/as2bindle.rs"
+[[bin]]
+name = "as2bindle"
+path = "bin/as2bindle.rs"
