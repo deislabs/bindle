@@ -16,7 +16,7 @@ Bindle from the data.
 By default, it attempts to read the local Cargo.toml and targets/ directory, and then
 write the results to a bindir/ directory.
 
-This will create a directory struction like this (where 'bindir' is the value
+This will create a directory structure like this (where 'bindir' is the value
 of -b/--bindle):
 
 bindir
@@ -28,7 +28,7 @@ bindir
         ├── label.toml
         └── parcel.dat
 
-This on-disk layout is the same as is used by the Bindle server.
+This on-disk layout is the same as is used by the Bindle server's file storage backend.
 "#;
 
 fn main() {
