@@ -39,7 +39,7 @@ pub trait Storage {
         data: &mut R,
     ) -> Result<()>;
 
-    async fn get_parcel(&self, label: &crate::Label) -> Result<Box<dyn AsyncRead + Unpin>>;
+    async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>>;
     // Get the label for a parcel
     //
     // This reads the label from storage and then parses it into a Label object.

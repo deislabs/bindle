@@ -75,6 +75,15 @@ pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
         StorageError::InvalidId => StatusCode::BAD_REQUEST,
     };
 
+    reply_from_error(error, status_code)
+}
+
+// A more generic wrapper that takes any ToString implementation (which includes Errors) and builds
+// a TOML error body with the given status code
+pub fn reply_from_error(
+    error: impl std::string::ToString,
+    status_code: warp::http::StatusCode,
+) -> warp::reply::WithStatus<Toml> {
     warp::reply::with_status(
         toml(&format!("error = \"{}\"", error.to_string())),
         status_code,

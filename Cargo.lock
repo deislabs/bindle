@@ -70,6 +70,7 @@ dependencies = [
  "bytes",
  "clap",
  "futures",
+ "hyper",
  "reqwest",
  "semver",
  "serde",
@@ -78,6 +79,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "toml",
  "warp",
 ]
