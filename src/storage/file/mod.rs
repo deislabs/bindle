@@ -121,6 +121,9 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
         // Open the destination or error out if it already exists.
         let dest = self.invoice_toml_path(invoice_id);
+        if dest.exists() {
+            return Err(StorageError::Exists);
+        }
         let mut out = OpenOptions::new()
             .create_new(true)
             .write(true)

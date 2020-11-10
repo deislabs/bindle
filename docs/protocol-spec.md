@@ -60,7 +60,7 @@ This section describes two modes for querying. An implementation of Bindle MUST 
 
 If a service supports both strict and standard modes, then strict mode SHOULD only be applied when the `strict` parameter is set to `true`. In all other cases, the standard mode SHOULD be applied.
 
-Whether strict or standard, a query MUST NOT match a yanked bindle.
+Whether strict or standard, a query MUST NOT match a yanked bindle unless the `yanked` parameter is set to `true`.
 
 Whether strict or standard, a query MAY choose to treat an empty query string as a universal match, matching all non-yanked bindles.
 
@@ -132,25 +132,69 @@ An example Rust implementation of the above is the [`semver` crate](https://crat
 When a query is executed without error, the following structure MUST be used for responses. In this specification, the format is TOML. However, if the `ACCEPT` header indicates otherwise, implementations MAY select different encoding formats.
 
 ```toml
-query = "foo/bar/baz"
+query = "mybindle"
 strict = true
 offset = 0
-limit = 20
-timestamp = 1234567890
-total = 2
+limit = 50
+total = 1
 more = false
+yanked = false
 
-[[bindle]]
-name = "foo/bar/baz"
-version = "v0.1.0"
-authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+[[invoices]]
+bindleVersion = "1.0.0"
+
+[invoices.bindle]
+name = "mybindle"
 description = "My first bindle"
-
-[[bindle]]
-name = "hello/foo/bar/baz/goodbye"
-version = "v8.1.0"
+version = "0.1.0"
 authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
-description = "Another bindle example"
+
+[invoices.annotations]
+myname = "myvalue"
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+mediaType = "text/html"
+name = "myparcel.html"
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+sha256 = "098fa798779ac88094b6d54a3f5cdba41fe5a901"
+mediaType = "text/css"
+name = "style.css"
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
+mediaType = "application/x-javascript"
+name = "foo.js"
+size = 248098
+
+[[invoices]]
+bindleVersion = "1.0.0"
+
+[invoices.bindle]
+name = "example.com/mybindle"
+version = "0.1.0"
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
+mediaType = "application/x-javascript"
+name = "first"
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+omitted...
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+omitted...
+
+[[invoices.parcels]]
+[invoices.parcels.label]
+omitted...
 ```
 
 The top-level search fields are:
@@ -160,10 +204,11 @@ The top-level search fields are:
 - `offset`: (REQUIRED) The offset (as an unsigned 64-bit integer) for the first record in the returned results
 - `limit`: (REQUIRED) The maximum number of results that this query would return on this page
 - `timestamp`: (REQUIRED) The UNIX timestamp (as a 64-bit integer) at which the query was processed
+- `yanked`: (REQUIRED) A boolean flag indicating whether the list of invoices includes potentially yanked invoices 
 - `total`: (OPTIONAL) The total number of matches found. If this is set to 0, it means no matches were found. If it is unset, it MAY be interpreted that the match count was not tallied.
 - `more`: (OPTIONAL) A boolean flag indicating whether more matches are available on the server at the time indicated by `timestamp`.
 
-The attached list of bindles MUST contain the `[bindle]` fields of the `invoice` object. Results MAY also contain `[annotations]` data (in a separate annotations section). Results MAY contain `[[parcel]]` definitions.
+The attached list of invoices MUST contain the `[bindle]` fields of the `invoice` object. Results MAY also contain `[annotations]` data (in a separate annotations section). Results MAY contain `[[parcel]]` definitions.
 
 See the [Invoice Specification](invoice-spec.md) for a description of the `[bindle]` fields.
 

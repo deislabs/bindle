@@ -23,9 +23,9 @@ where
     T: Serialize,
 {
     Toml {
-        // TODO: When we add logging, log the error here so we know when there is a serialize
-        // failure
-        inner: toml::to_vec(val).map_err(|_| ()),
+        inner: toml::to_vec(val).map_err(|e| {
+            eprintln!("Error while serializing TOML: {:?}", e);
+        }),
     }
 }
 
