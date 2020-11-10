@@ -14,15 +14,33 @@ pub mod v1 {
 
     use std::io::Read;
 
+    use crate::server::filters::QueryOptions;
     use bytes::buf::BufExt;
     use tokio::stream::StreamExt;
     use tokio_util::codec::{BytesCodec, FramedRead};
 
     //////////// Invoice Functions ////////////
     pub async fn query_invoices<S: Search>(
+        options: QueryOptions,
         index: Arc<RwLock<S>>,
     ) -> Result<impl warp::Reply, Infallible> {
-        Ok(reply::toml(&"yay".to_string()))
+        let term = options.query.clone().unwrap_or_default();
+        let version = options.version.clone().unwrap_or_default();
+        let locked_index = index.read().await;
+        let matches = match locked_index.query(term, version, options.into()) {
+            Ok(m) => m,
+            Err(e) => {
+                return Ok(reply::reply_from_error(
+                    e,
+                    warp::http::StatusCode::BAD_REQUEST,
+                ))
+            }
+        };
+
+        Ok(warp::reply::with_status(
+            reply::toml(&matches),
+            warp::http::StatusCode::OK,
+        ))
     }
 
     pub async fn create_invoice<S: Storage>(

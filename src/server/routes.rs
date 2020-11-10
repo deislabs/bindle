@@ -22,7 +22,8 @@ pub mod v1 {
         {
             warp::path("_q")
                 .and(warp::get())
-                .map(move || index.clone())
+                .and(warp::query::<filters::QueryOptions>())
+                .and(warp::any().map(move || index.clone()))
                 .and_then(query_invoices)
         }
 

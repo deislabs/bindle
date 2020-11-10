@@ -1,6 +1,8 @@
-use semver::{Version, VersionReq};
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
+
+use semver::{Version, VersionReq};
+use serde::Serialize;
 
 /// The search options for performing this query and returning results
 pub struct SearchOptions {
@@ -26,7 +28,10 @@ impl Default for SearchOptions {
 }
 
 /// Describes the matches that are returned
+#[derive(Debug, Serialize)]
 pub struct Matches {
+    /// The query used to find this match set
+    pub query: String,
     /// Whether the search engine used strict mode
     pub strict: bool,
     /// The offset of the first result in the matches
@@ -39,18 +44,21 @@ pub struct Matches {
     pub total: u64,
     /// Whether there are more results than the ones returned here
     pub more: bool,
+    /// Whether this list includes potentially yanked invoices
+    pub yanked: bool,
     /// The list of invoices returned as this part of the query
     ///
     /// The length of this Vec will be less than or equal to the limit.
+    // This needs to go at the bottom otherwise the table serialization in TOML gets weird. See
+    // https://github.com/alexcrichton/toml-rs/issues/258
     pub invoices: Vec<crate::Invoice>,
-    /// Whether this list includes potentially yanked invoices
-    pub yanked: bool,
 }
 
 impl Matches {
-    fn new(opts: &SearchOptions) -> Self {
+    fn new(opts: &SearchOptions, query: String) -> Self {
         Matches {
             // Assume options are definitive.
+            query,
             strict: opts.strict,
             offset: opts.offset,
             limit: opts.limit,
@@ -66,6 +74,8 @@ impl Matches {
 
 /// This trait describes the minimal set of features a Bindle provider must implement
 /// to provide query support.
+// TODO: Perhaps we should make this async and put the burden of locking on the Search
+// implementations rather than on the users of them
 pub trait Search {
     /// A high-level function that can take raw search strings (queries and filters) and options.
     ///
@@ -125,12 +135,12 @@ impl Search for StrictEngine {
             .filter(|(key, value)| {
                 // Term and version have to be exact matches.
                 // TODO: Version should have matching turned on.
-                *key == &term && version_compare(value.bindle.version.as_str(), &filter)
+                *key == &term && version_compare(&value.bindle.version, &filter)
             })
             .map(|(_, v)| (*v).clone())
             .collect();
 
-        let mut matches = Matches::new(&options);
+        let mut matches = Matches::new(&options, term);
         matches.strict = true;
         matches.yanked = false;
         matches.total = found.len() as u64;
@@ -186,12 +196,15 @@ impl Search for StrictEngine {
 /// In all other cases, if the version satisfies the requirement, this returns true.
 /// And if it fails to satisfy the requirement, this returns false.
 pub fn version_compare(version: &str, requirement: &str) -> bool {
+    println!(
+        "Got version compare. Version: {}, Requirement: {}",
+        version, requirement
+    );
     if requirement.is_empty() {
         return true;
     }
 
     if let Ok(req) = VersionReq::parse(requirement) {
-        println!("Parsed {}", req);
         return match Version::parse(version) {
             Ok(ver) => req.matches(&ver),
             Err(e) => {
