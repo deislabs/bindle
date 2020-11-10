@@ -30,7 +30,7 @@ This on-disk layout is the same as is used by the Bindle server's file storage b
 "#;
 
 fn main() {
-    let app = App::new("cargo2bindle")
+    let app = App::new("as2bindle")
         .version("0.1.0")
         .author("DeisLabs at Microsoft Azure")
         .about(DESCRIPTION)
