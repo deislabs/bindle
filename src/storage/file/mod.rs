@@ -428,23 +428,14 @@ mod test {
         assert!(store.invoice_toml_path(inv_name).exists());
 
         // Yank the invoice
-        store
-            .yank_invoice(crate::invoice_to_name(&inv))
-            .await
-            .unwrap();
+        store.yank_invoice(inv.name()).await.unwrap();
 
         // Make sure the invoice is yanked
-        let inv2 = store
-            .get_yanked_invoice(crate::invoice_to_name(&inv))
-            .await
-            .unwrap();
+        let inv2 = store.get_yanked_invoice(inv.name()).await.unwrap();
         assert!(inv2.yanked.unwrap_or(false));
 
         // Sanity check that this produces an error
-        assert!(store
-            .get_invoice(crate::invoice_to_name(&inv))
-            .await
-            .is_err());
+        assert!(store.get_invoice(inv.name()).await.is_err());
 
         // Drop the temporary directory
         assert!(root.close().is_ok());
@@ -498,7 +489,7 @@ mod test {
         let content = "abcdef1234567890987654321";
         let (label, mut data) = parcel_fixture(content).await;
         let mut invoice = invoice_fixture();
-        let inv_name = crate::invoice_to_name(&invoice);
+        let inv_name = invoice.name();
 
         let parcel = crate::Parcel {
             label: label.clone(),
