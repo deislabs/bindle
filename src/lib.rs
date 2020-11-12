@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
 
-mod server;
-
 pub mod search;
+pub mod server;
 pub mod storage;
-pub use server::server;
+
+pub use server::InvoiceCreateResponse;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 

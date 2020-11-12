@@ -5,13 +5,121 @@ mod common;
 
 #[tokio::test]
 async fn test_successful_workflow() {
+    let bindles = common::load_all_files().await;
+    let (store, index) = common::setup();
+
+    let api = bindle::server::routes::api(store, index);
+
     // Upload the parcels for one of the invoices
+    let valid_v1 = bindles.get("valid_v1").expect("Missing scaffold");
+
+    for k in valid_v1.label_files.keys() {
+        let res = valid_v1
+            .parcel_body(k)
+            .method("POST")
+            .path("/v1/_p/")
+            .reply(&api)
+            .await;
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::OK,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+        // Make sure the label we get back is valid toml
+        toml::from_slice::<bindle::Label>(res.body()).expect("should be valid label TOML");
+    }
 
     // Create an invoice pointing to those parcels and make sure the correct response is returned
+    let res = warp::test::request()
+        .method("POST")
+        .header("Content-Type", "application/toml")
+        .path("/v1/_i")
+        .body(&valid_v1.invoice)
+        .reply(&api)
+        .await;
 
-    // Create a second version (pointing at the same parcel) of the same invoice
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::CREATED,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+    let create_res: bindle::InvoiceCreateResponse =
+        toml::from_slice(res.body()).expect("should be valid invoice response TOML");
 
-    // Create an invoice with missing parcels and make sure the correct response is returned
+    assert!(
+        create_res.missing.is_none(),
+        "Invoice should not have missing parcels"
+    );
+
+    // Create a second version of the same invoice with missing parcels and make sure the correct response is returned
+    let valid_v2 = bindles.get("valid_v2").expect("Missing scaffold");
+
+    let res = warp::test::request()
+        .method("POST")
+        .header("Content-Type", "application/toml")
+        .path("/v1/_i")
+        .body(&valid_v2.invoice)
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::ACCEPTED,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+    let create_res: bindle::InvoiceCreateResponse =
+        toml::from_slice(res.body()).expect("should be valid invoice response TOML");
+
+    assert_eq!(
+        create_res
+            .missing
+            .expect("Should have missing parcels")
+            .len(),
+        1,
+        "Invoice should not have missing parcels"
+    );
+
+    // Get an invoice
+    let res = warp::test::request()
+        .path("/v1/_i/enterprise.com/warpcore/1.0.0")
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+    let inv: bindle::Invoice = toml::from_slice(res.body()).expect("should be valid invoice TOML");
+
+    // Get a parcel
+    let parcel = &inv.parcels.expect("Should have parcels")[0];
+    let res = warp::test::request()
+        .path(&format!("/v1/_p/{}", parcel.label.sha256))
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+
+    assert_eq!(
+        res.body().as_ref(),
+        valid_v1.parcel_files.get("parcel").unwrap().as_slice()
+    );
+    assert_eq!(
+        res.headers()
+            .get("Content-Type")
+            .expect("No content type header found")
+            .to_str()
+            .unwrap(),
+        parcel.label.media_type
+    );
 }
 
 #[tokio::test]

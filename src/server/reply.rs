@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use warp::http::status::StatusCode;
 use warp::reply::Response;
 use warp::Reply;
@@ -10,7 +10,7 @@ use crate::{Invoice, Label};
 /// A custom wrapper for responding to invoice creation responses. Because invoices can be created
 /// before parcels are uploaded, we need to inform the user if there are missing parcels in the
 /// bindle spec
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct InvoiceCreateResponse {
     pub invoice: Invoice,

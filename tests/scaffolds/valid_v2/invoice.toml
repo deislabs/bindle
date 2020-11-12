@@ -10,7 +10,7 @@ description = "Warp core components"
 engineering_location = "main"
 
 [[parcel]]
-label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.sha256 = "5e244f1c791ee45ec9cc02b281e3b58524e757561e9dc39cdd7ec0f4d328a3d3"
 label.mediaType = "text/plain"
 label.name = "isolinear_chip_v2.txt"
-label.size = 12345
+label.size = 11
