@@ -62,6 +62,19 @@ async fn parse_toml<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T
     toml::from_slice(&raw).map_err(|err| custom(BodyDeserializeError { cause: err.into() }))
 }
 
+pub async fn handle_deserialize_rejection(
+    err: warp::Rejection,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    if let Some(e) = err.find::<BodyDeserializeError>() {
+        Ok(crate::server::reply::reply_from_error(
+            e,
+            warp::http::StatusCode::BAD_REQUEST,
+        ))
+    } else {
+        Err(err)
+    }
+}
+
 #[derive(Debug)]
 pub struct BodyDeserializeError {
     cause: Box<dyn Error + Send + Sync>,

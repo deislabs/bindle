@@ -14,7 +14,7 @@ where
     I: crate::search::Search + Send + Sync + 'static,
 {
     warp::path("v1").and(
-        v1::invoice::query(index.clone())
+        v1::invoice::query(index)
             .or(v1::invoice::create(store.clone()))
             .or(v1::invoice::get(store.clone()))
             .or(v1::invoice::head(store.clone()))
@@ -64,6 +64,7 @@ pub mod v1 {
                 .and(with_store(store))
                 .and(filters::toml())
                 .and_then(create_invoice)
+                .recover(filters::handle_deserialize_rejection)
         }
 
         pub fn get<S>(

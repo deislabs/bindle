@@ -3,6 +3,8 @@
 
 mod common;
 
+use bindle::storage::Storage;
+
 #[tokio::test]
 async fn test_successful_workflow() {
     let bindles = common::load_all_files().await;
@@ -124,22 +126,114 @@ async fn test_successful_workflow() {
 
 #[tokio::test]
 async fn test_yank() {
-    // Upload the parcels for one of the invoices
+    let (store, index) = common::setup();
 
+    let api = bindle::server::routes::api(store.clone(), index);
+    // Insert an invoice
+    let scaffold = common::Scaffold::load("incomplete").await;
+    store
+        .create_invoice(&scaffold.invoice)
+        .await
+        .expect("Should be able to insert invoice");
+
+    let inv_path = format!(
+        "/v1/_i/{}/{}",
+        scaffold.invoice.bindle.name, scaffold.invoice.bindle.version
+    );
     // Yank the invoice
+    let res = warp::test::request()
+        .method("DELETE")
+        .path(&inv_path)
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
 
     // Attempt to fetch the invoice and make sure it doesn't return
+    let res = warp::test::request().path(&inv_path).reply(&api).await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::BAD_REQUEST,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
 
     // Set yanked to true and attempt to fetch again
+    let res = warp::test::request()
+        .path(&format!("{}?yanked=true", inv_path))
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+    toml::from_slice::<bindle::Invoice>(res.body()).expect("should be valid invoice TOML");
 }
 
 #[tokio::test]
 // This isn't meant to test all of the possible validation failures (that should be done in a unit
 // test for storage), just the main validation failures from the API
 async fn test_invoice_validation() {
+    let bindles = common::load_all_files().await;
+    let (store, index) = common::setup();
+
+    let api = bindle::server::routes::api(store, index);
+    let valid = bindles.get("valid_v1").expect("Missing scaffold");
+    let res = warp::test::request()
+        .method("POST")
+        .header("Content-Type", "application/toml")
+        .path("/v1/_i")
+        .body(&valid.invoice)
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::ACCEPTED,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+
     // Already created invoice
+    let res = warp::test::request()
+        .method("POST")
+        .header("Content-Type", "application/toml")
+        .path("/v1/_i")
+        .body(&valid.invoice)
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::BAD_REQUEST,
+        "Trying to upload existing invoice should fail"
+    );
 
     // Missing version
+    let invalid = bindles.get("invalid").expect("Missing scaffold");
+
+    let res = warp::test::request()
+        .method("POST")
+        .header("Content-Type", "application/toml")
+        .path("/v1/_i")
+        .body(&invalid.invoice)
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::BAD_REQUEST,
+        "Missing information should fail"
+    );
 }
 
 #[tokio::test]
