@@ -1,0 +1,5 @@
+# Not a real sha
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.mediaType = "text/plain"
+label.name = "moriarty.txt"
+label.size = 20

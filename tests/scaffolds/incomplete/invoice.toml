@@ -1,0 +1,13 @@
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "enterprise.com/bridge"
+version = "1.0.0"
+authors = ["Jean-Luc Picard <engage@ufp.com"]
+description = "Command deck"
+
+[[parcel]]
+label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+label.mediaType = "text/plain"
+label.name = "make_it_so.txt"
+label.size = 11
