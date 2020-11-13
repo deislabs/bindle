@@ -186,29 +186,20 @@ async fn test_invoice_validation() {
     let bindles = common::load_all_files().await;
     let (store, index) = common::setup();
 
-    let api = bindle::server::routes::api(store, index);
-    let valid = bindles.get("valid_v1").expect("Missing scaffold");
-    let res = warp::test::request()
-        .method("POST")
-        .header("Content-Type", "application/toml")
-        .path("/v1/_i")
-        .body(&valid.invoice)
-        .reply(&api)
-        .await;
-
-    assert_eq!(
-        res.status(),
-        warp::http::StatusCode::ACCEPTED,
-        "Body: {}",
-        String::from_utf8_lossy(res.body())
-    );
+    let api = bindle::server::routes::api(store.clone(), index);
+    let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
+    let valid = common::Scaffold::from(valid_raw.clone());
+    store
+        .create_invoice(&valid.invoice)
+        .await
+        .expect("Invoice create failure");
 
     // Already created invoice
     let res = warp::test::request()
         .method("POST")
         .header("Content-Type", "application/toml")
         .path("/v1/_i")
-        .body(&valid.invoice)
+        .body(&valid_raw.invoice)
         .reply(&api)
         .await;
 
@@ -240,13 +231,64 @@ async fn test_invoice_validation() {
 // This isn't meant to test all of the possible validation failures (that should be done in a unit
 // test for storage), just the main validation failures from the API
 async fn test_parcel_validation() {
+    let (store, index) = common::setup();
+
+    let api = bindle::server::routes::api(store.clone(), index);
+    // Insert a parcel
+    let scaffold = common::Scaffold::load("valid_v1").await;
+    let mut data =
+        std::io::Cursor::new(scaffold.parcel_files.get("parcel").expect("Missing parcel"));
+    store
+        .create_parcel(
+            scaffold.labels.get("parcel").expect("Missing parcel label"),
+            &mut data,
+        )
+        .await
+        .expect("Unable to create parcel");
+
     // Already created parcel
+    let scaffold = common::RawScaffold::from(scaffold);
+    let res = scaffold
+        .parcel_body("parcel")
+        .method("POST")
+        .path("/v1/_p/")
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::BAD_REQUEST,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
 
     // Incorrect SHA
+    let scaffold = common::RawScaffold::load("invalid").await;
+    let res = scaffold
+        .parcel_body("invalid_sha")
+        .method("POST")
+        .path("/v1/_p/")
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::BAD_REQUEST,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
 
     // Missing size
-
-    // Empty body?
+    let res = scaffold
+        .parcel_body("missing")
+        .method("POST")
+        .path("/v1/_p/")
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::BAD_REQUEST,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
 }
 
 #[tokio::test]
@@ -254,12 +296,93 @@ async fn test_parcel_validation() {
 // functions properly
 async fn test_queries() {
     // Insert data into store
+    let (store, index) = common::setup();
 
-    // Test empty query
+    let api = bindle::server::routes::api(store.clone(), index);
+    let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
+
+    for b in bindles_to_insert.into_iter() {
+        let current = common::Scaffold::load(b).await;
+        store
+            .create_invoice(&current.invoice)
+            .await
+            .expect("Unable to create invoice");
+    }
+
+    // Test empty query (don't think this works yet, so commented out)
+    // let res = warp::test::request().path("/v1/_q").reply(&api).await;
+    // assert_eq!(
+    //     res.status(),
+    //     warp::http::StatusCode::OK,
+    //     "Body: {}",
+    //     String::from_utf8_lossy(res.body())
+    // );
+    // let matches: bindle::Matches =
+    //     toml::from_slice(res.body()).expect("Unable to deserialize response");
+
+    // assert_eq!(
+    //     matches.invoices.len(),
+    //     3,
+    //     "Expected to get 3 invoice matches"
+    // );
 
     // Test query term filter
+    let res = warp::test::request()
+        .path("/v1/_q?q=enterprise.com/warpcore")
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+    let matches: bindle::Matches =
+        toml::from_slice(res.body()).expect("Unable to deserialize response");
 
-    // Test version queries
+    println!("{:?}", matches);
+
+    // NOTE: This is currently broken in the code. It is being fixed and this should be uncommented
+    // assert_eq!(
+    //     matches.invoices.len(),
+    //     2,
+    //     "Expected to get multiple invoice matches"
+    // );
+
+    // // Make sure the query was set
+    // assert_eq!(
+    //     matches.query, "enterprise.com/warpcore",
+    //     "Response did not contain the query data"
+    // );
+
+    // for inv in matches.invoices.into_iter() {
+    //     assert_eq!(
+    //         inv.bindle.name, "enterprise.com/warpcore",
+    //         "Didn't get the correct bindle"
+    //     );
+    // }
+
+    // Test loose query term filter (e.g. example.com/), this also doesn't work yet
+
+    // Non existent query should be empty
+    let res = warp::test::request()
+        .path("/v1/_q?q=non/existent")
+        .reply(&api)
+        .await;
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+    let matches: bindle::Matches =
+        toml::from_slice(res.body()).expect("Unable to deserialize response");
+    assert!(
+        matches.invoices.is_empty(),
+        "Expected to get no invoice matches"
+    );
+
+    // Test version queries (also broken for the same reason as other tests here)
 
     // Test yank
 

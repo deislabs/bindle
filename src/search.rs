@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The search options for performing this query and returning results
 pub struct SearchOptions {
@@ -27,7 +27,7 @@ impl Default for SearchOptions {
 }
 
 /// Describes the matches that are returned
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Matches {
     /// The query used to find this match set
     pub query: String,

@@ -10,6 +10,7 @@ pub mod search;
 pub mod server;
 pub mod storage;
 
+pub use search::Matches;
 pub use server::InvoiceCreateResponse;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";

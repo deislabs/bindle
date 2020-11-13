@@ -27,6 +27,7 @@ fn scaffold_dir() -> PathBuf {
 /// A scaffold loaded from disk, containing the raw bytes for all files in the bindle. Both
 /// `label_files` and `parcel_files` are the names of the files on disk with the extension removed.
 /// This allows for easy lookups in both maps as they should have the same name
+#[derive(Clone, Debug)]
 pub struct RawScaffold {
     pub invoice: Vec<u8>,
     pub label_files: HashMap<String, Vec<u8>>,
@@ -127,10 +128,28 @@ impl RawScaffold {
     }
 }
 
+// This shouldn't fail as we built it from deserializing them
+impl From<Scaffold> for RawScaffold {
+    fn from(mut s: Scaffold) -> RawScaffold {
+        let mut label_files = HashMap::new();
+        for (k, v) in s.labels.drain() {
+            label_files.insert(k, toml::to_vec(&v).expect("Reserialization shouldn't fail"));
+        }
+        let invoice = toml::to_vec(&s.invoice).expect("Reserialization shouldn't fail");
+
+        RawScaffold {
+            invoice,
+            label_files,
+            parcel_files: s.parcel_files,
+        }
+    }
+}
+
 /// A scaffold loaded from disk, containing the bindle object representations for all files in the
 /// bindle (except for the parcels themselves, as they can be binary data). Both `labels and
 /// `parcel_files` are the names of the files on disk with the extension removed. This allows for
 /// easy lookups in both maps as they should have the same name
+#[derive(Clone, Debug)]
 pub struct Scaffold {
     pub invoice: bindle::Invoice,
     pub labels: HashMap<String, bindle::Label>,
@@ -141,7 +160,14 @@ impl Scaffold {
     /// Loads the name scaffold from disk and deserializes them to actual bindle objects. Returns a
     /// Scaffold object containing the objects and raw parcel files
     pub async fn load(name: &str) -> Scaffold {
-        let mut raw = RawScaffold::load(name).await;
+        let raw = RawScaffold::load(name).await;
+        raw.into()
+    }
+}
+
+// Because this is a test, just panicing if conversion fails
+impl From<RawScaffold> for Scaffold {
+    fn from(mut raw: RawScaffold) -> Scaffold {
         let invoice: bindle::Invoice =
             toml::from_slice(&raw.invoice).expect("Unable to deserialize invoice TOML");
 
@@ -174,7 +200,9 @@ pub fn setup() -> (FileStorage<StrictEngine>, Arc<RwLock<StrictEngine>>) {
 }
 
 /// Loads all scaffolds in the scaffolds directory, returning them as a hashmap with the directory
-/// name as the key and a `RawScaffold` as a value
+/// name as the key and a `RawScaffold` as a value. There is not an equivalent for loading all
+/// scaffolds as a `Scaffold` object, because some of them may be invalid on will not deserialize
+/// properly
 pub async fn load_all_files() -> HashMap<String, RawScaffold> {
     let mut all = HashMap::new();
     let mut dirs = bindle_dirs().await;
@@ -185,25 +213,6 @@ pub async fn load_all_files() -> HashMap<String, RawScaffold> {
             .to_string_lossy()
             .to_string();
         let raw = RawScaffold::load(&dir_name).await;
-        all.insert(dir_name, raw);
-    }
-    all
-}
-
-/// Loads all scaffolds in the scaffolds directory, returning them as a hashmap with the directory
-/// name as the key and a `Scaffold` as a value
-pub async fn load_all() -> HashMap<String, Scaffold> {
-    // I know this is almost identical to the other function, but to pull it out into a separate
-    // function involves a bunch of boxing and extra code that seems overkill for a test harness
-    let mut all = HashMap::new();
-    let mut dirs = bindle_dirs().await;
-    while let Some(dir) = dirs.next().await {
-        let dir_name = dir
-            .file_name()
-            .expect("got unrecognized directory, this is likely a programmer error")
-            .to_string_lossy()
-            .to_string();
-        let raw = Scaffold::load(&dir_name).await;
         all.insert(dir_name, raw);
     }
     all
