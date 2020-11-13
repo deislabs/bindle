@@ -1,4 +1,29 @@
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
 use warp::Filter;
+
+/// A helper function that aggregates all routes into a complete API filter. If you only wish to
+/// serve specific endpoints or versions, you can assemble them with the individual submodules
+pub fn api<S, I>(
+    store: S,
+    index: Arc<RwLock<I>>,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+where
+    S: crate::storage::Storage + Clone + Send + Sync + 'static,
+    I: crate::search::Search + Send + Sync + 'static,
+{
+    warp::path("v1").and(
+        v1::invoice::query(index)
+            .or(v1::invoice::create(store.clone()))
+            .or(v1::invoice::get(store.clone()))
+            .or(v1::invoice::head(store.clone()))
+            .or(v1::invoice::yank(store.clone()))
+            .or(v1::parcel::create(store.clone()))
+            .or(v1::parcel::get(store.clone()))
+            .or(v1::parcel::head(store)),
+    )
+}
 
 pub mod v1 {
     use std::sync::Arc;
@@ -39,6 +64,7 @@ pub mod v1 {
                 .and(with_store(store))
                 .and(filters::toml())
                 .and_then(create_invoice)
+                .recover(filters::handle_deserialize_rejection)
         }
 
         pub fn get<S>(

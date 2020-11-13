@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use clap::{App, Arg};
 
-use bindle::{search, server, storage};
+use bindle::{search, server::server, storage};
 
 const DESCRIPTION: &str = r#"
 The Bindle Server

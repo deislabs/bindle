@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0"
 toml = "0.5"
@@ -26,6 +24,10 @@ futures = "0.3"
 clap = "2.33"
 reqwest = "0.10"
 hyper = "0.13"
+
+[dev-dependencies]
+multipart = "0.17"
+mime = "0.3"
 
 [[bin]]
 name = "bindle-server"
