@@ -71,10 +71,10 @@ pub enum StorageError {
     Unserializable(#[from] toml::ser::Error),
 }
 
-impl From<crate::id::ParseError> for StorageError {
-    fn from(e: crate::id::ParseError) -> StorageError {
+impl From<ParseError> for StorageError {
+    fn from(e: ParseError) -> StorageError {
         match e {
-            crate::id::ParseError::InvalidId => StorageError::InvalidId,
+            ParseError::InvalidId | ParseError::InvalidSemver => StorageError::InvalidId,
         }
     }
 }

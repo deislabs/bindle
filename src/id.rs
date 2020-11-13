@@ -12,6 +12,9 @@ use thiserror::Error;
 pub enum ParseError {
     #[error("Invalid ID")]
     InvalidId,
+    // TODO: Add an error message so we can pass through the parse error from semver
+    #[error("ID does not contain a valid semver")]
+    InvalidSemver,
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
@@ -24,7 +27,7 @@ type Result<T> = std::result::Result<T, ParseError>;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Id {
     name: String,
-    version: String,
+    version: semver::Version,
 }
 
 impl Id {
@@ -33,12 +36,18 @@ impl Id {
         &self.name
     }
 
-    /// Returns the version part of the ID
-    pub fn version(&self) -> &str {
+    // Returns the [`Version`](semver::Version) part of this ID
+    pub fn version(&self) -> &semver::Version {
         &self.version
     }
 
-    /// Returns the SHA256 sum of this Id for use as a common identifier in a storage layer
+    /// Returns the version part of the ID. This is returned as a `String` as it is a conversion
+    /// from the underlying semver
+    pub fn version_string(&self) -> String {
+        self.version.to_string()
+    }
+
+    /// Returns the SHA256 sum of this Id for use as a common identifier
     ///
     /// We don't typically want to store a bindle with its name and version number. This
     /// would impose both naming constraints on the bindle and security issues on the
@@ -48,7 +57,7 @@ impl Id {
     pub fn sha(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(self.name.as_bytes());
-        hasher.update(self.version.as_bytes());
+        hasher.update(self.version_string().as_bytes());
         let result = hasher.finalize();
         format!("{:x}", result)
     }
@@ -75,6 +84,8 @@ impl Id {
             _ => return Err(ParseError::InvalidId),
         };
 
+        let version = version.parse().map_err(|_| ParseError::InvalidSemver)?;
+
         Ok(Id { name, version })
     }
 }
@@ -83,7 +94,10 @@ impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // NOTE: If we find that every Storage implementation is using the
         // `canonical_invoice_name_strings` method of hashing, we can do that here instead
-        Path::new(&self.name).join(&self.version).display().fmt(f)
+        Path::new(&self.name)
+            .join(self.version_string())
+            .display()
+            .fmt(f)
     }
 }
 

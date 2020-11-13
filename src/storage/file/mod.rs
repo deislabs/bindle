@@ -85,11 +85,10 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             return Err(StorageError::CreateYanked);
         }
 
-        let invoice_cname = inv.canonical_name();
-        let invoice_id = invoice_cname.as_str();
+        let invoice_id = inv.canonical_name();
 
         // Create the base path if necessary
-        let inv_path = self.invoice_path(invoice_id);
+        let inv_path = self.invoice_path(&invoice_id);
         if !inv_path.is_dir() {
             // If it exists and is a regular file, we have a problem
             if inv_path.is_file() {
@@ -99,7 +98,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         }
 
         // Open the destination or error out if it already exists.
-        let dest = self.invoice_toml_path(invoice_id);
+        let dest = self.invoice_toml_path(&invoice_id);
         if dest.exists() {
             return Err(StorageError::Exists);
         }
@@ -188,9 +187,9 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         I: TryInto<Id, Error = ParseError> + Send,
     {
         let mut inv = self.get_yanked_invoice(id).await?;
-        let invoice_id = inv.canonical_name();
-
         inv.yanked = Some(true);
+
+        let invoice_id = inv.canonical_name();
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
@@ -397,14 +396,13 @@ mod test {
         let root = tempdir().unwrap();
         let inv = invoice_fixture();
         let store = FileStorage::new(root.path().to_owned(), default_engine());
-        let inv_cname = inv.canonical_name();
-        let inv_name = inv_cname.as_str();
+        let inv_name = inv.canonical_name();
         // Create an file
         let missing = store.create_invoice(&inv).await.unwrap();
         assert_eq!(3, missing.len());
 
         // Out-of-band read the invoice
-        assert!(store.invoice_toml_path(inv_name).exists());
+        assert!(store.invoice_toml_path(&inv_name).exists());
 
         // Yank the invoice
         store.yank_invoice(inv.name()).await.unwrap();

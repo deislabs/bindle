@@ -122,7 +122,7 @@ pub struct Group {
 ///
 /// In all other cases, if the version satisfies the requirement, this returns true.
 /// And if it fails to satisfy the requirement, this returns false.
-pub fn version_compare(version: &str, requirement: &str) -> bool {
+fn version_compare(version: &Version, requirement: &str) -> bool {
     if requirement.is_empty() {
         return true;
     }
@@ -134,13 +134,7 @@ pub fn version_compare(version: &str, requirement: &str) -> bool {
     // Without the compat mode, "1.2.3" is treated as "^1.2.3".
     match VersionReq::parse_compat(requirement, Compat::Npm) {
         Ok(req) => {
-            return match Version::parse(version) {
-                Ok(ver) => req.matches(&ver),
-                Err(e) => {
-                    eprintln!("Match failed with an error: {}", e);
-                    false
-                }
-            }
+            return req.matches(version);
         }
         Err(e) => {
             eprintln!("SemVer range could not parse: {}", e);
@@ -187,7 +181,7 @@ mod test {
 
         let b = inv2.bindle;
         assert_eq!(b.id.name(), "foo".to_owned());
-        assert_eq!(b.id.version(), "1.2.3");
+        assert_eq!(b.id.version_string(), "1.2.3");
         assert_eq!(b.description.unwrap().as_str(), "bar");
         assert_eq!(b.authors.unwrap()[0], "m butcher".to_owned());
 
@@ -231,9 +225,10 @@ mod test {
         // Do not need an exhaustive list of matches -- just a sampling to make sure
         // the outer logic is correct.
         let reqs = vec!["= 1.2.3", "1.2.3", "1.2.3", "^1.1", "~1.2", ""];
+        let version = Version::parse("1.2.3").unwrap();
 
         reqs.iter().for_each(|r| {
-            if !version_compare("1.2.3", r) {
+            if !version_compare(&version, r) {
                 panic!("Should have passed: {}", r)
             }
         });
@@ -242,10 +237,6 @@ mod test {
         // outliers and obvious cases are covered.
         let reqs = vec!["2", "%^&%^&%"];
         reqs.iter()
-            .for_each(|r| assert!(!version_compare("1.2.3", r)));
-
-        // Finally, test the outliers having to do with version strings
-        let vers = vec!["", "%^&%^&%"];
-        vers.iter().for_each(|v| assert!(!version_compare(v, "^1")));
+            .for_each(|r| assert!(!version_compare(&version, r)));
     }
 }
