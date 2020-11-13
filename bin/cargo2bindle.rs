@@ -90,7 +90,7 @@ fn main() {
             let label = bindle::Label {
                 name: format!("{}", path.file_name().unwrap().to_string_lossy()),
                 media_type: "application/wasm".to_owned(),
-                sha256: sha.to_owned(),
+                sha256: sha,
                 size: Some(md.len() as i64),
                 annotations: None,
             };
@@ -121,8 +121,9 @@ fn main() {
         bindle_version: bindle::BINDLE_VERSION_1.to_owned(),
         yanked: None,
         bindle: bindle::BindleSpec {
-            name: cargo.package.name,
-            version: cargo.package.version,
+            id: format!("{}/{}", cargo.package.name, cargo.package.version)
+                .parse()
+                .expect("Missing name or version information"),
             authors: cargo.package.authors,
             description: cargo.package.description,
         },
@@ -138,7 +139,7 @@ fn main() {
     // Write invoice
     let out = toml::to_string(&invoice).expect("Serialization of TOML data failed");
     println!("{}", out);
-    let bindle_name = bindle::storage::file::canonical_invoice_name(&invoice);
+    let bindle_name = invoice.canonical_name();
     let invoice_path = bindle_path.join("invoices").join(bindle_name);
     fs::create_dir_all(invoice_path.clone()).expect("creating invoices dir failed");
     fs::write(invoice_path.join("invoice.toml"), out).expect("failed to write invoice");

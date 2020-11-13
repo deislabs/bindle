@@ -57,9 +57,8 @@ pub fn invoice_fixture() -> crate::Invoice {
         yanked: None,
         annotations: None,
         bindle: crate::BindleSpec {
-            name: "foo".to_owned(),
+            id: "foo/1.2.3".parse().unwrap(),
             description: Some("bar".to_owned()),
-            version: "1.2.3".to_owned(),
             authors: Some(vec!["m butcher".to_owned()]),
         },
         parcels: Some(
