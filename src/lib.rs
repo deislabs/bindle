@@ -1,7 +1,9 @@
 #![macro_use]
 extern crate serde;
 
+use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
+
 use std::collections::BTreeMap;
 
 mod server;
@@ -23,6 +25,30 @@ pub struct Invoice {
     pub parcels: Option<Vec<Parcel>>,
     // TODO: Should this be renamed "groups" or should "parcels" be renamed to "parcel"
     pub group: Option<Vec<Group>>,
+}
+impl Invoice {
+    /// produce a slash-delimited "invoice name"
+    ///
+    /// For example, an invoice with the bindle name "hello" and the bindle version
+    /// "v1.2.3" will produce "hello/v1.2.3"
+    fn name(&self) -> String {
+        format!("{}/{}", self.bindle.name, self.bindle.version)
+    }
+    /// Compare a SemVer "requirement" string to the version on this bindle
+    ///
+    /// An empty range matches anything.
+    ///
+    /// A range that fails to parse matches nothing.
+    ///
+    /// An empty version matches nothing (unless the requirement is empty)
+    ///
+    /// A version that fails to parse matches nothing (unless the requirement is empty).
+    ///
+    /// In all other cases, if the version satisfies the requirement, this returns true.
+    /// And if it fails to satisfy the requirement, this returns false.
+    fn version_in_range(&self, requirement: &str) -> bool {
+        version_compare(self.bindle.version.as_str(), requirement)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -66,12 +92,43 @@ pub struct Group {
     pub satisfied_by: Option<String>,
 }
 
-/// Given an invoice, produce a slash-delimited "invoice name"
+/// Check whether the given version is within the legal range.
 ///
-/// For example, an invoice with the name "hello" and the version "v1.2.3" will produce
-/// "hello/v1.2.3"
-pub fn invoice_to_name(inv: &Invoice) -> String {
-    format!("{}/{}", inv.bindle.name, inv.bindle.version)
+/// An empty range matches anything.
+///
+/// A range that fails to parse matches nothing.
+///
+/// An empty version matches nothing (unless the requirement is empty)
+///
+/// A version that fails to parse matches nothing (unless the requirement is empty).
+///
+/// In all other cases, if the version satisfies the requirement, this returns true.
+/// And if it fails to satisfy the requirement, this returns false.
+pub fn version_compare(version: &str, requirement: &str) -> bool {
+    if requirement.is_empty() {
+        return true;
+    }
+
+    // Setting Compat::Npm follows the rules here:
+    // https://www.npmjs.com/package/semver
+    //
+    // Most importantly, the requirement "1.2.3" is treated as "= 1.2.3".
+    // Without the compat mode, "1.2.3" is treated as "^1.2.3".
+    match VersionReq::parse_compat(requirement, Compat::Npm) {
+        Ok(req) => {
+            return match Version::parse(version) {
+                Ok(ver) => req.matches(&ver),
+                Err(e) => {
+                    eprintln!("Match failed with an error: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("SemVer range could not parse: {}", e);
+        }
+    }
+    false
 }
 
 // TODO: Version should be a SemVer
@@ -152,5 +209,62 @@ mod test {
         println!("===========\n{}\n===========", raw2);
         // FIXME: Do we care about this detail?
         //assert_eq!(raw, raw2);
+    }
+
+    /// Check whether the given version is within the legal range.
+    ///
+    /// An empty range matches anything.
+    ///
+    /// A range that fails to parse matches nothing.
+    ///
+    /// An empty version matches nothing (unless the requirement is empty)
+    ///
+    /// A version that fails to parse matches nothing (unless the requirement is empty).
+    ///
+    /// In all other cases, if the version satisfies the requirement, this returns true.
+    /// And if it fails to satisfy the requirement, this returns false.
+    pub fn version_compare(version: &str, requirement: &str) -> bool {
+        println!(
+            "Got version compare. Version: {}, Requirement: {}",
+            version, requirement
+        );
+        if requirement.is_empty() {
+            return true;
+        }
+
+        if let Ok(req) = VersionReq::parse(requirement) {
+            return match Version::parse(version) {
+                Ok(ver) => req.matches(&ver),
+                Err(e) => {
+                    eprintln!("Match failed with an error: {}", e);
+                    false
+                }
+            };
+        }
+
+        false
+    }
+
+    #[test]
+    fn test_version_comparisons() {
+        // Do not need an exhaustive list of matches -- just a sampling to make sure
+        // the outer logic is correct.
+        let reqs = vec!["= 1.2.3", "1.2.3", "1.2.3", "^1.1", "~1.2", ""];
+
+        reqs.iter().for_each(|r| {
+            if !version_compare("1.2.3", r) {
+                panic!("Should have passed: {}", r)
+            }
+        });
+
+        // Again, we do not need to test the SemVer crate -- just make sure some
+        // outliers and obvious cases are covered.
+        let reqs = vec!["2", "%^&%^&%"];
+        reqs.iter()
+            .for_each(|r| assert!(!version_compare("1.2.3", r)));
+
+        // Finally, test the outliers having to do with version strings
+        let vers = vec!["", "%^&%^&%"];
+        vers.iter().for_each(|v| assert!(!version_compare(v, "^1")));
     }
 }

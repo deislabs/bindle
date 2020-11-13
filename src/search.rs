@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
-use semver::{Version, VersionReq};
 use serde::Serialize;
 
 /// The search options for performing this query and returning results
@@ -132,10 +131,10 @@ impl Search for StrictEngine {
         let mut found: Vec<crate::Invoice> = self
             .index
             .iter()
-            .filter(|(key, value)| {
+            .filter(|(_, i)| {
                 // Term and version have to be exact matches.
                 // TODO: Version should have matching turned on.
-                *key == &term && version_compare(&value.bindle.version, &filter)
+                i.bindle.name.as_str() == &term && i.version_in_range(&filter)
             })
             .map(|(_, v)| (*v).clone())
             .collect();
@@ -177,44 +176,9 @@ impl Search for StrictEngine {
     /// as such, following the protocol specification's requirements for yanked
     /// invoices.
     fn index(&mut self, invoice: &crate::Invoice) -> anyhow::Result<()> {
-        self.index
-            .insert(invoice.bindle.name.clone(), (*invoice).clone());
+        self.index.insert(invoice.name(), (*invoice).clone());
         Ok(())
     }
-}
-
-/// Check whether the given version is within the legal range.
-///
-/// An empty range matches anything.
-///
-/// A range that fails to parse matches nothing.
-///
-/// An empty version matches nothing (unless the requirement is empty)
-///
-/// A version that fails to parse matches nothing (unless the requirement is empty).
-///
-/// In all other cases, if the version satisfies the requirement, this returns true.
-/// And if it fails to satisfy the requirement, this returns false.
-pub fn version_compare(version: &str, requirement: &str) -> bool {
-    println!(
-        "Got version compare. Version: {}, Requirement: {}",
-        version, requirement
-    );
-    if requirement.is_empty() {
-        return true;
-    }
-
-    if let Ok(req) = VersionReq::parse(requirement) {
-        return match Version::parse(version) {
-            Ok(ver) => req.matches(&ver),
-            Err(e) => {
-                eprintln!("Match failed with an error: {}", e);
-                false
-            }
-        };
-    }
-
-    false
 }
 
 #[cfg(test)]
@@ -223,34 +187,17 @@ mod test {
     use crate::Invoice;
 
     #[test]
-    fn test_version_comparisons() {
-        // Do not need an exhaustive list of matches -- just a sampling to make sure
-        // the outer logic is correct.
-        let reqs = vec!["= 1.2.3", "1.2.3", "1.2.3", "^1.1", "~1.2", ""];
-
-        reqs.iter().for_each(|r| {
-            if !version_compare("1.2.3", r) {
-                panic!("Should have passed: {}", r)
-            }
-        });
-
-        // Again, we do not need to test the SemVer crate -- just make sure some
-        // outliers and obvious cases are covered.
-        let reqs = vec!["2", "%^&%^&%"];
-        reqs.iter()
-            .for_each(|r| assert!(!version_compare("1.2.3", r)));
-
-        // Finally, test the outliers having to do with version strings
-        let vers = vec!["", "%^&%^&%"];
-        vers.iter().for_each(|v| assert!(!version_compare(v, "^1")));
-    }
-
-    #[test]
     fn strict_engine_should_index() {
         let inv = invoice_fixture("my/bindle".to_owned(), "1.2.3".to_owned());
+        let inv2 = invoice_fixture("my/bindle".to_owned(), "1.3.0".to_owned());
         let mut searcher = StrictEngine::default();
-        searcher.index(&inv).expect("succesfully indexed my/bindle");
-        assert_eq!(1, searcher.index.len());
+        searcher
+            .index(&inv)
+            .expect("succesfully indexed my/bindle/1.2.3");
+        searcher
+            .index(&inv2)
+            .expect("succesfully indexed my/bindle/1.3.0");
+        assert_eq!(2, searcher.index.len());
 
         // Search for one result
         let matches = searcher
@@ -261,7 +208,18 @@ mod test {
             )
             .expect("found some matches");
 
-        assert!(!matches.invoices.is_empty());
+        assert_eq!(1, matches.invoices.len());
+
+        // Search for two results
+        let matches = searcher
+            .query(
+                "my/bindle".to_owned(),
+                "^1.2.3".to_owned(),
+                SearchOptions::default(),
+            )
+            .expect("found some matches");
+
+        assert_eq!(2, matches.invoices.len());
 
         // Search for non-existant bindle
         let matches = searcher
