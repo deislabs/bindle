@@ -134,7 +134,7 @@ impl Search for StrictEngine {
             .filter(|(_, i)| {
                 // Term and version have to be exact matches.
                 // TODO: Version should have matching turned on.
-                i.bindle.name.as_str() == &term && i.version_in_range(&filter)
+                i.bindle.id.name() == term && i.version_in_range(&filter)
             })
             .map(|(_, v)| (*v).clone())
             .collect();
@@ -176,7 +176,7 @@ impl Search for StrictEngine {
     /// as such, following the protocol specification's requirements for yanked
     /// invoices.
     fn index(&mut self, invoice: &crate::Invoice) -> anyhow::Result<()> {
-        self.index.insert(invoice.name(), (*invoice).clone());
+        self.index.insert(invoice.name(), invoice.clone());
         Ok(())
     }
 }
@@ -274,8 +274,7 @@ mod test {
             yanked: None,
             annotations: None,
             bindle: crate::BindleSpec {
-                name,
-                version,
+                id: format!("{}/{}", name, version).parse().unwrap(),
                 description: Some("bar".to_owned()),
                 authors: Some(vec!["m butcher".to_owned()]),
             },

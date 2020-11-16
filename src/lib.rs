@@ -1,17 +1,20 @@
 #![macro_use]
 extern crate serde;
 
-use semver::{Compat, Version, VersionReq};
-use serde::{Deserialize, Serialize};
-
-use std::collections::BTreeMap;
+mod id;
 
 pub mod search;
 pub mod server;
 pub mod storage;
 
+pub use id::Id;
 pub use search::Matches;
 pub use server::InvoiceCreateResponse;
+
+use semver::{Compat, Version, VersionReq};
+use serde::{Deserialize, Serialize};
+
+use std::collections::BTreeMap;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 
@@ -27,14 +30,28 @@ pub struct Invoice {
     // TODO: Should this be renamed "groups" or should "parcels" be renamed to "parcel"
     pub group: Option<Vec<Group>>,
 }
+
 impl Invoice {
     /// produce a slash-delimited "invoice name"
     ///
     /// For example, an invoice with the bindle name "hello" and the bindle version
     /// "v1.2.3" will produce "hello/v1.2.3"
-    fn name(&self) -> String {
-        format!("{}/{}", self.bindle.name, self.bindle.version)
+    pub fn name(&self) -> String {
+        format!("{}/{}", self.bindle.id.name(), self.bindle.id.version())
     }
+
+    /// Creates a standard name for an invoice
+    ///
+    /// This is designed to create a repeatable opaque name for the invoice
+    /// We don't typically want to have a bindle ID using its name and version number. This
+    /// would impose both naming constraints on the bindle and security issues on the
+    /// storage layout. So this function hashes the name/version data (which together
+    /// MUST be unique in the system) and uses the resulting hash as the canonical
+    /// name. The hash is guaranteed to be in the character set [a-zA-Z0-9].
+    pub fn canonical_name(&self) -> String {
+        self.bindle.id.sha()
+    }
+
     /// Compare a SemVer "requirement" string to the version on this bindle
     ///
     /// An empty range matches anything.
@@ -48,16 +65,16 @@ impl Invoice {
     /// In all other cases, if the version satisfies the requirement, this returns true.
     /// And if it fails to satisfy the requirement, this returns false.
     fn version_in_range(&self, requirement: &str) -> bool {
-        version_compare(self.bindle.version.as_str(), requirement)
+        version_compare(self.bindle.id.version(), requirement)
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
-    pub name: String,
+    #[serde(flatten)]
+    pub id: Id,
     pub description: Option<String>,
-    pub version: String,
     pub authors: Option<Vec<String>>,
 }
 
@@ -105,7 +122,7 @@ pub struct Group {
 ///
 /// In all other cases, if the version satisfies the requirement, this returns true.
 /// And if it fails to satisfy the requirement, this returns false.
-pub fn version_compare(version: &str, requirement: &str) -> bool {
+fn version_compare(version: &Version, requirement: &str) -> bool {
     if requirement.is_empty() {
         return true;
     }
@@ -117,13 +134,7 @@ pub fn version_compare(version: &str, requirement: &str) -> bool {
     // Without the compat mode, "1.2.3" is treated as "^1.2.3".
     match VersionReq::parse_compat(requirement, Compat::Npm) {
         Ok(req) => {
-            return match Version::parse(version) {
-                Ok(ver) => req.matches(&ver),
-                Err(e) => {
-                    eprintln!("Match failed with an error: {}", e);
-                    false
-                }
-            }
+            return req.matches(version);
         }
         Err(e) => {
             eprintln!("SemVer range could not parse: {}", e);
@@ -131,8 +142,6 @@ pub fn version_compare(version: &str, requirement: &str) -> bool {
     }
     false
 }
-
-// TODO: Version should be a SemVer
 
 #[cfg(test)]
 mod test {
@@ -159,9 +168,8 @@ mod test {
             yanked: None,
             annotations: None,
             bindle: BindleSpec {
-                name: "foo".to_owned(),
+                id: "foo/1.2.3".parse().unwrap(),
                 description: Some("bar".to_owned()),
-                version: "1.2.3".to_owned(),
                 authors: Some(vec!["m butcher".to_owned()]),
             },
             parcels,
@@ -172,8 +180,8 @@ mod test {
         let inv2 = toml::from_str::<Invoice>(res.as_str()).unwrap();
 
         let b = inv2.bindle;
-        assert_eq!(b.name, "foo".to_owned());
-        assert_eq!(b.version.as_str(), "1.2.3");
+        assert_eq!(b.id.name(), "foo".to_owned());
+        assert_eq!(b.id.version_string(), "1.2.3");
         assert_eq!(b.description.unwrap().as_str(), "bar");
         assert_eq!(b.authors.unwrap()[0], "m butcher".to_owned());
 
@@ -212,48 +220,15 @@ mod test {
         //assert_eq!(raw, raw2);
     }
 
-    /// Check whether the given version is within the legal range.
-    ///
-    /// An empty range matches anything.
-    ///
-    /// A range that fails to parse matches nothing.
-    ///
-    /// An empty version matches nothing (unless the requirement is empty)
-    ///
-    /// A version that fails to parse matches nothing (unless the requirement is empty).
-    ///
-    /// In all other cases, if the version satisfies the requirement, this returns true.
-    /// And if it fails to satisfy the requirement, this returns false.
-    pub fn version_compare(version: &str, requirement: &str) -> bool {
-        println!(
-            "Got version compare. Version: {}, Requirement: {}",
-            version, requirement
-        );
-        if requirement.is_empty() {
-            return true;
-        }
-
-        if let Ok(req) = VersionReq::parse(requirement) {
-            return match Version::parse(version) {
-                Ok(ver) => req.matches(&ver),
-                Err(e) => {
-                    eprintln!("Match failed with an error: {}", e);
-                    false
-                }
-            };
-        }
-
-        false
-    }
-
     #[test]
     fn test_version_comparisons() {
         // Do not need an exhaustive list of matches -- just a sampling to make sure
         // the outer logic is correct.
         let reqs = vec!["= 1.2.3", "1.2.3", "1.2.3", "^1.1", "~1.2", ""];
+        let version = Version::parse("1.2.3").unwrap();
 
         reqs.iter().for_each(|r| {
-            if !version_compare("1.2.3", r) {
+            if !version_compare(&version, r) {
                 panic!("Should have passed: {}", r)
             }
         });
@@ -262,10 +237,6 @@ mod test {
         // outliers and obvious cases are covered.
         let reqs = vec!["2", "%^&%^&%"];
         reqs.iter()
-            .for_each(|r| assert!(!version_compare("1.2.3", r)));
-
-        // Finally, test the outliers having to do with version strings
-        let vers = vec!["", "%^&%^&%"];
-        vers.iter().for_each(|v| assert!(!version_compare(v, "^1")));
+            .for_each(|r| assert!(!version_compare(&version, r)));
     }
 }

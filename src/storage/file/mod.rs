@@ -10,7 +10,8 @@ use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::sync::RwLock;
 
-use crate::storage::{Id, Result, Storage, StorageError};
+use crate::storage::{Result, Storage, StorageError};
+use crate::{id::ParseError, Id};
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
@@ -76,28 +77,6 @@ impl<T> FileStorage<T> {
     }
 }
 
-/// Given a name and a version, this returns a repeatable name for an on-disk location.
-///
-/// We don't typically want to store a bindle with its name and version number. This
-/// would impose both naming constraints on the bindle and security issues on the
-/// storage layout. So this function hashes the name/version data (which together
-/// MUST be unique in the system) and uses the resulting hash as the canonical
-/// name. The hash is guaranteed to be in the character set [a-zA-Z0-9].
-pub fn canonical_invoice_name_strings(name: &str, version: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(name.as_bytes());
-    hasher.update(version.as_bytes());
-    let result = hasher.finalize();
-    format!("{:x}", result)
-}
-
-/// Create a standard name for an invoice
-///
-/// This is designed to create a repeatable opaque name when given an invoice.
-pub fn canonical_invoice_name(inv: &crate::Invoice) -> String {
-    canonical_invoice_name_strings(inv.bindle.name.as_str(), inv.bindle.version.as_str())
-}
-
 #[async_trait::async_trait]
 impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn create_invoice(&self, inv: &crate::Invoice) -> Result<Vec<crate::Label>> {
@@ -106,11 +85,10 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             return Err(StorageError::CreateYanked);
         }
 
-        let invoice_cname = canonical_invoice_name(inv);
-        let invoice_id = invoice_cname.as_str();
+        let invoice_id = inv.canonical_name();
 
         // Create the base path if necessary
-        let inv_path = self.invoice_path(invoice_id);
+        let inv_path = self.invoice_path(&invoice_id);
         if !inv_path.is_dir() {
             // If it exists and is a regular file, we have a problem
             if inv_path.is_file() {
@@ -120,7 +98,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         }
 
         // Open the destination or error out if it already exists.
-        let dest = self.invoice_toml_path(invoice_id);
+        let dest = self.invoice_toml_path(&invoice_id);
         if dest.exists() {
             return Err(StorageError::Exists);
         }
@@ -176,7 +154,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     }
     async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
-        I: TryInto<Id, Error = StorageError> + Send,
+        I: TryInto<Id, Error = ParseError> + Send,
     {
         match self.get_yanked_invoice(id).await {
             Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
@@ -186,11 +164,11 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     }
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
-        I: TryInto<Id, Error = StorageError> + Send,
+        I: TryInto<Id, Error = ParseError> + Send,
     {
-        let parsed_id: Id = id.try_into()?;
+        let parsed_id: Id = id.try_into().map_err(ParseError::from)?;
 
-        let invoice_id = canonical_invoice_name_strings(parsed_id.name(), parsed_id.version());
+        let invoice_id = parsed_id.sha();
 
         // Now construct a path and read it
         let invoice_path = self.invoice_toml_path(&invoice_id);
@@ -206,12 +184,12 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     }
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
-        I: TryInto<Id, Error = StorageError> + Send,
+        I: TryInto<Id, Error = ParseError> + Send,
     {
         let mut inv = self.get_yanked_invoice(id).await?;
-        let invoice_id = canonical_invoice_name(&inv);
-
         inv.yanked = Some(true);
+
+        let invoice_id = inv.canonical_name();
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
@@ -418,14 +396,13 @@ mod test {
         let root = tempdir().unwrap();
         let inv = invoice_fixture();
         let store = FileStorage::new(root.path().to_owned(), default_engine());
-        let inv_cname = super::canonical_invoice_name(&inv);
-        let inv_name = inv_cname.as_str();
+        let inv_name = inv.canonical_name();
         // Create an file
         let missing = store.create_invoice(&inv).await.unwrap();
         assert_eq!(3, missing.len());
 
         // Out-of-band read the invoice
-        assert!(store.invoice_toml_path(inv_name).exists());
+        assert!(store.invoice_toml_path(&inv_name).exists());
 
         // Yank the invoice
         store.yank_invoice(inv.name()).await.unwrap();

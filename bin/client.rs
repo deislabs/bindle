@@ -52,10 +52,7 @@ async fn main() {
             let invoice_path = std::path::Path::new(inv);
             let raw = std::fs::read_to_string(invoice_path).expect("File not found");
             let invoice = toml::from_str::<bindle::Invoice>(raw.as_str()).unwrap();
-            println!(
-                "{}",
-                bindle::storage::file::canonical_invoice_name(&invoice)
-            )
+            println!("{}", invoice.canonical_name(),)
         }
         _ => eprintln!("Not implemented"),
     }

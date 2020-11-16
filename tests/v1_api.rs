@@ -136,10 +136,7 @@ async fn test_yank() {
         .await
         .expect("Should be able to insert invoice");
 
-    let inv_path = format!(
-        "/v1/_i/{}/{}",
-        scaffold.invoice.bindle.name, scaffold.invoice.bindle.version
-    );
+    let inv_path = format!("/v1/_i/{}", scaffold.invoice.name());
     // Yank the invoice
     let res = warp::test::request()
         .method("DELETE")
