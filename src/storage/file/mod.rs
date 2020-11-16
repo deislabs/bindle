@@ -49,7 +49,7 @@ impl<T: Search + Send + Sync> FileStorage<T> {
             index,
         };
         if let Err(e) = fs.warm_index().await {
-            eprintln!("Error warming index: {}", e);
+            log::error!("Error warming index: {}", e);
         }
         fs
     }
@@ -73,7 +73,7 @@ impl<T: Search + Send + Sync> FileStorage<T> {
                 Some(sha_opt) => sha_opt,
                 None => continue,
             };
-            println!("Loading invoice {}/invoice.toml into search index", sha);
+            log::info!("Loading invoice {}/invoice.toml into search index", sha);
             // Load invoice
             let inv_path = self.invoice_toml_path(&sha);
             // Open file
@@ -91,7 +91,7 @@ impl<T: Search + Send + Sync> FileStorage<T> {
             }
 
             if let Err(e) = self.index.index(&invoice).await {
-                eprintln!("Error indexing {}: {}", sha, e);
+                log::error!("Error indexing {}: {}", sha, e);
             }
         }
         Ok(())
@@ -162,7 +162,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
         if let Err(e) = self.index.index(&inv).await {
-            eprintln!("Error indexing {}: {}", invoice_id, e);
+            log::error!("Error indexing {}: {}", invoice_id, e);
         }
 
         // if there are no parcels, bail early
@@ -237,7 +237,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
         if let Err(e) = self.index.index(&inv).await {
-            eprintln!("Error indexing {}: {}", invoice_id, e);
+            log::error!("Error indexing {}: {}", invoice_id, e);
         }
 
         // Open the destination or error out if it already exists.
