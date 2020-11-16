@@ -719,3 +719,91 @@ So in this beaming model, Host A may request that Host B run a parcel, and Host 
 This all raises an interesting issue that Bindle would need to participate in solving: If Host A sends Host B the parcel and expects Host B to fetch it, then we may need some way to certify (for AuthN/Z) that Host B is _allowed_ to fetch the parcel on Host A's behalf.
 
 The blessings model from Vanadium is one example of how we could do this.
+
+### Dependency Collapses when Dealing with Beamed Parcels
+
+Say we have a modular dependency graph like this:
+
+```
+A
+|- B
+|
+|- C
+   |- B
+```
+
+In this example, A requires two modules: B and C. C requires one module: B.
+
+When flattening a dependency tree, the above can become:
+
+```
+A
+|- B
+|- C
+```
+
+But when generating Bindles, the dependency tree MUST NOT be flattened in the parcel list.
+
+So the appropriate way to express the initial dependency tree is something like this:
+
+```toml=
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "example/dep-tree"
+version = "0.1.0"
+
+[[group]]
+name = "a-dependencies"
+satisfiedBy = "allOf"
+
+[[group]]
+name = "c-dependencies"
+satisfiedBy = "allOf"
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "A.wasm"
+[parcel.conditions]
+requires = ["a-dependencies"]
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "B.wasm"
+[parcel.conditions]
+memberOf = ["a-dependencies", "c-dependencies"]
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "C.wasm"
+[parcel.conditions]
+memberOf = ["a-dependencies"]
+requires = ["c-dependencies"]
+```
+
+The salient detail here is that the Bindle interpreting routine can recompose from the
+above the DAG of dependencies. The Bindle representation of the above ends up being
+something like this:
+
+```
+A.wasm
+  |- a-dependencies
+         |- B.wasm
+         |- C.wasm
+             |- c-dependencies
+                  |- B.wasm
+```
+
+Now, if Bindle delegates C to a remote host for execution, it knows that it needs to beam
+both B.wasm and C.wasm to the remote host.
+
+In more sophisticated trees, the Bindle engine may even be able to calculate the
+cost of sending one aggregate of WASMs versus another. In other words, it can determine the
+total runtime requirements of all modules that must be run together in concert, and then
+determine which aggregate subset should be beamed to a remote host.
