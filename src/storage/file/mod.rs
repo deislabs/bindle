@@ -10,6 +10,7 @@ use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::sync::RwLock;
 
+use crate::search::Search;
 use crate::storage::{Result, Storage, StorageError};
 use crate::{id::ParseError, Id};
 
@@ -43,12 +44,64 @@ impl<T> Clone for FileStorage<T> {
     }
 }
 
-impl<T> FileStorage<T> {
-    pub fn new<P: AsRef<Path>>(path: P, index: Arc<RwLock<T>>) -> Self {
-        FileStorage {
+impl<T: Search> FileStorage<T> {
+    pub async fn new<P: AsRef<Path>>(path: P, index: Arc<RwLock<T>>) -> Self {
+        let fs = FileStorage {
             root: path.as_ref().to_owned(),
             index,
+        };
+        if let Err(e) = fs.warm_index().await {
+            eprintln!("Error warming index: {}", e);
         }
+        fs
+    }
+
+    /// This warms the index by loading all of the invoices currently on disk.
+    ///
+    /// Warming the index is something that the storage backend should do, though I am
+    /// not sure whether EVERY storage backend should do it. It is the responsibility of
+    /// storage because storage is the sole authority about what documents are actually
+    /// in the repository. So it needs to communicate (on startup) what documents it knows
+    /// about. The storage engine merely needs to store any non-duplicates. So we can
+    /// safely insert, but ignore errors that come back because of duplicate entries.
+    async fn warm_index(&self) -> anyhow::Result<()> {
+        // Read all invoices
+        for e in self.invoice_path("").read_dir()? {
+            let p = match e {
+                Ok(path) => path.path(),
+                Err(_) => continue,
+            };
+            let sha = match p.file_name().map(|f| f.to_string_lossy()) {
+                Some(sha_opt) => sha_opt,
+                None => continue,
+            };
+            println!("Loading invoice {}/invoice.toml into search index", sha);
+            // Load invoice
+            let inv_path = self.invoice_toml_path(&sha);
+            // Open file
+            let inv_toml = std::fs::read_to_string(inv_path)?;
+
+            // Parse
+            let invoice: crate::Invoice = toml::from_str(inv_toml.as_str())?;
+            let digest = invoice.canonical_name();
+            if sha != digest {
+                return Err(anyhow::anyhow!(
+                    "SHA {} did not match computed digest {}. Delete this record.",
+                    sha,
+                    digest
+                ));
+            }
+
+            // Insert it into the search index, because we know we had a miss if our
+            // optimiziation from earlier has failed.
+            {
+                let mut lock = self.index.write().await;
+                if let Err(e) = lock.index(&invoice) {
+                    eprintln!("Error indexing {}: {}", sha, e);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Return the path to the invoice directory for a particular bindle.
@@ -368,9 +421,9 @@ mod test {
         Arc::new(RwLock::new(crate::search::StrictEngine::default()))
     }
 
-    #[test]
-    fn test_should_generate_paths() {
-        let f = FileStorage::new("test", default_engine());
+    #[tokio::test]
+    async fn test_should_generate_paths() {
+        let f = FileStorage::new("test", default_engine()).await;
         assert_eq!("test/invoices/123", f.invoice_path("123").to_string_lossy());
         assert_eq!(
             "test/invoices/123/invoice.toml",
@@ -395,7 +448,7 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let inv = invoice_fixture();
-        let store = FileStorage::new(root.path().to_owned(), default_engine());
+        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
         let inv_name = inv.canonical_name();
         // Create an file
         let missing = store.create_invoice(&inv).await.unwrap();
@@ -424,7 +477,7 @@ mod test {
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
-        let store = FileStorage::new(root.path().to_owned(), default_engine());
+        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
         // Create an file
         assert!(store.create_invoice(&inv).await.is_err());
         assert!(root.close().is_ok());
@@ -436,7 +489,7 @@ mod test {
         let (label, mut data) = parcel_fixture(content).await;
         let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(root.path().to_owned(), default_engine());
+        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
 
         store
             .create_parcel(&label, &mut data)
@@ -460,7 +513,7 @@ mod test {
     #[tokio::test]
     async fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(root.path().to_owned(), default_engine());
+        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
 
         // Store a parcel
         let content = "abcdef1234567890987654321";

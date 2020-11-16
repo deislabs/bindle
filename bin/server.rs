@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     let dir = app.value_of("dir").unwrap_or("/tmp");
     let addr: SocketAddr = raw_addr.parse()?;
     let index = Arc::new(RwLock::new(search::StrictEngine::default()));
-    let store = storage::file::FileStorage::new(dir, index.clone());
+    let store = storage::file::FileStorage::new(dir, index.clone()).await;
 
     println!(
         "Starting server at {}, and serving bindles from {}",

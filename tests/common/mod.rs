@@ -192,10 +192,10 @@ impl From<RawScaffold> for Scaffold {
 
 /// Returns a file `Store` implementation configured with a temporary directory and strict Search
 /// implementation for use in testing API endpoints
-pub fn setup() -> (FileStorage<StrictEngine>, Arc<RwLock<StrictEngine>>) {
+pub async fn setup() -> (FileStorage<StrictEngine>, Arc<RwLock<StrictEngine>>) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = Arc::new(RwLock::new(StrictEngine::default()));
-    let store = FileStorage::new(temp.path().to_owned(), index.clone());
+    let store = FileStorage::new(temp.path().to_owned(), index.clone()).await;
     (store, index)
 }
 

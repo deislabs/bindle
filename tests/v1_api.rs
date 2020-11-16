@@ -8,7 +8,7 @@ use bindle::storage::Storage;
 #[tokio::test]
 async fn test_successful_workflow() {
     let bindles = common::load_all_files().await;
-    let (store, index) = common::setup();
+    let (store, index) = common::setup().await;
 
     let api = bindle::server::routes::api(store, index);
 
@@ -126,7 +126,7 @@ async fn test_successful_workflow() {
 
 #[tokio::test]
 async fn test_yank() {
-    let (store, index) = common::setup();
+    let (store, index) = common::setup().await;
 
     let api = bindle::server::routes::api(store.clone(), index);
     // Insert an invoice
@@ -181,7 +181,7 @@ async fn test_yank() {
 // test for storage), just the main validation failures from the API
 async fn test_invoice_validation() {
     let bindles = common::load_all_files().await;
-    let (store, index) = common::setup();
+    let (store, index) = common::setup().await;
 
     let api = bindle::server::routes::api(store.clone(), index);
     let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
@@ -228,7 +228,7 @@ async fn test_invoice_validation() {
 // This isn't meant to test all of the possible validation failures (that should be done in a unit
 // test for storage), just the main validation failures from the API
 async fn test_parcel_validation() {
-    let (store, index) = common::setup();
+    let (store, index) = common::setup().await;
 
     let api = bindle::server::routes::api(store.clone(), index);
     // Insert a parcel
@@ -293,7 +293,7 @@ async fn test_parcel_validation() {
 // functions properly
 async fn test_queries() {
     // Insert data into store
-    let (store, index) = common::setup();
+    let (store, index) = common::setup().await;
 
     let api = bindle::server::routes::api(store.clone(), index);
     let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
