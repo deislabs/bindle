@@ -32,6 +32,7 @@ use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 use search::SearchOptions;
 
@@ -95,7 +96,80 @@ impl Invoice {
     }
 }
 
+<<<<<<< HEAD
 /// Key identifying data for a Bindle. The most important being the [`Id`](crate::Id)
+||||||| merged common ancestors
+=======
+pub struct MetadataReference {
+    group: String,
+    name: String,
+    value: String,
+}
+
+/// BindleFilter walks an invoice and resolves a list of parcels.
+pub struct BindleFilter {
+    // The invoice that we operate on.
+    invoice: Invoice,
+    groups: HashSet<String>,
+    exclude_groups: Vec<String>,
+    metadata: Vec<MetadataReference>,
+    exclude_metadata: Vec<MetadataReference>,
+}
+
+impl BindleFilter {
+    fn new(invoice: &Invoice) -> Self {
+        Self {
+            // For now, we clone just in case we have to mutate the ivoice in the builder.
+            // If it turns out we don't need to mutate the invoice, then we can use a ref
+            // instead.
+            invoice: invoice.clone(),
+            groups: HashSet::new(),
+            exclude_groups: HashSet::new(),
+            metadata: vec![],
+            exclude_metadata: vec![],
+        }
+    }
+    fn with_group(&mut self, group_name: String) -> &mut Self {
+        self.groups.insert(group_name);
+        self
+    }
+    fn without_group(&mut self, group_name: String) -> &mut Self {
+        self
+    }
+    fn with_metadata(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
+        self
+    }
+    fn without_metadata(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
+        self
+    }
+    // Do we filter media types, too?
+    // Do we filter by size?
+    fn filter(&self) -> Vec<Parcel> {
+        // Start with the global parcels
+        let mut parcels = self.invoice.parcels.clone();
+
+        // Read any group that is in the group list
+        self.invoice.group.iter().for_each(|i| {
+            // Skip any group explicitly in the exclude list
+            if self.exclude_groups.contains(i.group_name) {
+                return;
+            }
+            if i.required || self.groups.contains(i.group_name) {
+                // Append all parcels in this group
+            }
+        });
+
+        // For each parcel in that group, add the parcel if the parcel
+
+        // For any group in that list, if it is not in the `without_group` list,
+        // then add its parcels only if they meet the metadata requirements.
+
+        // Add any `requires` groups that are not in the stop list
+        parcels
+    }
+}
+
+>>>>>>> initial add of bindle filters for parcels
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
@@ -115,6 +189,33 @@ pub struct BindleSpec {
 pub struct Parcel {
     pub label: Label,
     pub conditions: Option<Condition>,
+}
+
+
+impl Parcel {
+    pub fn member_of(&self, group: &str) -> bool {
+        match self.conditions {
+            Some(conditions) => match conditions.member_of {
+                Some(groups) => groups.iter().any(|g| *g == group),
+                None => false,
+            },
+            None => false,
+        }
+    }
+    /// returns true if this parcel is a member of no defined groups.
+    ///
+    /// The spec says that if a parcel is not a member of any defined groups, it is
+    /// a member of the "default unnamed group". Therefore, if this returns true,
+    /// it is a member of the "default unnamed group."
+    pub fn no_groups(&self) -> bool {
+        match self.conditions {
+            Some(conditions) => match conditions.member_of {
+                Some(groups) => groups.is_empty(),
+                None => true,
+            },
+            None => true,
+        }
+    }
 }
 
 /// Metadata of a stored parcel
