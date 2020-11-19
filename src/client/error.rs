@@ -15,28 +15,37 @@ pub enum ClientError {
     /// Invalid TOML parsing that can occur when loading an invoice or label from disk
     #[error("Invalid toml: {0:?}")]
     InvalidToml(#[from] toml::de::Error),
+    /// Invalid TOML serialization that can occur when serializing an object to a request
+    #[error("Invalid toml: {0:?}")]
+    TomlSerializationError(#[from] toml::ser::Error),
+    /// There was a problem with the http client. This is likely not a user issue. Contains the
+    /// underlying error
+    #[error("Error creating request: {0:?}")]
+    HttpClientError(#[from] reqwest::Error),
+    /// An invalid ID was given. Returns the underlying parse error
+    #[error("Invalid id: {0:?}")]
+    InvalidId(#[from] crate::id::ParseError),
 
     // API errors
-    /// The invoice was not found. Contains the name of the requested invoice. Note that this does
-    /// not necessarily mean it doesn't exist. It could also be hidden because it is yanked or due
-    /// to user permissions
-    #[error("Invoice {0} was not found")]
-    InvoiceNotFound(String),
-    /// The parcel was not found. Contains the ID of the requested parcel.
-    #[error("Parcel {0} was not found")]
-    ParcelNotFound(String),
-    /// The invoice already exists. Contains the name of the invoice the request attempted to create.
-    #[error("Invoice {0} already exists")]
-    InvoiceAlreadyExists(String),
-    /// The parcel already exists. Contains the ID of the parcel the request attempted to create.
-    #[error("Parcel {0} already exists")]
-    ParcelAlreadyExists(String),
+    /// The invoice was not found. Note that this does not necessarily mean it doesn't exist. It
+    /// could also be hidden because it is yanked or due to user permissions
+    #[error("Invoice was not found")]
+    InvoiceNotFound,
+    /// The parcel was not found.
+    #[error("Parcel was not found")]
+    ParcelNotFound,
+    /// The invoice already exists
+    #[error("Invoice already exists")]
+    InvoiceAlreadyExists,
+    /// The parcel already exists.
+    #[error("Parcel already exists")]
+    ParcelAlreadyExists,
     /// The error returned when the request is invalid. Contains the underlying HTTP status code and
     /// any message returned from the API
     #[error("Invalid request (status code {status_code:?}): {message:?}")]
     InvalidRequest {
         status_code: reqwest::StatusCode,
-        message: String,
+        message: Option<String>,
     },
     /// A server error was encountered. Contains an optional message from the server
     #[error("Server has encountered an error: {0:?}")]

@@ -4,7 +4,7 @@ use std::io::Read;
 
 use bytes::buf::BufExt;
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use warp::reject::{custom, Reject, Rejection};
 use warp::Filter;
 
@@ -16,7 +16,7 @@ pub struct InvoiceQuery {
     pub yanked: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueryOptions {
     #[serde(alias = "q")]

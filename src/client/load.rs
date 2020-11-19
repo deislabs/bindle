@@ -18,10 +18,7 @@ pub async fn raw<P: AsRef<Path>>(
 }
 
 /// Loads a file and deserializes it from TOML to an arbirary type. Turbofish may be required to
-/// specify the type:
-/// ```no_run
-/// bindle::client::load::toml::<bindle::Label>("/my/path.toml").await;
-/// ```
+/// specify the type: `bindle::client::load::toml::<bindle::Label>("/my/path.toml").await;`
 pub async fn toml<T>(file_path: impl AsRef<Path>) -> Result<T>
 where
     T: serde::de::DeserializeOwned,

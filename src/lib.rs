@@ -10,7 +10,7 @@ pub mod storage;
 
 pub use id::Id;
 pub use search::Matches;
-pub use server::InvoiceCreateResponse;
+pub use server::{InvoiceCreateResponse, QueryOptions};
 
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
