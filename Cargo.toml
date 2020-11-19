@@ -17,6 +17,9 @@ tokio = { version = "0.2", features = ["full"] }
 # This can be upgraded to 0.5 once we upgrade tokio to 0.3 (which won't happen until hyper + warp do
 # so)
 tokio-util = "0.3"
+# Please node that many of these dependencies below this point that are out of date below here match
+# the versions as used in other dependencies (such as warp or reqwest). So don't change them before
+# the other crates change versions
 warp = "0.2"
 bytes = "0.5"
 async-trait = "0.1"
@@ -24,6 +27,7 @@ futures = "0.3"
 clap = "2.33"
 reqwest = "0.10"
 hyper = "0.13"
+url = "2.1"
 
 [dev-dependencies]
 multipart = "0.17"

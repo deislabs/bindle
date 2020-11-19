@@ -3,6 +3,7 @@ extern crate serde;
 
 mod id;
 
+pub mod client;
 pub mod search;
 pub mod server;
 pub mod storage;

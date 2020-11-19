@@ -20,6 +20,13 @@ HTTP Endpoints:
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_p` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
 
+## Errors
+Any errors should reply with the proper HTTP status code for the problem and a TOML body containing a single `error` key with a string value containing additional information like so:
+
+```toml
+error = "resource already exists"
+```
+
 ## Yanked Bindles
 
 A bindle that is marked `yanked = true` MUST be treated according to the following rules:
