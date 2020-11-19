@@ -1,21 +1,10 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use warp::http::status::StatusCode;
 use warp::reply::Response;
 use warp::Reply;
 
 use super::TOML_MIME_TYPE;
 use crate::storage::StorageError;
-use crate::{Invoice, Label};
-
-/// A custom wrapper for responding to invoice creation responses. Because invoices can be created
-/// before parcels are uploaded, we need to inform the user if there are missing parcels in the
-/// bindle spec
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct InvoiceCreateResponse {
-    pub invoice: Invoice,
-    pub missing: Option<Vec<Label>>,
-}
 
 // Borrowed and modified from https://docs.rs/warp/0.2.5/src/warp/reply.rs.html#102
 pub fn toml<T>(val: &T) -> Toml

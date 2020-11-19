@@ -1,21 +1,23 @@
 #![macro_use]
 extern crate serde;
 
-mod id;
-
+#[cfg(feature = "client")]
 pub mod client;
+pub mod id;
 pub mod search;
+#[cfg(feature = "server")]
 pub mod server;
 pub mod storage;
 
 pub use id::Id;
 pub use search::Matches;
-pub use server::{InvoiceCreateResponse, QueryOptions};
 
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
+
+use search::SearchOptions;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 
@@ -109,6 +111,50 @@ pub struct Group {
     pub name: String,
     pub required: Option<bool>,
     pub satisfied_by: Option<String>,
+}
+
+/// A custom wrapper for responding to invoice creation responses. Because invoices can be created
+/// before parcels are uploaded, we need to inform the user if there are missing parcels in the
+/// bindle spec
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct InvoiceCreateResponse {
+    pub invoice: Invoice,
+    pub missing: Option<Vec<Label>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InvoiceQuery {
+    pub yanked: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueryOptions {
+    #[serde(alias = "q")]
+    pub query: Option<String>,
+    #[serde(alias = "v")]
+    pub version: Option<String>,
+    #[serde(alias = "o")]
+    pub offset: Option<u64>,
+    #[serde(alias = "l")]
+    pub limit: Option<u8>,
+    pub strict: Option<bool>,
+    pub yanked: Option<bool>,
+}
+
+// This isn't a `From` implementation because it isn't symmetrical. Converting from a
+// `SearchOptions` to a `QueryOptions` would always end up with some fields set to none.
+impl Into<SearchOptions> for QueryOptions {
+    fn into(self) -> SearchOptions {
+        let defaults = SearchOptions::default();
+        SearchOptions {
+            limit: self.limit.unwrap_or(defaults.limit),
+            offset: self.offset.unwrap_or(defaults.offset),
+            strict: self.strict.unwrap_or(defaults.strict),
+            yanked: self.yanked.unwrap_or(defaults.yanked),
+        }
+    }
 }
 
 /// Check whether the given version is within the legal range.

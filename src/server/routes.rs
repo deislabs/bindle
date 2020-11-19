@@ -47,7 +47,7 @@ pub mod v1 {
         {
             warp::path("_q")
                 .and(warp::get())
-                .and(warp::query::<filters::QueryOptions>())
+                .and(warp::query::<crate::QueryOptions>())
                 .and(warp::any().map(move || index.clone()))
                 .and_then(query_invoices)
         }

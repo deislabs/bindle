@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
 edition = "2018"
 
+[features]
+default = ["server", "client"]
+server = []
+client = []
+
 [dependencies]
 anyhow = "1.0"
 toml = "0.5"
