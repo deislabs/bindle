@@ -14,7 +14,7 @@ pub mod v1 {
 
     use std::io::Read;
 
-    use crate::server::filters::QueryOptions;
+    use crate::QueryOptions;
     use bytes::buf::BufExt;
     use tokio::stream::StreamExt;
     use tokio_util::codec::{BytesCodec, FramedRead};
@@ -57,7 +57,7 @@ pub mod v1 {
         // things were accepted, but will not be fetchable until further action is taken
         if !labels.is_empty() {
             Ok(warp::reply::with_status(
-                reply::toml(&reply::InvoiceCreateResponse {
+                reply::toml(&crate::InvoiceCreateResponse {
                     invoice: inv,
                     missing: Some(labels),
                 }),
@@ -65,7 +65,7 @@ pub mod v1 {
             ))
         } else {
             Ok(warp::reply::with_status(
-                reply::toml(&reply::InvoiceCreateResponse {
+                reply::toml(&crate::InvoiceCreateResponse {
                     invoice: inv,
                     missing: None,
                 }),

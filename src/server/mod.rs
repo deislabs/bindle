@@ -3,7 +3,6 @@ mod handlers;
 mod reply;
 
 pub mod routes;
-pub use reply::InvoiceCreateResponse;
 
 pub(crate) mod stream_util;
 
