@@ -2,13 +2,12 @@ use std::convert::TryInto;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::task::{Context, Poll};
 
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncRead, AsyncWriteExt};
-use tokio::sync::RwLock;
 
 use crate::search::Search;
 use crate::storage::{Result, Storage, StorageError};
@@ -31,11 +30,10 @@ const LABEL_TOML: &str = "label.toml";
 /// the index will be updated.
 pub struct FileStorage<T> {
     root: PathBuf,
-    index: Arc<RwLock<T>>,
+    index: T,
 }
 
-// Manual implementation for Clone due to derive putting a clone constraint on generic parameters
-impl<T> Clone for FileStorage<T> {
+impl<T: Clone> Clone for FileStorage<T> {
     fn clone(&self) -> Self {
         FileStorage {
             root: self.root.clone(),
@@ -44,8 +42,8 @@ impl<T> Clone for FileStorage<T> {
     }
 }
 
-impl<T: Search> FileStorage<T> {
-    pub async fn new<P: AsRef<Path>>(path: P, index: Arc<RwLock<T>>) -> Self {
+impl<T: Search + Send + Sync> FileStorage<T> {
+    pub async fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
         let fs = FileStorage {
             root: path.as_ref().to_owned(),
             index,
@@ -92,13 +90,8 @@ impl<T: Search> FileStorage<T> {
                 ));
             }
 
-            // Insert it into the search index, because we know we had a miss if our
-            // optimiziation from earlier has failed.
-            {
-                let mut lock = self.index.write().await;
-                if let Err(e) = lock.index(&invoice) {
-                    eprintln!("Error indexing {}: {}", sha, e);
-                }
+            if let Err(e) = self.index.index(&invoice).await {
+                eprintln!("Error indexing {}: {}", sha, e);
             }
         }
         Ok(())
@@ -168,11 +161,8 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
-        {
-            let mut lock = self.index.write().await;
-            if let Err(e) = lock.index(&inv) {
-                eprintln!("Error indexing {}: {}", invoice_id, e);
-            }
+        if let Err(e) = self.index.index(&inv).await {
+            eprintln!("Error indexing {}: {}", invoice_id, e);
         }
 
         // if there are no parcels, bail early
@@ -246,11 +236,8 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
-        {
-            let mut lock = self.index.write().await;
-            if let Err(e) = lock.index(&inv) {
-                eprintln!("Error indexing {}: {}", invoice_id, e);
-            }
+        if let Err(e) = self.index.index(&inv).await {
+            eprintln!("Error indexing {}: {}", invoice_id, e);
         }
 
         // Open the destination or error out if it already exists.
@@ -417,13 +404,9 @@ mod test {
     use tempfile::tempdir;
     use tokio::io::AsyncReadExt;
 
-    fn default_engine() -> Arc<RwLock<crate::search::StrictEngine>> {
-        Arc::new(RwLock::new(crate::search::StrictEngine::default()))
-    }
-
     #[tokio::test]
     async fn test_should_generate_paths() {
-        let f = FileStorage::new("test", default_engine()).await;
+        let f = FileStorage::new("test", crate::search::StrictEngine::default()).await;
         assert_eq!("test/invoices/123", f.invoice_path("123").to_string_lossy());
         assert_eq!(
             "test/invoices/123/invoice.toml",
@@ -448,7 +431,11 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let inv = invoice_fixture();
-        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        )
+        .await;
         let inv_name = inv.canonical_name();
         // Create an file
         let missing = store.create_invoice(&inv).await.unwrap();
@@ -477,7 +464,11 @@ mod test {
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
-        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        )
+        .await;
         // Create an file
         assert!(store.create_invoice(&inv).await.is_err());
         assert!(root.close().is_ok());
@@ -489,7 +480,11 @@ mod test {
         let (label, mut data) = parcel_fixture(content).await;
         let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        )
+        .await;
 
         store
             .create_parcel(&label, &mut data)
@@ -513,7 +508,11 @@ mod test {
     #[tokio::test]
     async fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(root.path().to_owned(), default_engine()).await;
+        let store = FileStorage::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        )
+        .await;
 
         // Store a parcel
         let content = "abcdef1234567890987654321";

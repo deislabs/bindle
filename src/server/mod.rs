@@ -7,23 +7,20 @@ pub mod routes;
 pub(crate) mod stream_util;
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use super::storage::Storage;
 use crate::search::Search;
-
-use tokio::sync::RwLock;
 
 pub(crate) const TOML_MIME_TYPE: &str = "application/toml";
 
 pub async fn server<S, I>(
     store: S,
-    index: Arc<RwLock<I>>,
+    index: I,
     addr: impl Into<SocketAddr> + 'static,
 ) -> anyhow::Result<()>
 where
     S: Storage + Clone + Send + Sync + 'static,
-    I: Search + Send + Sync + 'static,
+    I: Search + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
     let api = routes::api(store, index);

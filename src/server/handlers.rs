@@ -1,7 +1,5 @@
 use std::convert::Infallible;
-use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use warp::Reply;
 
 use super::filters::InvoiceQuery;
@@ -22,12 +20,11 @@ pub mod v1 {
     //////////// Invoice Functions ////////////
     pub async fn query_invoices<S: Search>(
         options: QueryOptions,
-        index: Arc<RwLock<S>>,
+        index: S,
     ) -> Result<impl warp::Reply, Infallible> {
         let term = options.query.clone().unwrap_or_default();
         let version = options.version.clone().unwrap_or_default();
-        let locked_index = index.read().await;
-        let matches = match locked_index.query(term, version, options.into()) {
+        let matches = match index.query(term, version, options.into()).await {
             Ok(m) => m,
             Err(e) => {
                 return Ok(reply::reply_from_error(
