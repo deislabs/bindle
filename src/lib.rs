@@ -128,7 +128,7 @@ pub struct InvoiceQuery {
     pub yanked: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct QueryOptions {
     #[serde(alias = "q")]

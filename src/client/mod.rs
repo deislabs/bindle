@@ -20,9 +20,9 @@ pub use error::ClientError;
 
 pub type Result<T> = std::result::Result<T, ClientError>;
 
-const INVOICE_ENDPOINT: &str = "/_i";
-const PARCEL_ENDPOINT: &str = "/_p";
-const QUERY_ENDPOINT: &str = "/_q";
+const INVOICE_ENDPOINT: &str = "_i";
+const PARCEL_ENDPOINT: &str = "_p";
+const QUERY_ENDPOINT: &str = "_q";
 const TOML_MIME_TYPE: &str = "application/toml";
 
 #[derive(Clone)]
@@ -217,7 +217,7 @@ impl Client {
     /// Returns the requested parcel (identified by its SHA) as a vector of bytes
     pub async fn get_parcel(&self, sha: &str) -> Result<Vec<u8>> {
         let resp = self.get_parcel_request(sha).await?;
-        Ok(toml::from_slice(&resp.bytes().await?)?)
+        Ok(resp.bytes().await?.to_vec())
     }
 
     /// Returns the requested parcel (identified by its SHA) as a stream of bytes. This is useful
