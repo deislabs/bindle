@@ -9,12 +9,18 @@ use tokio::fs::File;
 use tokio::stream::Stream;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-/// Loads a file as an async `Stream`. Used primarily for streaming parcel data to a bindle server
+/// Loads a file as an async `Stream`, returning the stream, and the length of the file (for use in
+/// setting the content-length in the multipart form). Used primarily for streaming parcel data to a
+/// bindle server
 pub async fn raw<P: AsRef<Path>>(
     file_path: P,
-) -> Result<impl Stream<Item = std::result::Result<bytes::BytesMut, Error>>> {
+) -> Result<(
+    impl Stream<Item = std::result::Result<bytes::BytesMut, Error>>,
+    u64,
+)> {
     let file = File::open(file_path).await?;
-    Ok(FramedRead::new(file, BytesCodec::new()))
+    let size = file.metadata().await?.len();
+    Ok((FramedRead::new(file, BytesCodec::new()), size))
 }
 
 /// Loads a file and deserializes it from TOML to an arbirary type. Turbofish may be required to

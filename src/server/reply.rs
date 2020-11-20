@@ -74,7 +74,9 @@ pub fn reply_from_error(
     status_code: warp::http::StatusCode,
 ) -> warp::reply::WithStatus<Toml> {
     warp::reply::with_status(
-        toml(&format!("error = \"{}\"", error.to_string())),
+        toml(&crate::ErrorResponse {
+            error: error.to_string(),
+        }),
         status_code,
     )
 }

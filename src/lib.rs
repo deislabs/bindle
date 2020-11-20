@@ -123,11 +123,13 @@ pub struct InvoiceCreateResponse {
     pub missing: Option<Vec<Label>>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct InvoiceQuery {
-    pub yanked: Option<bool>,
+/// A string error message returned from the server
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    error: String,
 }
 
+/// Available options for the query API
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct QueryOptions {
