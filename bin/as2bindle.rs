@@ -78,7 +78,7 @@ fn main() {
         name: format!("{}", path.file_name().unwrap().to_string_lossy()),
         media_type: "application/wasm".to_owned(),
         sha256: sha,
-        size: Some(md.len() as i64),
+        size: md.len() as u64,
         annotations: None,
     };
 

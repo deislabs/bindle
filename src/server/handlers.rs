@@ -191,7 +191,7 @@ pub mod v1 {
         id: String,
         store: S,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        // Get parcel label to ascertain content type, then get the actual data
+        // Get parcel label to ascertain content type and length, then get the actual data
         let label = match store.get_label(&id).await {
             Ok(l) => l,
             Err(e) => {
@@ -210,6 +210,7 @@ pub mod v1 {
 
         let resp = warp::http::Response::builder()
             .header(warp::http::header::CONTENT_TYPE, label.media_type)
+            .header(warp::http::header::CONTENT_LENGTH, label.size)
             .body(hyper::Body::wrap_stream(stream))
             .unwrap();
 
@@ -229,7 +230,6 @@ pub mod v1 {
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
 
-        // TODO: This doesn't set content length properly (probably because of streams)
         Ok(super::HeadResponse {
             headers: parts.headers,
         })

@@ -94,7 +94,7 @@ pub struct Label {
     pub sha256: String,
     pub media_type: String,
     pub name: String,
-    pub size: Option<i64>,
+    pub size: u64,
     pub annotations: Option<BTreeMap<String, String>>,
 }
 
@@ -204,7 +204,7 @@ mod test {
             sha256: "abcdef1234567890987654321".to_owned(),
             media_type: "text/toml".to_owned(),
             name: "foo.toml".to_owned(),
-            size: Some(101),
+            size: 101,
             annotations: None,
         };
         let parcel = Parcel {
@@ -243,7 +243,7 @@ mod test {
         assert_eq!(lab.name, "foo.toml".to_owned());
         assert_eq!(lab.media_type, "text/toml".to_owned());
         assert_eq!(lab.sha256, "abcdef1234567890987654321".to_owned());
-        assert_eq!(lab.size.unwrap(), 101)
+        assert_eq!(lab.size, 101);
     }
 
     #[test]
