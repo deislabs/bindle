@@ -79,7 +79,7 @@ impl Client {
     ) -> Result<crate::InvoiceCreateResponse> {
         // Create an owned version of the path to avoid worrying about lifetimes here for the stream
         let path = file_path.as_ref().to_owned();
-        let inv_stream = load::raw(path).await?;
+        let (inv_stream, _) = load::raw(path).await?;
         let req = self
             .create_invoice_builder()
             .body(Body::wrap_stream(inv_stream));
@@ -191,12 +191,17 @@ impl Client {
     {
         // Get copies of the path to avoid lifetime issues
         let label = label_path.as_ref().to_owned();
-        let label_body = Body::wrap_stream(load::raw(label).await?);
+        let (stream, _) = load::raw(label).await?;
+        let label_body = Body::wrap_stream(stream);
         let data = data_path.as_ref().to_owned();
-        let data_body = Body::wrap_stream(load::raw(data).await?);
+        let (stream, _) = load::raw(data).await?;
+        let data_body = Body::wrap_stream(stream);
 
         let multipart = Form::new()
-            .part("label.toml", Part::stream(label_body))
+            .part(
+                "label.toml",
+                Part::stream(label_body).mime_str(TOML_MIME_TYPE).unwrap(),
+            )
             .part("parcel.dat", Part::stream(data_body));
         self.create_parcel_request(multipart).await
     }
@@ -255,11 +260,6 @@ enum Endpoint {
     Query,
 }
 
-#[derive(serde::Deserialize)]
-struct ErrorResponse {
-    error: String,
-}
-
 async fn unwrap_status(resp: reqwest::Response, endpoint: Endpoint) -> Result<reqwest::Response> {
     match (resp.status(), endpoint) {
         (StatusCode::OK, _) => Ok(resp),
@@ -289,7 +289,8 @@ async fn parse_error_from_body(resp: reqwest::Response) -> Option<String> {
         Ok(b) => b,
         Err(_) => return None,
     };
-    match toml::from_slice::<ErrorResponse>(&bytes) {
+
+    match toml::from_slice::<crate::ErrorResponse>(&bytes) {
         Ok(e) => Some(e.error),
         Err(_) => None,
     }
