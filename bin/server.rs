@@ -18,19 +18,19 @@ async fn main() -> anyhow::Result<()> {
         .author("DeisLabs at Microsoft Azure")
         .about(DESCRIPTION)
         .arg(
-            Arg::with_name("address")
-                .short("i")
+            Arg::new("address")
+                .short('i')
                 .long("address")
                 .value_name("IP_ADDRESS_PORT")
-                .help("the IP address and port to listen on")
+                .about("the IP address and port to listen on")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("dir")
-                .short("d")
+            Arg::new("dir")
+                .short('d')
                 .long("directory")
                 .value_name("PATH")
-                .help("the path to the directory in which bindles will be stored")
+                .about("the path to the directory in which bindles will be stored")
                 .takes_value(true),
         )
         .get_matches();

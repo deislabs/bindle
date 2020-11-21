@@ -37,16 +37,16 @@ fn main() {
         .author("DeisLabs at Microsoft Azure")
         .about(DESCRIPTION)
         .arg(
-            Arg::with_name("cargo")
-                .help("path to directory with cargo.toml")
-                .short("c")
+            Arg::new("cargo")
+                .about("path to directory with cargo.toml")
+                .short('c')
                 .long("cargo")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("bindir")
-                .help("path to bindle directory.")
-                .short("b")
+            Arg::new("bindir")
+                .about("path to bindle directory.")
+                .short('b')
                 .long("bindle")
                 .takes_value(true),
         )

@@ -35,16 +35,16 @@ fn main() {
         .author("DeisLabs at Microsoft Azure")
         .about(DESCRIPTION)
         .arg(
-            Arg::with_name("src")
-                .help("path to directory with package.json")
-                .short("s")
+            Arg::new("src")
+                .about("path to directory with package.json")
+                .short('s')
                 .long("src")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("bindir")
-                .help("path to bindle directory.")
-                .short("b")
+            Arg::new("bindir")
+                .about("path to bindle directory.")
+                .short('b')
                 .long("bindle")
                 .takes_value(true),
         )

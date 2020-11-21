@@ -3,7 +3,7 @@ bindleVersion = "1.0.0"
 [bindle]
 name = "enterprise.com/warpcore"
 version = "1.0.0"
-authors = ["Geordi La Forge <mycoolvisor@ufp.com"]
+authors = ["Geordi La Forge <mycoolvisor@ufp.com>"]
 description = "Warp core components"
 
 [annotations]
