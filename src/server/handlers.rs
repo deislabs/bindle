@@ -1,7 +1,5 @@
 use std::convert::Infallible;
-use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use warp::Reply;
 
 use super::filters::InvoiceQuery;
@@ -22,12 +20,11 @@ pub mod v1 {
     //////////// Invoice Functions ////////////
     pub async fn query_invoices<S: Search>(
         options: QueryOptions,
-        index: Arc<RwLock<S>>,
+        index: S,
     ) -> Result<impl warp::Reply, Infallible> {
         let term = options.query.clone().unwrap_or_default();
         let version = options.version.clone().unwrap_or_default();
-        let locked_index = index.read().await;
-        let matches = match locked_index.query(term, version, options.into()) {
+        let matches = match index.query(term, version, options.into()).await {
             Ok(m) => m,
             Err(e) => {
                 return Ok(reply::reply_from_error(
@@ -191,7 +188,7 @@ pub mod v1 {
         id: String,
         store: S,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        // Get parcel label to ascertain content type, then get the actual data
+        // Get parcel label to ascertain content type and length, then get the actual data
         let label = match store.get_label(&id).await {
             Ok(l) => l,
             Err(e) => {
@@ -210,6 +207,7 @@ pub mod v1 {
 
         let resp = warp::http::Response::builder()
             .header(warp::http::header::CONTENT_TYPE, label.media_type)
+            .header(warp::http::header::CONTENT_LENGTH, label.size)
             .body(hyper::Body::wrap_stream(stream))
             .unwrap();
 
@@ -229,7 +227,6 @@ pub mod v1 {
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
 
-        // TODO: This doesn't set content length properly (probably because of streams)
         Ok(super::HeadResponse {
             headers: parts.headers,
         })

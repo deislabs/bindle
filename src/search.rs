@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 /// The search options for performing this query and returning results
 pub struct SearchOptions {
@@ -71,10 +73,10 @@ impl Matches {
     }
 }
 
-/// This trait describes the minimal set of features a Bindle provider must implement
-/// to provide query support.
-// TODO: Perhaps we should make this async and put the burden of locking on the Search
-// implementations rather than on the users of them
+/// This trait describes the minimal set of features a Bindle provider must implement to provide
+/// query support. Implementors of this trait should handle any locking of the internal index in
+/// their implementation
+#[async_trait::async_trait]
 pub trait Search {
     /// A high-level function that can take raw search strings (queries and filters) and options.
     ///
@@ -83,7 +85,7 @@ pub trait Search {
     ///
     /// An error is returned if either there is something incorrect in the terms/filters,
     /// or if the search engine itself fails to process the query.
-    fn query(
+    async fn query(
         &self,
         term: String,
         filter: String,
@@ -102,27 +104,29 @@ pub trait Search {
     /// As a special note, if an invoice is yanked, the index function will mark it
     /// as such, following the protocol specification's requirements for yanked
     /// invoices.
-    fn index(&mut self, document: &crate::Invoice) -> anyhow::Result<()>;
+    async fn index(&self, document: &crate::Invoice) -> anyhow::Result<()>;
 }
 
 /// Implements strict query processing.
+#[derive(Clone)]
 pub struct StrictEngine {
     // A BTreeMap will keep the records in a predictable order, which makes the
     // search results predictable. This greatly simplifies the process of doing offsets
     // and limits.
-    index: BTreeMap<String, crate::Invoice>,
+    index: Arc<RwLock<BTreeMap<String, crate::Invoice>>>,
 }
 
 impl Default for StrictEngine {
     fn default() -> Self {
         StrictEngine {
-            index: BTreeMap::new(),
+            index: Arc::new(RwLock::new(BTreeMap::new())),
         }
     }
 }
 
+#[async_trait::async_trait]
 impl Search for StrictEngine {
-    fn query(
+    async fn query(
         &self,
         term: String,
         filter: String,
@@ -130,6 +134,8 @@ impl Search for StrictEngine {
     ) -> anyhow::Result<Matches> {
         let mut found: Vec<crate::Invoice> = self
             .index
+            .read()
+            .await
             .iter()
             .filter(|(_, i)| {
                 // Term and version have to be exact matches.
@@ -175,8 +181,11 @@ impl Search for StrictEngine {
     /// As a special note, if an invoice is yanked, the index function will mark it
     /// as such, following the protocol specification's requirements for yanked
     /// invoices.
-    fn index(&mut self, invoice: &crate::Invoice) -> anyhow::Result<()> {
-        self.index.insert(invoice.name(), invoice.clone());
+    async fn index(&self, invoice: &crate::Invoice) -> anyhow::Result<()> {
+        self.index
+            .write()
+            .await
+            .insert(invoice.name(), invoice.clone());
         Ok(())
     }
 }
@@ -186,18 +195,20 @@ mod test {
     use super::*;
     use crate::Invoice;
 
-    #[test]
-    fn strict_engine_should_index() {
+    #[tokio::test]
+    async fn strict_engine_should_index() {
         let inv = invoice_fixture("my/bindle".to_owned(), "1.2.3".to_owned());
         let inv2 = invoice_fixture("my/bindle".to_owned(), "1.3.0".to_owned());
-        let mut searcher = StrictEngine::default();
+        let searcher = StrictEngine::default();
         searcher
             .index(&inv)
+            .await
             .expect("succesfully indexed my/bindle/1.2.3");
         searcher
             .index(&inv2)
+            .await
             .expect("succesfully indexed my/bindle/1.3.0");
-        assert_eq!(2, searcher.index.len());
+        assert_eq!(2, searcher.index.read().await.len());
 
         // Search for one result
         let matches = searcher
@@ -206,6 +217,7 @@ mod test {
                 "1.2.3".to_owned(),
                 SearchOptions::default(),
             )
+            .await
             .expect("found some matches");
 
         assert_eq!(1, matches.invoices.len());
@@ -217,6 +229,7 @@ mod test {
                 "^1.2.3".to_owned(),
                 SearchOptions::default(),
             )
+            .await
             .expect("found some matches");
 
         assert_eq!(2, matches.invoices.len());
@@ -228,6 +241,7 @@ mod test {
                 "1.2.3".to_owned(),
                 SearchOptions::default(),
             )
+            .await
             .expect("found some matches");
         assert!(matches.invoices.is_empty());
 
@@ -238,6 +252,7 @@ mod test {
                 "1.2.99".to_owned(),
                 SearchOptions::default(),
             )
+            .await
             .expect("found some matches");
         assert!(matches.invoices.is_empty());
 
@@ -250,21 +265,21 @@ mod test {
                 sha256: "abcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo.toml".to_owned(),
-                size: Some(101),
+                size: 101,
                 annotations: None,
             },
             crate::Label {
                 sha256: "bbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo2.toml".to_owned(),
-                size: Some(101),
+                size: 101,
                 annotations: None,
             },
             crate::Label {
                 sha256: "cbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo3.toml".to_owned(),
-                size: Some(101),
+                size: 101,
                 annotations: None,
             },
         ];

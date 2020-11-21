@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use bindle::search::StrictEngine;
 use bindle::storage::file::FileStorage;
@@ -9,7 +8,6 @@ use bindle::storage::file::FileStorage;
 use multipart::client::lazy::Multipart;
 use tempfile::tempdir;
 use tokio::stream::StreamExt;
-use tokio::sync::RwLock;
 
 const SCAFFOLD_DIR: &str = "tests/scaffolds";
 const INVOICE_FILE: &str = "invoice.toml";
@@ -192,9 +190,9 @@ impl From<RawScaffold> for Scaffold {
 
 /// Returns a file `Store` implementation configured with a temporary directory and strict Search
 /// implementation for use in testing API endpoints
-pub async fn setup() -> (FileStorage<StrictEngine>, Arc<RwLock<StrictEngine>>) {
+pub async fn setup() -> (FileStorage<StrictEngine>, StrictEngine) {
     let temp = tempdir().expect("unable to create tempdir");
-    let index = Arc::new(RwLock::new(StrictEngine::default()));
+    let index = StrictEngine::default();
     let store = FileStorage::new(temp.path().to_owned(), index.clone()).await;
     (store, index)
 }
