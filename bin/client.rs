@@ -171,7 +171,13 @@ async fn main() -> std::result::Result<(), ClientError> {
         }
         SubCommand::GetInvoice(gi_opts) => {
             let inv = bindle_client.get_invoice(&gi_opts.bindle_id).await?;
-            tokio::fs::write(&gi_opts.output, &toml::to_vec(&inv)?).await?;
+            tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true) // Make sure we aren't overwriting
+                .open(&gi_opts.output)
+                .await?
+                .write_all(&toml::to_vec(&inv)?)
+                .await?;
             println!(
                 "Wrote invoice {} to {}",
                 gi_opts.bindle_id,
@@ -198,8 +204,8 @@ async fn main() -> std::result::Result<(), ClientError> {
 async fn get_parcel(bindle_client: Client, opts: GetParcel) -> Result<()> {
     let stream = bindle_client.get_parcel_stream(&opts.sha).await?;
     let file = tokio::fs::OpenOptions::new()
-        .create(true)
         .write(true)
+        .create_new(true) // Make sure we aren't overwriting
         .open(&opts.output)
         .await?;
     write_stream(stream, file).await?;

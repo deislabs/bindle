@@ -11,7 +11,7 @@ pub enum ClientError {
     InvalidConfig(String),
     /// IO errors when reading data from a file
     #[error("Error while performing IO operation: {0:?}")]
-    ReadIo(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     /// Invalid TOML parsing that can occur when loading an invoice or label from disk
     #[error("Invalid toml: {0:?}")]
     InvalidToml(#[from] toml::de::Error),
