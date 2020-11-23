@@ -13,6 +13,7 @@ This program runs an HTTP frontend for a Bindle repository.
 
 #[tokio::main(threaded_scheduler)]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
     let app = App::new("bindle-server")
         .version("0.1.0")
         .author("DeisLabs at Microsoft Azure")
@@ -41,9 +42,10 @@ async fn main() -> anyhow::Result<()> {
     let index = search::StrictEngine::default();
     let store = storage::file::FileStorage::new(dir, index.clone()).await;
 
-    println!(
+    log::info!(
         "Starting server at {}, and serving bindles from {}",
-        raw_addr, dir
+        raw_addr,
+        dir
     );
     server(store, index, addr).await
 }

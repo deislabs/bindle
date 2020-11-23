@@ -186,7 +186,7 @@ fn version_compare(version: &Version, requirement: &str) -> bool {
             return req.matches(version);
         }
         Err(e) => {
-            eprintln!("SemVer range could not parse: {}", e);
+            log::error!("SemVer range could not parse: {}", e);
         }
     }
     false
