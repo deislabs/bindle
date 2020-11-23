@@ -3,7 +3,7 @@ bindleVersion = "1.0.0"
 [bindle]
 name = "enterprise.com/holodeck"
 # Missing version
-authors = ["Enterprise Engineering <engineering@enterprise.ufp.com"]
+authors = ["Enterprise Engineering <engineering@enterprise.ufp.com>"]
 description = "A diversionary room for those long voyages"
 
 [annotations]

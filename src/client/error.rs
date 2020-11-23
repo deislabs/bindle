@@ -10,7 +10,7 @@ pub enum ClientError {
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
     /// IO errors when reading data from a file
-    #[error("Error while reading file from disk: {0:?}")]
+    #[error("Error while performing IO operation: {0:?}")]
     ReadIo(#[from] std::io::Error),
     /// Invalid TOML parsing that can occur when loading an invoice or label from disk
     #[error("Invalid toml: {0:?}")]

@@ -3,7 +3,7 @@ bindleVersion = "1.0.0"
 [bindle]
 name = "enterprise.com/bridge"
 version = "1.0.0"
-authors = ["Jean-Luc Picard <engage@ufp.com"]
+authors = ["Jean-Luc Picard <engage@ufp.com>"]
 description = "Command deck"
 
 [[parcel]]
