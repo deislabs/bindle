@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
 
+use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncRead, AsyncWriteExt};
@@ -64,10 +65,15 @@ impl<T: Search + Send + Sync> FileStorage<T> {
     /// safely insert, but ignore errors that come back because of duplicate entries.
     async fn warm_index(&self) -> anyhow::Result<()> {
         // Read all invoices
+        debug!("Beginning index warm from {}", self.root.display());
+        let mut total_indexed: u64 = 0;
         for e in self.invoice_path("").read_dir()? {
             let p = match e {
                 Ok(path) => path.path(),
-                Err(_) => continue,
+                Err(e) => {
+                    error!("Error while reading directory entry: {:?}", e);
+                    continue;
+                }
             };
             let sha = match p.file_name().map(|f| f.to_string_lossy()) {
                 Some(sha_opt) => sha_opt,
@@ -93,7 +99,9 @@ impl<T: Search + Send + Sync> FileStorage<T> {
             if let Err(e) = self.index.index(&invoice).await {
                 log::error!("Error indexing {}: {}", sha, e);
             }
+            total_indexed += 1;
         }
+        trace!("Warmed index with {} entries", total_indexed);
         Ok(())
     }
 
@@ -148,6 +156,11 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         if dest.exists() {
             return Err(StorageError::Exists);
         }
+        debug!(
+            "Storing invoice with ID {:?} in {}",
+            inv.bindle.id,
+            dest.display()
+        );
         let mut out = OpenOptions::new()
             .create_new(true)
             .write(true)
@@ -162,14 +175,18 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
         if let Err(e) = self.index.index(&inv).await {
-            log::error!("Error indexing {}: {}", invoice_id, e);
+            log::error!("Error indexing {:?}: {}", inv.bindle.id, e);
         }
 
         // if there are no parcels, bail early
         if inv.parcels.is_none() {
-            return Ok(vec![]);
+            return Ok(Vec::with_capacity(0));
         }
 
+        trace!(
+            "Checking for missing parcels listed in newly created invoice {:?}",
+            inv.bindle.id
+        );
         // Note: this will not allocate
         let zero_vec = Vec::with_capacity(0);
         // Loop through the boxes and see what exists
@@ -195,6 +212,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             .filter_map(|x| x)
             .collect())
     }
+
     async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id, Error = ParseError> + Send,
@@ -205,17 +223,24 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             _ => Err(StorageError::Yanked),
         }
     }
+
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id, Error = ParseError> + Send,
     {
         let parsed_id: Id = id.try_into().map_err(ParseError::from)?;
+        trace!("Getting invoice {:?}", parsed_id);
 
         let invoice_id = parsed_id.sha();
 
         // Now construct a path and read it
         let invoice_path = self.invoice_toml_path(&invoice_id);
 
+        trace!(
+            "Reading invoice {:?} from {}",
+            parsed_id,
+            invoice_path.display()
+        );
         // Open file
         let inv_toml = tokio::fs::read_to_string(invoice_path).await?;
 
@@ -225,6 +250,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Return object
         Ok(invoice)
     }
+
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id, Error = ParseError> + Send,
@@ -233,6 +259,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         inv.yanked = Some(true);
 
         let invoice_id = inv.canonical_name();
+        trace!("Yanking invoice {:?}", invoice_id);
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
@@ -254,12 +281,15 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         tokio::fs::write(dest, data).await?;
         Ok(())
     }
+
     async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
         &self,
         label: &crate::Label,
         data: &mut R,
     ) -> Result<()> {
         let sha = label.sha256.as_str();
+        debug!("Creating parcel with SHA {}", sha);
+
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(sha);
         if par_path.is_dir() {
@@ -271,7 +301,14 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Write data
         {
             let data_file = self.parcel_data_path(sha);
+            trace!(
+                "Writing parcel data for SHA {} at {}",
+                sha,
+                data_file.display()
+            );
             let mut out = OpenOptions::new()
+                // TODO: Right now, if we write the file and then sha validation fails, the user
+                // will not be able to create this parcel again because the file already exists
                 .create_new(true)
                 .write(true)
                 .read(true)
@@ -284,11 +321,14 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             // not be correct.
             out.flush();
             out.seek(std::io::SeekFrom::Start(0)).await?;
+            trace!("Validating data for SHA {}", sha);
             validate_sha256(&mut out, label.sha256.as_str()).await?;
+            trace!("SHA {} data validated", sha);
         }
 
         // Write label
         {
+            trace!("Writing label for parcel SHA {}", sha);
             let dest = self.label_toml_path(sha);
             let mut out = OpenOptions::new()
                 .create_new(true)
@@ -301,13 +341,16 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         }
         Ok(())
     }
+
     async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>> {
+        debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
         let reader = File::open(name).await?;
         Ok(Box::new(reader))
     }
 
     async fn get_label(&self, parcel_id: &str) -> Result<crate::Label> {
+        debug!("Getting label for parcel sha {}", parcel_id);
         let label_path = self.label_toml_path(parcel_id);
         let label_toml = tokio::fs::read_to_string(label_path).await?;
         let label: crate::Label = toml::from_str(label_toml.as_str())?;

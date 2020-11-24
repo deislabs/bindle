@@ -2,9 +2,11 @@ use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
+use log::trace;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
+#[derive(Debug)]
 /// The search options for performing this query and returning results
 pub struct SearchOptions {
     /// The offset from the last search results
@@ -132,6 +134,12 @@ impl Search for StrictEngine {
         filter: String,
         options: SearchOptions,
     ) -> anyhow::Result<Matches> {
+        trace!(
+            "beginning search with term {}, version {}, and options {:?}",
+            term,
+            filter,
+            options
+        );
         let mut found: Vec<crate::Invoice> = self
             .index
             .read()
@@ -145,6 +153,7 @@ impl Search for StrictEngine {
             .map(|(_, v)| (*v).clone())
             .collect();
 
+        trace!("Found {} total matches", found.len());
         let mut matches = Matches::new(&options, term);
         matches.strict = true;
         matches.yanked = false;
@@ -165,6 +174,7 @@ impl Search for StrictEngine {
         matches.more = matches.total > last_index + 1;
         let range = RangeInclusive::new(matches.offset as usize, last_index as usize);
         matches.invoices = found.drain(range).collect();
+        trace!("Returning {} found invoices", matches.invoices.len());
 
         Ok(matches)
     }

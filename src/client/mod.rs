@@ -9,6 +9,7 @@ pub mod load;
 use std::convert::TryInto;
 use std::path::Path;
 
+use log::{debug, info};
 use reqwest::header;
 use reqwest::multipart::{Form, Part};
 use reqwest::Client as HttpClient;
@@ -41,6 +42,7 @@ impl Client {
         // "file" component of the URL. So we need to check that it is added before parsing
         let mut base = base_url.to_owned();
         if !base.ends_with('/') {
+            info!("Provided base URL missing trailing slash, adding...");
             base.push('/');
         }
         let base_parsed = Url::parse(&base)?;
@@ -79,7 +81,9 @@ impl Client {
     ) -> Result<crate::InvoiceCreateResponse> {
         // Create an owned version of the path to avoid worrying about lifetimes here for the stream
         let path = file_path.as_ref().to_owned();
+        debug!("Loading invoice from {}", path.display());
         let (inv_stream, _) = load::raw(path).await?;
+        debug!("Successfully loaded invoice stream");
         let req = self
             .create_invoice_builder()
             .body(Body::wrap_stream(inv_stream));
@@ -191,10 +195,14 @@ impl Client {
     {
         // Get copies of the path to avoid lifetime issues
         let label = label_path.as_ref().to_owned();
+        debug!("Loading label from {}", label.display());
         let (stream, _) = load::raw(label).await?;
+        debug!("Successfully loaded label stream");
         let label_body = Body::wrap_stream(stream);
         let data = data_path.as_ref().to_owned();
+        debug!("Loading parcel data from {}", data.display());
         let (stream, _) = load::raw(data).await?;
+        debug!("Successfully loaded parcel stream");
         let data_body = Body::wrap_stream(stream);
 
         let multipart = Form::new()

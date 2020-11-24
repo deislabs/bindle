@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 
+use log::trace;
 use warp::Reply;
 
 use super::filters::InvoiceQuery;
@@ -22,15 +23,17 @@ pub mod v1 {
         options: QueryOptions,
         index: S,
     ) -> Result<impl warp::Reply, Infallible> {
+        trace!("Query invoice request with options: {:?}", options);
         let term = options.query.clone().unwrap_or_default();
         let version = options.version.clone().unwrap_or_default();
         let matches = match index.query(term, version, options.into()).await {
             Ok(m) => m,
             Err(e) => {
+                trace!("Got bad query request: {:?}", e);
                 return Ok(reply::reply_from_error(
                     e,
                     warp::http::StatusCode::BAD_REQUEST,
-                ))
+                ));
             }
         };
 
@@ -44,6 +47,7 @@ pub mod v1 {
         store: S,
         inv: crate::Invoice,
     ) -> Result<impl warp::Reply, Infallible> {
+        trace!("Create invoice request with invoice: {:?}", inv);
         let labels = match store.create_invoice(&inv).await {
             Ok(l) => l,
             Err(e) => {
@@ -53,6 +57,11 @@ pub mod v1 {
         // If there are missing parcels that still need to be created, return a 202 to indicate that
         // things were accepted, but will not be fetchable until further action is taken
         if !labels.is_empty() {
+            trace!(
+                "Newly created invoice {:?} is missing {} parcels",
+                inv.bindle.id,
+                labels.len()
+            );
             Ok(warp::reply::with_status(
                 reply::toml(&crate::InvoiceCreateResponse {
                     invoice: inv,
@@ -61,6 +70,10 @@ pub mod v1 {
                 warp::http::StatusCode::ACCEPTED,
             ))
         } else {
+            trace!(
+                "Newly created invoice {:?} has all existing parcels",
+                inv.bindle.id
+            );
             Ok(warp::reply::with_status(
                 reply::toml(&crate::InvoiceCreateResponse {
                     invoice: inv,
@@ -77,6 +90,11 @@ pub mod v1 {
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
+        trace!(
+            "Get invoice request for {} with yanked = {}",
+            id,
+            query.yanked.unwrap_or_default()
+        );
         let res = if query.yanked.unwrap_or_default() {
             store.get_yanked_invoice(id)
         } else {
@@ -85,6 +103,7 @@ pub mod v1 {
         let inv = match res.await {
             Ok(i) => i,
             Err(e) => {
+                trace!("Got error during get invoice request: {:?}", e);
                 return Ok(reply::into_reply(e));
             }
         };
@@ -99,13 +118,16 @@ pub mod v1 {
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
+        trace!("Yank invoice request for {}", id);
         if let Err(e) = store.yank_invoice(id).await {
+            trace!("Got error during yank invoice request: {:?}", e);
             return Ok(reply::into_reply(e));
         }
 
-        // Do this once we figure out what we actually need for the yank_invoice method on storage
+        let mut resp = std::collections::HashMap::new();
+        resp.insert("message", "invoice yanked");
         Ok(warp::reply::with_status(
-            reply::toml(&String::from("message = \"invoice yanked\"")),
+            reply::toml(&resp),
             warp::http::StatusCode::OK,
         ))
     }
@@ -115,6 +137,7 @@ pub mod v1 {
         query: InvoiceQuery,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
+        trace!("Head invoice request for {}", tail.as_str());
         let inv = get_invoice(tail, query, store).await?;
 
         // Consume the response to we can take the headers
@@ -131,33 +154,42 @@ pub mod v1 {
         store: S,
         mut data: warp::multipart::FormData,
     ) -> Result<impl warp::Reply, Infallible> {
+        trace!("Create parcel request, beginning parse of multipart data");
         let label_part = match form_data_unwrapper(data.next().await) {
             Ok(p) => p,
             Err(e) => {
+                trace!("Got error while parsing label data from multipart: {:?}", e);
                 return Ok(reply::reply_from_error(
                     e,
                     warp::http::StatusCode::BAD_REQUEST,
-                ))
+                ));
             }
         };
 
         let label = match parse_label(label_part).await {
             Ok(l) => l,
             Err(e) => {
+                trace!("Got error while parsing label data from multipart: {:?}", e);
                 return Ok(reply::reply_from_error(
                     e,
                     warp::http::StatusCode::BAD_REQUEST,
-                ))
+                ));
             }
         };
+
+        trace!("Got SHA {} from label", label.sha256);
 
         let file_part = match form_data_unwrapper(data.next().await) {
             Ok(p) => p,
             Err(e) => {
+                trace!(
+                    "Got error while parsing parcel data from multipart: {:?}",
+                    e
+                );
                 return Ok(reply::reply_from_error(
                     e,
                     warp::http::StatusCode::BAD_REQUEST,
-                ))
+                ));
             }
         };
 
@@ -188,10 +220,12 @@ pub mod v1 {
         id: String,
         store: S,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
+        trace!("Get parcel request for {}", id);
         // Get parcel label to ascertain content type and length, then get the actual data
         let label = match store.get_label(&id).await {
             Ok(l) => l,
             Err(e) => {
+                trace!("Error while fetching label for {}", id);
                 return Ok(Box::new(reply::into_reply(e)));
             }
         };
@@ -222,6 +256,7 @@ pub mod v1 {
         id: String,
         store: S,
     ) -> Result<impl warp::Reply, Infallible> {
+        trace!("Head parcel request for {}", id);
         let inv = get_parcel(id, store).await?;
 
         // Consume the response to we can take the headers
