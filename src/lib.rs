@@ -111,9 +111,9 @@ pub struct BindleFilter {
     // The invoice that we operate on.
     invoice: Invoice,
     groups: HashSet<String>,
-    exclude_groups: Vec<String>,
-    metadata: Vec<MetadataReference>,
-    exclude_metadata: Vec<MetadataReference>,
+    exclude_groups: HashSet<String>,
+    features: Vec<MetadataReference>,
+    exclude_features: Vec<MetadataReference>,
 }
 
 impl BindleFilter {
@@ -125,8 +125,8 @@ impl BindleFilter {
             invoice: invoice.clone(),
             groups: HashSet::new(),
             exclude_groups: HashSet::new(),
-            metadata: vec![],
-            exclude_metadata: vec![],
+            features: vec![],
+            exclude_features: vec![],
         }
     }
     fn with_group(&mut self, group_name: String) -> &mut Self {
@@ -136,35 +136,75 @@ impl BindleFilter {
     fn without_group(&mut self, group_name: String) -> &mut Self {
         self
     }
-    fn with_metadata(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
+    fn enable_feature(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
         self
     }
-    fn without_metadata(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
+    fn disable_feature(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
         self
     }
+
+    /// Determine whether a given parcel should be disabled according to the filter.
+    fn is_disabled(&self, parcel: &Parcel) -> bool {
+        match parcel.label.features {
+            None => false,
+            Some(map) => {
+                // If the exclude list comes up empty then this parcel is fine.
+                // But if there are any matches, the parcel should be disabled.
+                self.exclude_features.iter().any(|key| {
+                    parcel
+                        .label
+                        .features
+                        .map(|f| match f.get(&key.group) {
+                            None => false,
+                            Some(features) => {
+                                features.get(&key.name).unwrap_or(&"".to_owned()) == &key.value
+                            }
+                        })
+                        .unwrap_or(false)
+                })
+            }
+        }
+    }
+
     // Do we filter media types, too?
     // Do we filter by size?
     fn filter(&self) -> Vec<Parcel> {
-        // Start with the global parcels
-        let mut parcels = self.invoice.parcels.clone();
+        // Start with the global parcels that are not explicitly disabled by features.
+        // These parcels are for sure in the outcome.
+        let mut parcels = self
+            .invoice
+            .parcels
+            .unwrap_or_else(|| vec![])
+            .iter()
+            .filter(|p| self.is_disabled(p))
+            .map(|&p| p)
+            .collect();
 
-        // Read any group that is in the group list
-        self.invoice.group.iter().for_each(|i| {
-            // Skip any group explicitly in the exclude list
-            if self.exclude_groups.contains(i.group_name) {
-                return;
+        // Next we need to find all of the groups that should be enabled. These can be
+        // enabled because of their 'required' flag or because they are in the the
+        // 'groups' set on this struct. This is a special pass over groups because it
+        // must take into account the 'required' flag. Subsequent passes do not.
+        let groups = match self.invoice.group {
+            Some(group) => {
+                group.iter().filter(|&i| {
+                    // Skip any group explicitly in the exclude list
+                    if self.exclude_groups.contains(&i.name) {
+                        return false;
+                    }
+                    i.required.unwrap_or(false) || self.groups.contains(&i.name)
+                })
             }
-            if i.required || self.groups.contains(i.group_name) {
-                // Append all parcels in this group
-            }
-        });
+            // If there are no groups, then our current list of parcels is complete.
+            None => vec![],
+        };
 
-        // For each parcel in that group, add the parcel if the parcel
+        // Now that we have groups, we need to do the following:
+        // 1. Go through each group and get the parcels
+        // 2. Apply the parcel filters
+        // 3. Make sure the resulting list fulfills the group condition (one of, all of, etc.)
+        // 4. For each matched parcel, find out if we need to re-run this for its 'requires'
+        //    condition.
 
-        // For any group in that list, if it is not in the `without_group` list,
-        // then add its parcels only if they meet the metadata requirements.
-
-        // Add any `requires` groups that are not in the stop list
         parcels
     }
 }
@@ -230,6 +270,7 @@ pub struct Label {
     pub name: String,
     pub size: u64,
     pub annotations: Option<BTreeMap<String, String>>,
+    pub features: Option<BTreeMap<String, BTreeMap<String, String>>>,
 }
 
 /// Conditions associate parcels to [`Group`](crate::Group)s
@@ -349,6 +390,7 @@ mod test {
             name: "foo.toml".to_owned(),
             size: 101,
             annotations: None,
+            features: None,
         };
         let parcel = Parcel {
             label,
