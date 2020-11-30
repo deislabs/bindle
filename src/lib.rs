@@ -38,7 +38,7 @@ impl Invoice {
     /// produce a slash-delimited "invoice name"
     ///
     /// For example, an invoice with the bindle name "hello" and the bindle version
-    /// "v1.2.3" will produce "hello/v1.2.3"
+    /// "1.2.3" will produce "hello/1.2.3"
     pub fn name(&self) -> String {
         format!("{}/{}", self.bindle.id.name(), self.bindle.id.version())
     }

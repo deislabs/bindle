@@ -110,6 +110,12 @@ impl FromStr for Id {
     }
 }
 
+impl From<&Id> for Id {
+    fn from(id: &Id) -> Self {
+        id.clone()
+    }
+}
+
 // Unfortunately I can't do a generic implementation using AsRef<str>/AsRef<Path> due to this issue
 // in Rust with the blanket implementation: https://github.com/rust-lang/rust/issues/50133. So we
 // get _all_ the implementations

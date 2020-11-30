@@ -24,15 +24,18 @@ pub trait Storage {
     // This will return an invoice if the bindle exists and is not yanked
     async fn get_invoice<I>(&self, id: I) -> Result<super::Invoice>
     where
-        I: TryInto<Id, Error = ParseError> + Send;
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>;
     // Load an invoice, even if it is yanked.
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<super::Invoice>
     where
-        I: TryInto<Id, Error = ParseError> + Send;
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>;
     // Remove an invoice by ID
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
-        I: TryInto<Id, Error = ParseError> + Send;
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>;
     async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
         &self,
         label: &super::Label,
@@ -76,5 +79,12 @@ impl From<ParseError> for StorageError {
         match e {
             ParseError::InvalidId | ParseError::InvalidSemver => StorageError::InvalidId,
         }
+    }
+}
+
+impl From<std::convert::Infallible> for StorageError {
+    fn from(_: std::convert::Infallible) -> StorageError {
+        // This can never happen (by definition of infallible), so it doesn't matter what we return
+        StorageError::Exists
     }
 }
