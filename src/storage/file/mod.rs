@@ -12,7 +12,7 @@ use tokio::io::{AsyncRead, AsyncWriteExt};
 
 use crate::search::Search;
 use crate::storage::{Result, Storage, StorageError};
-use crate::{id::ParseError, Id};
+use crate::Id;
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
@@ -215,7 +215,8 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
     async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
-        I: TryInto<Id, Error = ParseError> + Send,
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>,
     {
         match self.get_yanked_invoice(id).await {
             Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
@@ -226,9 +227,10 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
-        I: TryInto<Id, Error = ParseError> + Send,
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>,
     {
-        let parsed_id: Id = id.try_into().map_err(ParseError::from)?;
+        let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
         trace!("Getting invoice {:?}", parsed_id);
 
         let invoice_id = parsed_id.sha();
@@ -253,7 +255,8 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
-        I: TryInto<Id, Error = ParseError> + Send,
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>,
     {
         let mut inv = self.get_yanked_invoice(id).await?;
         inv.yanked = Some(true);
@@ -488,14 +491,14 @@ mod test {
         assert!(store.invoice_toml_path(&inv_name).exists());
 
         // Yank the invoice
-        store.yank_invoice(inv.name()).await.unwrap();
+        store.yank_invoice(&inv.bindle.id).await.unwrap();
 
         // Make sure the invoice is yanked
         let inv2 = store.get_yanked_invoice(inv.name()).await.unwrap();
         assert!(inv2.yanked.unwrap_or(false));
 
         // Sanity check that this produces an error
-        assert!(store.get_invoice(inv.name()).await.is_err());
+        assert!(store.get_invoice(inv.bindle.id).await.is_err());
 
         // Drop the temporary directory
         assert!(root.close().is_ok());
@@ -561,7 +564,6 @@ mod test {
         let content = "abcdef1234567890987654321";
         let (label, mut data) = parcel_fixture(content).await;
         let mut invoice = invoice_fixture();
-        let inv_name = invoice.name();
 
         let parcel = crate::Parcel {
             label: label.clone(),
@@ -580,7 +582,7 @@ mod test {
 
         // Get the bindle
         let inv = store
-            .get_invoice(inv_name)
+            .get_invoice(invoice.bindle.id)
             .await
             .expect("get the invoice we just stored");
 
