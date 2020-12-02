@@ -21,6 +21,14 @@ use search::SearchOptions;
 
 pub const BINDLE_VERSION_1: &str = "v1.0.0";
 
+/// The main structure for a Bindle invoice.
+///
+/// The invoice describes a specific version of a bindle. For example, the bindle
+/// `foo/bar/1.0.0` would be represented as an Invoice with the `BindleSpec` name
+/// set to `foo/bar` and version set to `1.0.0`.
+///
+/// Most fields on this struct are singular to best represent the specification. There,
+/// fields like `group` and `parcel` are singular due to the conventions of TOML.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Invoice {
@@ -28,9 +36,7 @@ pub struct Invoice {
     pub yanked: Option<bool>,
     pub bindle: BindleSpec,
     pub annotations: Option<BTreeMap<String, String>>,
-    #[serde(alias = "parcel")]
-    pub parcels: Option<Vec<Parcel>>,
-    // TODO: Should this be renamed "groups" or should "parcels" be renamed to "parcel"
+    pub parcel: Option<Vec<Parcel>>,
     pub group: Option<Vec<Group>>,
 }
 
@@ -221,7 +227,7 @@ mod test {
                 description: Some("bar".to_owned()),
                 authors: Some(vec!["m butcher".to_owned()]),
             },
-            parcels,
+            parcel: parcels,
             group: None,
         };
 
@@ -234,7 +240,7 @@ mod test {
         assert_eq!(b.description.unwrap().as_str(), "bar");
         assert_eq!(b.authors.unwrap()[0], "m butcher".to_owned());
 
-        let parcels = inv2.parcels.unwrap();
+        let parcels = inv2.parcel.unwrap();
 
         assert_eq!(parcels.len(), 1);
 

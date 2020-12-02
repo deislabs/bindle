@@ -127,13 +127,13 @@ fn main() {
             authors: cargo.package.authors,
             description: cargo.package.description,
         },
-        parcels: None,
+        parcel: None,
         annotations: None,
         group: None,
     };
 
     if !parcels.is_empty() {
-        invoice.parcels = Some(parcels);
+        invoice.parcel = Some(parcels);
     }
 
     // Write invoice

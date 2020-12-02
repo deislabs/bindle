@@ -303,7 +303,7 @@ mod test {
                 description: Some("bar".to_owned()),
                 authors: Some(vec!["m butcher".to_owned()]),
             },
-            parcels: Some(
+            parcel: Some(
                 labels
                     .iter()
                     .map(|l| crate::Parcel {

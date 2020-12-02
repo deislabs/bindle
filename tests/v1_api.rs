@@ -98,7 +98,7 @@ async fn test_successful_workflow() {
     let inv: bindle::Invoice = toml::from_slice(res.body()).expect("should be valid invoice TOML");
 
     // Get a parcel
-    let parcel = &inv.parcels.expect("Should have parcels")[0];
+    let parcel = &inv.parcel.expect("Should have parcels")[0];
     let res = warp::test::request()
         .path(&format!("/v1/_p/{}", parcel.label.sha256))
         .reply(&api)
