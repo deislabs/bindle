@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
+use bindle::cache::{Cache, DumbCache};
 use bindle::client::{Client, ClientError, Result};
+use bindle::storage::StorageError;
 use clap::Clap;
+use log::warn;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::stream::{Stream, StreamExt};
 
@@ -22,6 +25,13 @@ struct Opts {
         about = "The address of the bindle server"
     )]
     server_url: String,
+    #[clap(
+        short = 'd',
+        long = "bindle-dir",
+        env = "BINDLE_DIR",
+        about = "The directory where bindles are stored/cached, defaults to $HOME/.bindle/bindles"
+    )]
+    bindle_dir: Option<PathBuf>,
     #[clap(subcommand)]
     subcmd: SubCommand,
 }
@@ -35,7 +45,7 @@ enum SubCommand {
         about = "push a bindle and all its parcels to the server"
     )]
     Push(Push),
-    #[clap(name = "get", about = "download the bindle and all its parcels")]
+    #[clap(name = "get", about = "download the given bindle and all its parcels")]
     Get(Get),
     #[clap(name = "yank", about = "yank an existing bindle")]
     Yank(Yank),
@@ -161,8 +171,18 @@ struct GetInvoice {
 #[tokio::main]
 async fn main() -> std::result::Result<(), ClientError> {
     let opts = Opts::parse();
+    // TODO: Allow log level setting
+    env_logger::init();
 
     let bindle_client = Client::new(&opts.server_url)?;
+    let bindle_dir = opts
+        .bindle_dir
+        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".bindle/bindles"));
+    tokio::fs::create_dir_all(&bindle_dir).await?;
+    let store =
+        bindle::storage::file::FileStorage::new(bindle_dir, bindle::search::NoopEngine::default())
+            .await;
+    let cache = DumbCache::new(bindle_client.clone(), store);
 
     match opts.subcmd {
         SubCommand::Info(info_opts) => {
@@ -195,6 +215,7 @@ async fn main() -> std::result::Result<(), ClientError> {
                 .write_all(&toml::to_vec(&matches)?)
                 .await?;
         }
+        SubCommand::Get(get_opts) => get_all(cache, get_opts).await?,
         _ => return Err(ClientError::Other("Command unimplemented".to_string())),
     }
 
@@ -213,6 +234,46 @@ async fn get_parcel(bindle_client: Client, opts: GetParcel) -> Result<()> {
     Ok(())
 }
 
+async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<()> {
+    let inv = cache
+        .get_invoice(&opts.bindle_id)
+        .await
+        .map_err(map_storage_error)?;
+    println!("Fetched invoice. Starting fetch of parcels");
+    let parcel_fetch = inv
+        .parcel
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| (p.label.sha256, cache.clone()))
+        .map(|(sha, c)| async move {
+            if let Err(e) = c.get_parcel(&sha).await {
+                match e {
+                    StorageError::NotFound => warn!("Parcel {} does not exist", sha),
+                    StorageError::CacheError(err) if matches!(err, ClientError::ParcelNotFound) => {
+                        warn!("Parcel {} does not exist", sha)
+                    }
+                    // Only return an error if it isn't a not found error. By design, an invoice
+                    // can contain parcels that don't yet exist
+                    StorageError::CacheError(inner) => return Err(inner),
+                    _ => {
+                        return Err(ClientError::Other(format!(
+                            "Unable to get parcel {}: {:?}",
+                            sha, e
+                        )))
+                    }
+                }
+            } else {
+                println!("Fetched parcel {}", sha);
+            }
+            Ok(())
+        });
+    futures::future::join_all(parcel_fetch)
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
+    Ok(())
+}
+
 async fn write_stream<S, W>(mut stream: S, mut writer: W) -> Result<()>
 where
     S: Stream<Item = Result<bytes::Bytes>> + Unpin,
@@ -224,4 +285,12 @@ where
     }
     writer.flush().await?;
     Ok(())
+}
+
+fn map_storage_error(e: StorageError) -> ClientError {
+    match e {
+        StorageError::Io(e) => ClientError::Io(e),
+        StorageError::CacheError(inner) => inner,
+        _ => ClientError::Other(format!("{:?}", e)),
+    }
 }

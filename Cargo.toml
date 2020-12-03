@@ -5,9 +5,10 @@ authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
 edition = "2018"
 
 [features]
-default = ["server", "client"]
+default = ["server", "client", "caching"]
 server = []
 client = []
+caching = ["client"]
 
 [dependencies]
 anyhow = "1.0"
@@ -35,6 +36,7 @@ hyper = "0.13"
 url = "2.2"
 log = "0.4.11"
 env_logger = "0.8"
+dirs = "3.0"
 
 [dev-dependencies]
 multipart = "0.17"
