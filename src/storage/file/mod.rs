@@ -179,7 +179,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         }
 
         // if there are no parcels, bail early
-        if inv.parcels.is_none() {
+        if inv.parcel.is_none() {
             return Ok(Vec::with_capacity(0));
         }
 
@@ -191,7 +191,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         let zero_vec = Vec::with_capacity(0);
         // Loop through the boxes and see what exists
         let missing = inv
-            .parcels
+            .parcel
             .as_ref()
             .unwrap_or(&zero_vec)
             .iter()
@@ -569,7 +569,7 @@ mod test {
             label: label.clone(),
             conditions: None,
         };
-        invoice.parcels = Some(vec![parcel]);
+        invoice.parcel = Some(vec![parcel]);
 
         store
             .create_parcel(&label, &mut data)
@@ -587,7 +587,7 @@ mod test {
             .expect("get the invoice we just stored");
 
         let first_parcel = inv
-            .parcels
+            .parcel
             .expect("parsel vector")
             .pop()
             .expect("got a parcel");

@@ -107,7 +107,7 @@ fn main() {
             authors: None,
             description: package.description,
         },
-        parcels: Some(vec![bindle::Parcel {
+        parcel: Some(vec![bindle::Parcel {
             label,
             conditions: None,
         }]),
