@@ -151,16 +151,14 @@ pub struct QueryOptions {
     pub yanked: Option<bool>,
 }
 
-// This isn't a `From` implementation because it isn't symmetrical. Converting from a
-// `SearchOptions` to a `QueryOptions` would always end up with some fields set to none.
-impl Into<SearchOptions> for QueryOptions {
-    fn into(self) -> SearchOptions {
+impl From<QueryOptions> for SearchOptions {
+    fn from(qo: QueryOptions) -> Self {
         let defaults = SearchOptions::default();
         SearchOptions {
-            limit: self.limit.unwrap_or(defaults.limit),
-            offset: self.offset.unwrap_or(defaults.offset),
-            strict: self.strict.unwrap_or(defaults.strict),
-            yanked: self.yanked.unwrap_or(defaults.yanked),
+            limit: qo.limit.unwrap_or(defaults.limit),
+            offset: qo.offset.unwrap_or(defaults.offset),
+            strict: qo.strict.unwrap_or(defaults.strict),
+            yanked: qo.yanked.unwrap_or(defaults.yanked),
         }
     }
 }
