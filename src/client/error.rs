@@ -9,7 +9,7 @@ pub enum ClientError {
     /// Invalid configuration was given to the client
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
-    /// IO errors when reading data from a file
+    /// IO errors from interacting with the file system
     #[error("Error while performing IO operation: {0:?}")]
     Io(#[from] std::io::Error),
     /// Invalid TOML parsing that can occur when loading an invoice or label from disk
@@ -59,4 +59,11 @@ pub enum ClientError {
     /// issue
     #[error("{0}")]
     Other(String),
+}
+
+impl From<std::convert::Infallible> for ClientError {
+    fn from(_: std::convert::Infallible) -> Self {
+        // Doesn't matter what we return as Infallible cannot happen
+        ClientError::Other("Shouldn't happen".to_string())
+    }
 }

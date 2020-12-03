@@ -4,8 +4,6 @@ mod reply;
 
 pub mod routes;
 
-pub(crate) mod stream_util;
-
 use std::net::SocketAddr;
 
 use super::storage::Storage;

@@ -9,15 +9,17 @@ use tokio::stream::Stream;
 /// A wrapper around a Warp stream of bytes that implements AsyncRead. This might no longer be
 /// necessary once we hit tokio 0.3 and upgrade tokio-util. Tokio util has a StreamReader wrapper we
 /// can use, but there might still be some conversion stuff to deal with
-pub struct BodyReadBuffer<B, T>(pub T)
+pub struct BodyReadBuffer<B, T, E>(pub T)
 where
     B: Buf,
-    T: Stream<Item = Result<B, warp::Error>> + Unpin;
+    T: Stream<Item = Result<B, E>> + Unpin,
+    E: std::error::Error;
 
-impl<B, T> AsyncRead for BodyReadBuffer<B, T>
+impl<'a, B, T, E> AsyncRead for BodyReadBuffer<B, T, E>
 where
     B: Buf,
-    T: Stream<Item = Result<B, warp::Error>> + Unpin,
+    T: Stream<Item = Result<B, E>> + Unpin,
+    E: std::error::Error + Send + Sync + 'a,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -36,7 +38,12 @@ where
             Ok(b) => b,
             // There isn't much of a way to introspect a warp error easily so we can't really
             // provide much context here with the right kind
-            Err(e) => return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e))),
+            Err(e) => {
+                return Poll::Ready(Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("{:?}", e), // dirty hack to get around lifetimes
+                )));
+            }
         };
 
         Poll::Ready(buffer.reader().read(buf))

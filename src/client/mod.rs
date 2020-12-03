@@ -17,6 +17,8 @@ use reqwest::{Body, RequestBuilder, StatusCode};
 use tokio::stream::{Stream, StreamExt};
 use url::Url;
 
+use crate::Id;
+
 pub use error::ClientError;
 
 pub type Result<T> = std::result::Result<T, ClientError>;
@@ -113,10 +115,11 @@ impl Client {
     /// the bindle (e.g. `example.com/foo/1.0.0`)
     pub async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
-        I: TryInto<crate::Id, Error = crate::id::ParseError>,
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
     {
         // Validate the id
-        let parsed_id = id.try_into()?;
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
         let req = self.client.get(self.base_url.join(&format!(
             "{}/{}",
             INVOICE_ENDPOINT,
@@ -151,9 +154,10 @@ impl Client {
     /// (e.g. `example.com/foo/1.0.0`)
     pub async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
-        I: TryInto<crate::Id, Error = crate::id::ParseError>,
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
     {
-        let parsed_id = id.try_into()?;
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
         let req = self.client.delete(self.base_url.join(&format!(
             "{}/{}",
             INVOICE_ENDPOINT,

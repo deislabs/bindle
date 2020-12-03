@@ -1,6 +1,8 @@
 #![macro_use]
 extern crate serde;
 
+#[cfg(feature = "caching")]
+pub mod cache;
 #[cfg(feature = "client")]
 pub mod client;
 pub mod id;
@@ -8,6 +10,7 @@ pub mod search;
 #[cfg(feature = "server")]
 pub mod server;
 pub mod storage;
+pub(crate) mod stream_util;
 
 pub use id::Id;
 pub use search::Matches;
@@ -19,7 +22,7 @@ use std::collections::BTreeMap;
 
 use search::SearchOptions;
 
-pub const BINDLE_VERSION_1: &str = "v1.0.0";
+pub const BINDLE_VERSION_1: &str = "1.0.0";
 
 /// The main structure for a Bindle invoice.
 ///

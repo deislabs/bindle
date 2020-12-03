@@ -48,20 +48,22 @@ impl Reply for Toml {
 pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
     let mut error = error;
     let status_code = match &error {
-        StorageError::Yanked => StatusCode::BAD_REQUEST,
         StorageError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
         StorageError::NotFound => StatusCode::NOT_FOUND,
-        StorageError::IO(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        StorageError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Remap the error in the case this is a not found error
             error = StorageError::NotFound;
             StatusCode::NOT_FOUND
         }
-        StorageError::IO(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        StorageError::Exists => StatusCode::BAD_REQUEST,
-        StorageError::Malformed(_) => StatusCode::BAD_REQUEST,
-        StorageError::Unserializable(_) => StatusCode::BAD_REQUEST,
-        StorageError::DigestMismatch => StatusCode::BAD_REQUEST,
-        StorageError::InvalidId => StatusCode::BAD_REQUEST,
+        StorageError::Exists
+        | StorageError::Malformed(_)
+        | StorageError::Unserializable(_)
+        | StorageError::DigestMismatch
+        | StorageError::InvalidId
+        | StorageError::Yanked => StatusCode::BAD_REQUEST,
+        StorageError::Other(_) | StorageError::CacheError(_) | StorageError::Io(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     };
 
     reply_from_error(error, status_code)

@@ -84,7 +84,7 @@ pub mod v1 {
         }
     }
 
-    pub async fn get_invoice<S: Storage>(
+    pub async fn get_invoice<S: Storage + Sync>(
         tail: warp::path::Tail,
         query: InvoiceQuery,
         store: S,
@@ -132,7 +132,7 @@ pub mod v1 {
         ))
     }
 
-    pub async fn head_invoice<S: Storage>(
+    pub async fn head_invoice<S: Storage + Sync>(
         tail: warp::path::Tail,
         query: InvoiceQuery,
         store: S,
@@ -203,7 +203,7 @@ pub mod v1 {
         if let Err(e) = store
             .create_parcel(
                 &label,
-                &mut crate::server::stream_util::BodyReadBuffer(file_part.stream()),
+                &mut crate::stream_util::BodyReadBuffer(file_part.stream()),
             )
             .await
         {
@@ -239,6 +239,9 @@ pub mod v1 {
 
         let stream = FramedRead::new(data, BytesCodec::new());
 
+        // TODO: If we start to use compression on the body, we'll need a new custom header for
+        // _actual_ size of the parcel, so the client can reconstruct the label data from headers
+        // without needing to read the whole (possibly large) file
         let resp = warp::http::Response::builder()
             .header(warp::http::header::CONTENT_TYPE, label.media_type)
             .header(warp::http::header::CONTENT_LENGTH, label.size)

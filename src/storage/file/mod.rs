@@ -213,18 +213,6 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             .collect())
     }
 
-    async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
-    where
-        I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
-    {
-        match self.get_yanked_invoice(id).await {
-            Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
-            Err(e) => Err(e),
-            _ => Err(StorageError::Yanked),
-        }
-    }
-
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id> + Send,
@@ -244,10 +232,12 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             invoice_path.display()
         );
         // Open file
-        let inv_toml = tokio::fs::read_to_string(invoice_path).await?;
+        let inv_toml = tokio::fs::read_to_string(invoice_path)
+            .await
+            .map_err(map_io_error)?;
 
         // Parse
-        let invoice: crate::Invoice = toml::from_str(inv_toml.as_str())?;
+        let invoice: crate::Invoice = toml::from_str(&inv_toml)?;
 
         // Return object
         Ok(invoice)
@@ -348,7 +338,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>> {
         debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
-        let reader = File::open(name).await?;
+        let reader = File::open(name).await.map_err(map_io_error)?;
         Ok(Box::new(reader))
     }
 
@@ -361,6 +351,13 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Return object
         Ok(label)
     }
+}
+
+fn map_io_error(e: std::io::Error) -> StorageError {
+    if matches!(e.kind(), std::io::ErrorKind::NotFound) {
+        return StorageError::NotFound;
+    }
+    return StorageError::from(e);
 }
 
 /// An internal wrapper to implement `AsyncWrite` on Sha256
@@ -428,7 +425,7 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
     let hasher = match hasher.into_inner() {
         Ok(h) => h,
         Err(_) => {
-            return Err(StorageError::IO(std::io::Error::new(
+            return Err(StorageError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "data write corruption, mutex poisoned",
             )))
