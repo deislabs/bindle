@@ -56,8 +56,10 @@ impl Id {
     /// name. The hash is guaranteed to be in the character set [a-zA-Z0-9].
     pub fn sha(&self) -> String {
         let mut hasher = Sha256::new();
-        hasher.update(self.name.as_bytes());
-        hasher.update(self.version_string().as_bytes());
+        hasher.update(&self.name);
+        // Add in the slash between the name and the version
+        hasher.update("/");
+        hasher.update(self.version_string());
         let result = hasher.finalize();
         format!("{:x}", result)
     }
