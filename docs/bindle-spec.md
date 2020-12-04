@@ -34,48 +34,48 @@ Parcels are individual items identified by a hash (typically a SHA-256 digest). 
 Bindles are good for expressing the relationship between related chunks of data. Here are some examples of how Bindle may be used.
 
 ### Packaging a website.
- Bindle could be used to model a website by storing each HTML page, image, script, and stylesheet a `parcel`, and then creating an `invoice` that listed each parcel.
+Bindle could be used to model a website by storing each HTML page, image, script, and stylesheet a `parcel`, and then creating an `invoice` that listed each parcel.
 
- As the website changed and evolved, the `invoice` would be versioned (e.g. `v1.0.1`, then `v1.0.2`...). When the website is deployed, the deployment target inspects the `invoice` to see which `parcel`s changed. Then it installs just the changed `parcel`s. This can drastically cut down the amount of data that must be moved around with each website deployment
+As the website changed and evolved, the `invoice` would be versioned (e.g. `v1.0.1`, then `v1.0.2`...). When the website is deployed, the deployment target inspects the `invoice` to see which `parcel`s changed. Then it installs just the changed `parcel`s. This can drastically cut down the amount of data that must be moved around with each website deployment
 
- ### Packaging Programming Language Dependencies
+### Packaging Programming Language Dependencies
 
- Bindle can be used to package an application and its dependencies. For example, a typical Node.js application has many dependencies. A Bindle may describe the top-level application.
+Bindle can be used to package an application and its dependencies. For example, a typical Node.js application has many dependencies. A Bindle may describe the top-level application.
 
- The first `parcel` in the invoice may point to the main application, while the rest of the `parcels` point to the specific dependencies of that application (i.e. the `package.lock` file would be represented as a list of `parcel`s).
+The first `parcel` in the invoice may point to the main application, while the rest of the `parcels` point to the specific dependencies of that application (i.e. the `package.lock` file would be represented as a list of `parcel`s).
 
- During deployment, the Bindle manager could deploy just the resources that have changed since the last deployment.
+During deployment, the Bindle manager could deploy just the resources that have changed since the last deployment.
 
- This is an illustration of how this might work for a programming language. Of course, in this case it might not add value over above NPM, but one could imagine implementing a programming language dependency manager that uses Bindle as a backend.
+This is an illustration of how this might work for a programming language. Of course, in this case it might not add value over above NPM, but one could imagine implementing a programming language dependency manager that uses Bindle as a backend.
 
- ### An Operating System Package Manager
+### An Operating System Package Manager
 
- Bindle can be used to package program like a traditional package manager. In this case, an application binary is packaged as a `parcel`, and all of its dependencies are also packaged as `parcel`s. Bindle can tell very quickly and precisely whether a program's dependencies are present and at the correct version.
+Bindle can be used to package program like a traditional package manager. In this case, an application binary is packaged as a `parcel`, and all of its dependencies are also packaged as `parcel`s. Bindle can tell very quickly and precisely whether a program's dependencies are present and at the correct version.
 
- Moreover, Bindle supports conditional groups, which means a single package could allow the user to conditionally install some behaviors, add-ons, and dependencies. Examples that Bindle can support:
+Moreover, Bindle supports conditional groups, which means a single package could allow the user to conditionally install some behaviors, add-ons, and dependencies. Examples that Bindle can support:
 
- - My application requires a Borne-style shell, which could be Bash, Korn, Zsh, or Busybox. At least one of these must be present.
- - My application has several optional add-ons that the user can choose from (though none are required).
- - My application needs to have at least one web server installed, but if the user chooses to install Apache, it must also install a special Apache module. Bindle can express these kinds of conditional chains.
+- My application requires a Borne-style shell, which could be Bash, Korn, Zsh, or Busybox. At least one of these must be present.
+- My application has several optional add-ons that the user can choose from (though none are required).
+- My application needs to have at least one web server installed, but if the user chooses to install Apache, it must also install a special Apache module. Bindle can express these kinds of conditional chains.
 
- ### A Really Awesome Distributed Execution Environment in WebAssembly
+### A Really Awesome Distributed Execution Environment in WebAssembly
 
- Bindle can express that on some systems, one `parcel` will do the trick, while on another system, a different `parcel` should be chosen. Furthermore, it can enable one system to request of another system that it needs the other system to run a very specific workload on its behalf.
+Bindle can express that on some systems, one `parcel` will do the trick, while on another system, a different `parcel` should be chosen. Furthermore, it can enable one system to request of another system that it needs the other system to run a very specific workload on its behalf.
 
- If that doesn't make sense, you haven't seen Stargazer Tian-yan yet.
+If that doesn't make sense, you haven't seen Stargazer Tian-yan yet.
 
- ## Top-level Generalizations
+## Top-level Generalizations
 
- - Unless stated otherwise, all text MUST be encoded as UTF-8
- - Bindle uses the TOML format for text files. See the [TOML specification](https://toml.io/en/v1.0.0-rc.2).
- - The specification is intended to be cross-platform, covering Windows, macOS, and a variety of UNIXes
- - The term _version_ in this spec refers to [Semantic Versioning](https://semver.org) unless stated otherwise
+- Unless stated otherwise, all text MUST be encoded as UTF-8
+- Bindle uses the TOML format for text files. See the [TOML specification](https://toml.io/en/v1.0.0-rc.2).
+- The specification is intended to be cross-platform, covering Windows, macOS, and a variety of UNIXes
+- The term _version_ in this spec refers to [Semantic Versioning](https://semver.org) unless stated otherwise
 
- ## The Specifications
+## The Specifications
 
- - Start with the [Invoice Specification](invoice-spec.md) to learn about the top-level description of a Bindle
- - The [Parcel Specification](parcel-spec.md) describes the parts of a parcel
- - The [Label Specification](label-spec) descries a parcel's label TOML file
- - The [Protocol Specification](protocol-spec) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.
-
- And for reference, if TOML is new for you, read the 
+- Start with the [Invoice Specification](invoice-spec.md) to learn about the top-level description of a Bindle
+- The [Parcel Specification](parcel-spec.md) describes the parts of a parcel
+- The [Label Specification](label-spec.md) descries a parcel's label TOML file
+- The [Protocol Specification](protocol-spec.md) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.
+- The [Signing Specification](signing-spec.md) describes how Bindles may be signed and verified
+- The [Standalone Bindle Specification](standalond-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact
