@@ -1,12 +1,14 @@
 use std::path::PathBuf;
 
-use bindle::cache::{Cache, DumbCache};
 use bindle::client::{Client, ClientError, Result};
 use bindle::storage::StorageError;
+use bindle::{
+    cache::{Cache, DumbCache},
+    storage::Storage,
+};
 use clap::Clap;
 use log::warn;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::stream::{Stream, StreamExt};
+use tokio::io::AsyncWriteExt;
 
 const DESCRIPTION: &str = r#"
 The Bindle Client
@@ -67,6 +69,12 @@ enum SubCommand {
 struct Info {
     #[clap(index = 1, value_name = "BINDLE")]
     bindle_id: String,
+    #[clap(
+        short = 'y',
+        long = "yanked",
+        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+    )]
+    yanked: bool,
 }
 
 #[derive(Clap)]
@@ -78,6 +86,12 @@ struct Push {
 struct Get {
     #[clap(index = 1, value_name = "BINDLE")]
     bindle_id: String,
+    #[clap(
+        short = 'y',
+        long = "yanked",
+        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+    )]
+    yanked: bool,
 }
 
 #[derive(Clap)]
@@ -166,6 +180,12 @@ struct GetInvoice {
         about = "The location where to output the invoice to"
     )]
     output: PathBuf,
+    #[clap(
+        short = 'y',
+        long = "yanked",
+        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+    )]
+    yanked: bool,
 }
 
 #[tokio::main]
@@ -186,11 +206,21 @@ async fn main() -> std::result::Result<(), ClientError> {
 
     match opts.subcmd {
         SubCommand::Info(info_opts) => {
-            let inv = bindle_client.get_invoice(info_opts.bindle_id).await?;
+            let inv = match info_opts.yanked {
+                true => cache.get_invoice(info_opts.bindle_id),
+                false => cache.get_yanked_invoice(info_opts.bindle_id),
+            }
+            .await
+            .map_err(map_storage_error)?;
             tokio::io::stdout().write_all(&toml::to_vec(&inv)?).await?;
         }
         SubCommand::GetInvoice(gi_opts) => {
-            let inv = bindle_client.get_invoice(&gi_opts.bindle_id).await?;
+            let inv = match gi_opts.yanked {
+                true => cache.get_invoice(&gi_opts.bindle_id),
+                false => cache.get_yanked_invoice(&gi_opts.bindle_id),
+            }
+            .await
+            .map_err(map_storage_error)?;
             tokio::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true) // Make sure we aren't overwriting
@@ -204,41 +234,47 @@ async fn main() -> std::result::Result<(), ClientError> {
                 gi_opts.output.display()
             );
         }
-        SubCommand::GetParcel(gp_opts) => get_parcel(bindle_client, gp_opts).await?,
+        SubCommand::GetParcel(gp_opts) => get_parcel(cache, gp_opts).await?,
         SubCommand::Yank(yank_opts) => {
             bindle_client.yank_invoice(&yank_opts.bindle_id).await?;
             println!("Bindle {} yanked", yank_opts.bindle_id);
         }
         SubCommand::Search(search_opts) => {
+            // TODO: Do we want to use the cache for searching?
             let matches = bindle_client.query_invoices(search_opts.into()).await?;
             tokio::io::stdout()
                 .write_all(&toml::to_vec(&matches)?)
                 .await?;
         }
         SubCommand::Get(get_opts) => get_all(cache, get_opts).await?,
-        _ => return Err(ClientError::Other("Command unimplemented".to_string())),
+        SubCommand::Push(_) => return Err(ClientError::Other("Command unimplemented".to_string())),
     }
 
     Ok(())
 }
 
-async fn get_parcel(bindle_client: Client, opts: GetParcel) -> Result<()> {
-    let stream = bindle_client.get_parcel_stream(&opts.sha).await?;
-    let file = tokio::fs::OpenOptions::new()
+async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -> Result<()> {
+    let mut parcel = cache
+        .get_parcel(&opts.sha)
+        .await
+        .map_err(map_storage_error)?;
+    let mut file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true) // Make sure we aren't overwriting
         .open(&opts.output)
         .await?;
-    write_stream(stream, file).await?;
+    tokio::io::copy(&mut parcel, &mut file).await?;
     println!("Wrote parcel {} to {}", opts.sha, opts.output.display());
     Ok(())
 }
 
 async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<()> {
-    let inv = cache
-        .get_invoice(&opts.bindle_id)
-        .await
-        .map_err(map_storage_error)?;
+    let inv = match opts.yanked {
+        true => cache.get_invoice(opts.bindle_id),
+        false => cache.get_yanked_invoice(opts.bindle_id),
+    }
+    .await
+    .map_err(map_storage_error)?;
     println!("Fetched invoice. Starting fetch of parcels");
     let parcel_fetch = inv
         .parcel
@@ -271,19 +307,6 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
         .await
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
-    Ok(())
-}
-
-async fn write_stream<S, W>(mut stream: S, mut writer: W) -> Result<()>
-where
-    S: Stream<Item = Result<bytes::Bytes>> + Unpin,
-    W: AsyncWrite + Unpin,
-{
-    while let Some(b) = stream.next().await {
-        let b = b?;
-        writer.write_all(&b).await?;
-    }
-    writer.flush().await?;
     Ok(())
 }
 
