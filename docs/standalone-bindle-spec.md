@@ -22,7 +22,7 @@ The `parcels` directory MUST exist, but MAY be empty or contain multiple parcels
 
 ### Tarballs
 
-A standalone Bindle MAY be compressed into a `.tar.gz` file (i.e. tarball). However, it MUST expand into the same directory structure as described in the previous section.
+A standalone Bindle MAY be compressed into a `.tar.gz` file (i.e. tarball). However, it MUST expand into the same directory structure as described in the previous section. Implementations MAY, but are not required to, support the tarball format.
 
 ## Sending a Standalone Bindle
 
