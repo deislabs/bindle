@@ -164,21 +164,21 @@ mod test {
                 media_type: "text/toml".to_owned(),
                 name: "foo.toml".to_owned(),
                 size: 101,
-                annotations: None,
+                ..Default::default()
             },
             crate::Label {
                 sha256: "bbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo2.toml".to_owned(),
                 size: 101,
-                annotations: None,
+                ..Default::default()
             },
             crate::Label {
                 sha256: "cbcdef1234567890987654321".to_owned(),
                 media_type: "text/toml".to_owned(),
                 name: "foo3.toml".to_owned(),
                 size: 101,
-                annotations: None,
+                ..Default::default()
             },
         ];
 

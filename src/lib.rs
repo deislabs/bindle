@@ -39,6 +39,9 @@ use search::SearchOptions;
 /// The version string for the v1 Bindle Spec
 pub const BINDLE_VERSION_1: &str = "1.0.0";
 
+/// Alias for feature map in an Invoice's parcel
+type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
+
 /// The main structure for a Bindle invoice.
 ///
 /// The invoice describes a specific version of a bindle. For example, the bindle
@@ -96,10 +99,7 @@ impl Invoice {
     }
 }
 
-<<<<<<< HEAD
 /// Key identifying data for a Bindle. The most important being the [`Id`](crate::Id)
-||||||| merged common ancestors
-=======
 pub struct MetadataReference {
     group: String,
     name: String,
@@ -186,13 +186,16 @@ impl BindleFilter {
         // must take into account the 'required' flag. Subsequent passes do not.
         let groups = match self.invoice.group {
             Some(group) => {
-                group.iter().filter(|&i| {
-                    // Skip any group explicitly in the exclude list
-                    if self.exclude_groups.contains(&i.name) {
-                        return false;
-                    }
-                    i.required.unwrap_or(false) || self.groups.contains(&i.name)
-                })
+                group
+                    .iter()
+                    .filter(|&i| {
+                        // Skip any group explicitly in the exclude list
+                        if self.exclude_groups.contains(&i.name) {
+                            return false;
+                        }
+                        i.required.unwrap_or(false) || self.groups.contains(&i.name)
+                    })
+                    .collect()
             }
             // If there are no groups, then our current list of parcels is complete.
             None => vec![],
@@ -209,7 +212,6 @@ impl BindleFilter {
     }
 }
 
->>>>>>> initial add of bindle filters for parcels
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
@@ -230,7 +232,6 @@ pub struct Parcel {
     pub label: Label,
     pub conditions: Option<Condition>,
 }
-
 
 impl Parcel {
     pub fn member_of(&self, group: &str) -> bool {
@@ -472,5 +473,96 @@ mod test {
         let reqs = vec!["2", "%^&%^&%"];
         reqs.iter()
             .for_each(|r| assert!(!version_compare(&version, r)));
+    }
+
+    // That's right, YAML-loving world, I can RECKLESSLY INDENT this stuff WITHOUT
+    // causing the parser problems.
+    const test_bindle_filters_invoice: &str = r#"
+    bindleVersion = "1.0.0"
+
+    [bindle]
+    name = "example/weather-progressive"
+    version = "0.1.0"
+    authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+    description = "Weather Prediction"
+
+    [[group]]
+    name = "entrypoint"
+    satisfiedBy = "oneOf"
+    required = true
+
+    [[group]]
+    name = "ui-support"
+    satisfiedBy = "allOf"
+    required = false
+
+    [[parcel]]
+    [parcel.label]
+    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+    mediaType = "application/wasm"
+    name = "weather-ui.wasm"
+    size = 1710256
+    [parcel.label.feature.wasm]
+    ui-kit = "electron+sgu"
+    [parcel.conditions]
+    memberOf = ["entrypoint"]
+    requires = ["ui-support"]
+
+    [[parcel]]
+    [parcel.label]
+    sha256 = "048264cef43e4fead1701e48f3287d35386474cb"
+    mediaType = "application/wasm"
+    name = "weather-cli.wasm"
+    size = 1410256
+    [parcel.conditions]
+    memberOf = ["entrypoint"]
+
+    [[parcel]]
+    [parcel.label]
+    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+    mediaType = "application/wasm"
+    name = "libalmanac.wasm"
+    size = 2561710
+    [parcel.label.feature.wasm]
+    type = "library"
+
+    [[parcel]]
+    [parcel.label]
+    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+    mediaType = "text/html"
+    name = "almanac-ui.html"
+    size = 2561710
+    [parcel.label.feature.wasm]
+    type = "data"
+    [parcel.conditions]
+    memberOf = ["ui-support"]
+
+    [[parcel]]
+    [parcel.label]
+    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+    mediaType = "text/css"
+    name = "styles.css"
+    size = 2561710
+    [parcel.label.feature.wasm]
+    type = "data"
+    [parcel.conditions]
+    memberOf = ["ui-support"]
+
+    [[parcel]]
+    [parcel.label]
+    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+    mediaType = "application/wasm"
+    name = "uibuilder.wasm"
+    size = 2561710
+    [parcel.label.feature.wasm]
+    type = "library"
+    [parcel.conditions]
+    memberOf = ["ui-support"]
+    "#;
+
+    #[test]
+    fn test_bindle_filters() {
+        let inv: Invoice =
+            toml::from_str(test_bindle_filters_invoice).expect("test invoice parsed");
     }
 }
