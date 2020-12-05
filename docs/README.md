@@ -53,8 +53,13 @@ To learn more about the Bindle command, run `bindle --help`.
 
 ## Specification
 
-The specification for the Bindle format and design begins with the [Bindle Specification](bindle-spec.md).
-The [invoice spec](invoice-spec.md) describes the invoice format.
-The [parcel spec](parcel-spec.md) defines the parcel format.
-The [label spec](label-spec.md) describes the parcel label format.
-Finally, the [protocol specification](protocol-spec.md) describes the HTTP protocol for storing and retrieving Bindles.
+1. The specification for the Bindle format and design begins with the [Bindle Specification](bindle-spec.md).
+2. The [invoice spec](invoice-spec.md) describes the invoice format.
+3. The [parcel spec](parcel-spec.md) defines the parcel format.
+4. The [label spec](label-spec.md) describes the parcel label format.
+5. Finally, the [protocol specification](protocol-spec.md) describes the HTTP protocol for storing and retrieving Bindles.
+
+## Additional Docs
+
+- The [filesystem layout](file-layout.md) for Bindle is not a specification, but is described here
+- We have some [special use cases](webassembly.md) for WebAssembly. Many of these concepts apply to other languages/platforms as well.

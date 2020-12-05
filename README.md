@@ -1,28 +1,86 @@
 # Bindle: Aggregate Object Storage
 
-This repository is a :100: experimental code created by the DeisLab team on a whim. We
-really don't think you should use this in production.
+> This repository is a :100: experimental code created by the DeisLab team on a whim. We really don't think you should use this in production.
 
-## Manifesto
+## Aggregate Object Storage Means Keeping Related Things Together
 
-A specter is haunting the cloud-native ecosystem -- the specter of object storage. For too
-long, we have stored our binary artifacts using technologies now decades old. Old
-protocols, poor security, and complicated JSON have resulted in inferior performance and
-dangerous information leaks.
-With no way to associated related objects, we waste valuable runtime trying to re-assemble dependencies... or worse, we blindly re-download the same thing.
-But the sun breaks over the horizon as a new day dawns.
-Now is the daybreak of aggregate object storage.
+A photo album. A sock drawer. A bookshelf. We like storage solutions that less us keep related things in a single location.
 
-Bindle is a next-generation object storage system based on HTTP/2 and HTTP/3, strong TLS encryption,
-Merkel-tree hashing, and immutable storage. While inspired in part by OCI registries, it
-remedies the common problems of that system. Hashing is not volatile, there are no "mutable
-tags", SemVer is supported first-class, and access controls are hierarchical.
+Consider the humble silverware drawer. When we set the table for dinner, it's convenient to open one drawer and get the forks, spoons, and knives. Yes, a fork is a different thing than a knife. Yes, there are multiple different kinds of spoons. And, yes, silverware is not even uniform in size or shape brand-to-brand, model-to-model. Some people keep chopsticks with the silverware. Others toss in those tiny spreader things you use to slather on the cream cheese at a fancy party. In my house we keep the straws in the silverware drawer. Drawers are flexible. They can accommodate these variances.
+
+Bindle is the digital silverware drawer.
+
+More specifically, Bindle is an _aggregate object storage system_. Merriam-Webster defines an aggregate as "a mass or body of units or parts somewhat loosely associated with one another." The fundamental feature of Bindle is that it provides you with a way to group your associated objects into an organized and named unit. It thinks in terms of aggregates.
+
+### The Usefulness of Aggregate Object Storage
+
+Again with the silverware, the attraction of the metaphor is how relatable it is. We understand why we need silverware drawers. But why do we want aggregate object storage?
+
+Let's look at a classic C/C++ program developed in a UNIX-like environment. Many times, the modern C/C++ application makes use of shared objects (SOs). These are binary files that contain the compiled version of a shared library. Say we have a top-level program called `maple` that uses several shared object files. In order to execute our `maple` program, we need to make sure we have all of the required SO files present on the same filesystem as `maple`. And when moving `maple` to another system, we need to also move all of those SOs. So `maple` is really an aggregate application: To run it, we need to keep track several different pieces.
+
+We can jump to a different part of our tech stack for another example. A web application may have components in HTML, in JavaScript, CSS, and even images or other media. No one thing on that list is "the application." The application is an aggregate of all of those resources.
+
+In the last few years, we've even seen the emergence of large-scale distributed computing. In this world, aggregates of microservices together make up a single application. Indeed, as the industry progresses, it is essential that we learn how to capture the definition of an application as an aggregate of related programs.
+
+Bindle is a tool for treating the group of related parts as a thing itself. In geology an "aggregate" is a single chunk of rock that is composed of an assortment of individual minerals. Modern applications are like geological aggregates. We want to be able to talk about the individual parts, but within the context of the whole that they represent.
+
+### What Does an Aggregate Application Look Like?
+
+To take our web application example above, Bindle would see that application as a unit that looked something like this:
+
+```
+my-web-app 1.2.3
+  |- index.html
+  |- style.css
+  |- library.js
+  |- pretty-picture.jpg
+```
+
+Our top-level application, `my-web-app 1.2.3`, is composed of four individual parts that all need to be present. It's simultaneously important for us to talk about the aggregate as a whole while still appreciating the individuality of each of its parts.
+
+Bindle goes one step further, though: It allows you to express relationships between these parts. Keeping with the silverware drawer example, it lets you say "these are both spoons, but this spoon is only used when we are having soup, while that one is used for tea."
+
+To that end, Bindle supports a more complex notion of composition. We might have a case where one part of the application has requirements that can be satisfied by multiple different parts. Here's an example: Say we have an application that reads through a pool of sports data and makes projections about who will win this weekend's SportsBall game.
+
+A frontend is the user interface, and it connections to some prediction engine. The prediction engine might use a set of simple statistical prediction rules, or it might use a sophisticated machine learning algorithm. Which engine we use may be determined by a range of factors, including the capabilities of the system on which it is run or the accuracy demanded of the output.
+
+Bindle can model this situation by keeping all of the objects stored together, and letting the client figure out which combination it needs. So the Bindle looks like this:
+
+```
+sports-predictionator 2.0.0
+  |
+  |- preditionator-frontend
+  |- One of
+        |- lib-machine-learning
+        |- lib-statistical-prediction
+```
+
+A client with plenty of time and resources might select the lib-machine-learning one, while a constrained client might pick the simple statistical formulas. But the bindle describes both possibilities.
+
+While it is not apparent from these simple examples, Bindle provides information that helps runtimes make these decisions. Take a look at [the specifications](docs/bindle-spec.md) to get into the details.
+
+Still, there's a little more to the Bindle story.
+
+### Don't Store the Same Thing Twice
+
+Rewinding to our example of the C program that used shared objects, one important word in this design is _shared_. Modern applications, be they web applications or system tools, benefit from sharing. Bindle, too, cares about this. Sharing is also good when it comes to cost. "Storage is cheap." No, it's really not. And bandwidth charges are certainly far from cheap. Bindle is structured so that:
+
+1. An object is only stored once (where "object" here means "unique stream of bytes")
+2. Clients only have to pull objects they don't already have -- and it's easy for them to figure this out.
+3. Servers inform clients about when they need to send data. There's no reason for a client to be compelled to upload data that the server already has.
+4. All of this is done with [content addressable storage](https://en.wikipedia.org/wiki/Content-addressable_storage) and cryptographically secure hashing and signing.
+
+Because of this, Bindle can keep download times fast, bandwidth costs low, and storage space minimized--all without sacrificing data integrity.
+
+Enough with talk, let's get down to the business of using Bindle.
 
 ## Using Bindle
 
-This is a Rust project. Use `cargo run` to execute Bindle.
+This is a Rust project. The simplest way to get started is to clone this repository and then run `cargo run --bin bindle-serve`. That will start up a Bindle server.
 
-To run Bindle, see [the docs](docs/README.md).
+In a separate terminal, you can run `cargo run --bin bindle` to execute the client, but you may find it easier to `cargo build` and then use the `bindle` client as a compiled binary.
+
+For more, see [the docs](docs/README.md).
 
 ## Concepts
 
@@ -73,12 +131,15 @@ have some special features. Thus, we recommend using versioned bindle names:
 ### First-class Semver
 
 One frequently used convention in the software world is _versioning_. And one standard for
-version numbering is called [SemVer](https://semver.org). Bindle supports SemVer queries
-as a way of locating "near relatives" of bindles.
+version numbering is called [SemVer](https://semver.org). Bindle has strong support for SemVer. 
 
-For example, searching for `v1.2.3` of a bindle will return an exact version. Searching
-for `v1.2` will return the latest patch release of the 1.2 version of the bindle (which
-might be `v1.2.3` or perhaps `v1.2.4`, etc).
+Each Bindle invoice MUST have a semantic version. There is no `head` or `latest` in Bindle. Every release is named with a specific version number. With this strong notion of versioning, we can track exact objects with no ambiguity. (Remember, Bindles are immutable. A version number is always attached to exactly one release.)
+
+And SemVer queries are a way of locating "near relatives" of bindles.
+
+For example, searching for `1.2.3` of a bindle will return an exact version. Searching
+for `1.2` will return the latest patch release of the 1.2 version of the bindle (which
+might be `1.2.3` or perhaps `1.2.4`, etc).
 
 Version ranges must be explicitly requested _as queries_. A direct fetch against `v1.2`
 will only return a bindle whose version string is an exact match to `v1.2`. But a version
@@ -93,4 +154,4 @@ for Bindle. The best place to start is with the [Bindle Specification](docs/bind
 
 The word "bindle" means a cloth-wrapped parcel, typically of clothing. In popular U.S. 
 culture, hobos were portrayed as carrying bindles represented as a stick with a
-handkerchief-wrapped bindle at the end. Also, it sounds cute.
+handkerchief-wrapped bundle at the end. Also, it sounds cute.
