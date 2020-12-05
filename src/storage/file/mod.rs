@@ -67,6 +67,7 @@ impl<T: Search + Send + Sync> FileStorage<T> {
         // Read all invoices
         debug!("Beginning index warm from {}", self.root.display());
         let mut total_indexed: u64 = 0;
+        // TODO: this is not async and should be
         for e in self.invoice_path("").read_dir()? {
             let p = match e {
                 Ok(path) => path.path(),
@@ -357,17 +358,17 @@ fn map_io_error(e: std::io::Error) -> StorageError {
     if matches!(e.kind(), std::io::ErrorKind::NotFound) {
         return StorageError::NotFound;
     }
-    return StorageError::from(e);
+    StorageError::from(e)
 }
 
 /// An internal wrapper to implement `AsyncWrite` on Sha256
-struct AsyncSha256 {
+pub(crate) struct AsyncSha256 {
     inner: Mutex<Sha256>,
 }
 
 impl AsyncSha256 {
     /// Equivalent to the `Sha256::new()` function
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         AsyncSha256 {
             inner: Mutex::new(Sha256::new()),
         }
@@ -375,7 +376,7 @@ impl AsyncSha256 {
 
     /// Consumes self and returns the bare Sha256. This should only be called once you are done
     /// writing. This will only return an error if for some reason the underlying mutex was poisoned
-    fn into_inner(self) -> std::sync::LockResult<Sha256> {
+    pub(crate) fn into_inner(self) -> std::sync::LockResult<Sha256> {
         self.inner.into_inner()
     }
 }

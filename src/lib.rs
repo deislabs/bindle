@@ -1,6 +1,7 @@
 #![macro_use]
 extern crate serde;
 
+pub mod async_util;
 #[cfg(feature = "caching")]
 pub mod cache;
 #[cfg(feature = "client")]
@@ -9,8 +10,9 @@ pub mod id;
 pub mod search;
 #[cfg(feature = "server")]
 pub mod server;
+#[cfg(feature = "client")]
+pub mod standalone;
 pub mod storage;
-pub(crate) mod stream_util;
 
 pub use id::Id;
 pub use search::Matches;

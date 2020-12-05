@@ -203,7 +203,7 @@ pub mod v1 {
         if let Err(e) = store
             .create_parcel(
                 &label,
-                &mut crate::stream_util::BodyReadBuffer(file_part.stream()),
+                &mut crate::async_util::BodyReadBuffer(file_part.stream()),
             )
             .await
         {
