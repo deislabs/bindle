@@ -18,7 +18,8 @@ where
             .or(v1::invoice::yank(store.clone()))
             .or(v1::parcel::create(store.clone()))
             .or(v1::parcel::get(store.clone()))
-            .or(v1::parcel::head(store)),
+            .or(v1::parcel::head(store.clone()))
+            .or(v1::relationships::get_missing_parcels(store)),
     )
 }
 
@@ -142,6 +143,25 @@ pub mod v1 {
                 .and(warp::head())
                 .and(with_store(store))
                 .and_then(head_parcel)
+        }
+    }
+
+    pub mod relationships {
+        use super::*;
+
+        pub fn get_missing_parcels<S>(
+            store: S,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        where
+            S: Storage + Clone + Send + Sync,
+        {
+            // For some reason, using the `path!` macro here was causing matching problems
+            warp::path("_r")
+                .and(warp::path("missing"))
+                .and(warp::path::tail())
+                .and(warp::get())
+                .and(with_store(store))
+                .and_then(get_missing)
         }
     }
 }

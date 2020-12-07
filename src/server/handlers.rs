@@ -270,6 +270,57 @@ pub mod v1 {
         })
     }
 
+    //////////// Relationship Functions ////////////
+
+    pub async fn get_missing<S: Storage + Sync + Clone>(
+        tail: warp::path::Tail,
+        store: S,
+    ) -> Result<impl warp::Reply, Infallible> {
+        let id = tail.as_str();
+
+        let inv = match store.get_invoice(id).await {
+            Ok(i) => i,
+            Err(e) => {
+                println!("Got error during invoice fetch: {:?}", e);
+                trace!("Got error during get missing request: {:?}", e);
+                return Ok(reply::into_reply(e));
+            }
+        };
+
+        let missing_futures = inv
+            .parcel
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| (p, store.clone()))
+            .map(|(p, store)| async move {
+                // We can't use a filter_map with async, so we need to map first, then collect things with a filter
+                match store.get_label(&p.label.sha256).await {
+                    // If it exists, don't include it
+                    Ok(_) => Ok(None),
+                    Err(e) if matches!(e, crate::storage::StorageError::NotFound) => {
+                        Ok(Some(p.label))
+                    }
+                    Err(e) => Err(e),
+                }
+            });
+
+        let missing = match futures::future::join_all(missing_futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<Option<crate::Label>>, crate::storage::StorageError>>()
+        {
+            Ok(m) => m.into_iter().flatten().collect::<Vec<crate::Label>>(),
+            Err(e) => {
+                trace!("Got error during get missing request: {:?}", e);
+                return Ok(reply::into_reply(e));
+            }
+        };
+        Ok(warp::reply::with_status(
+            reply::toml(&crate::MissingParcelsResponse { missing }),
+            warp::http::StatusCode::OK,
+        ))
+    }
+
     //////////// Helper Functions ////////////
 
     /// unwraps the option result from a form data stream to avoid double unwrapping littered all

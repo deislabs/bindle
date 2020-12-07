@@ -346,7 +346,9 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn get_label(&self, parcel_id: &str) -> Result<crate::Label> {
         debug!("Getting label for parcel sha {}", parcel_id);
         let label_path = self.label_toml_path(parcel_id);
-        let label_toml = tokio::fs::read_to_string(label_path).await?;
+        let label_toml = tokio::fs::read_to_string(label_path)
+            .await
+            .map_err(map_io_error)?;
         let label: crate::Label = toml::from_str(label_toml.as_str())?;
 
         // Return object

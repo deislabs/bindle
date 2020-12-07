@@ -134,6 +134,14 @@ pub struct InvoiceCreateResponse {
     pub missing: Option<Vec<Label>>,
 }
 
+/// A custom wrapper for a missing parcels response. TOML doesn't support top level arrays, so they
+/// must be embedded in a table
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct MissingParcelsResponse {
+    pub missing: Vec<Label>,
+}
+
 /// A string error message returned from the server
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {

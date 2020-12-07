@@ -337,27 +337,26 @@ async fn test_queries() {
     let matches: bindle::Matches =
         toml::from_slice(res.body()).expect("Unable to deserialize response");
 
-    println!("{:?}", matches);
-
     // NOTE: This is currently broken in the code. It is being fixed and this should be uncommented
-    // assert_eq!(
-    //     matches.invoices.len(),
-    //     2,
-    //     "Expected to get multiple invoice matches"
-    // );
+    assert_eq!(
+        matches.invoices.len(),
+        2,
+        "Expected to get multiple invoice matches"
+    );
 
-    // // Make sure the query was set
-    // assert_eq!(
-    //     matches.query, "enterprise.com/warpcore",
-    //     "Response did not contain the query data"
-    // );
+    // Make sure the query was set
+    assert_eq!(
+        matches.query, "enterprise.com/warpcore",
+        "Response did not contain the query data"
+    );
 
-    // for inv in matches.invoices.into_iter() {
-    //     assert_eq!(
-    //         inv.bindle.name, "enterprise.com/warpcore",
-    //         "Didn't get the correct bindle"
-    //     );
-    // }
+    for inv in matches.invoices.into_iter() {
+        assert_eq!(
+            inv.bindle.id.name(),
+            "enterprise.com/warpcore",
+            "Didn't get the correct bindle"
+        );
+    }
 
     // Test loose query term filter (e.g. example.com/), this also doesn't work yet
 
@@ -384,4 +383,57 @@ async fn test_queries() {
     // Test yank
 
     // Test limit/offset
+}
+
+#[tokio::test]
+async fn test_missing() {
+    let (store, index) = common::setup().await;
+
+    let api = bindle::server::routes::api(store.clone(), index);
+
+    let scaffold = common::Scaffold::load("lotsa_parcels").await;
+    store
+        .create_invoice(&scaffold.invoice)
+        .await
+        .expect("Unable to load in invoice");
+    let mut parcel_data =
+        std::io::Cursor::new(scaffold.parcel_files.get("parcel").unwrap().clone());
+    store
+        .create_parcel(scaffold.labels.get("parcel").unwrap(), &mut parcel_data)
+        .await
+        .expect("Unable to create parcel");
+
+    let res = warp::test::request()
+        .method("GET")
+        .path(&format!("/v1/_r/missing/{}", scaffold.invoice.bindle.id))
+        .reply(&api)
+        .await;
+
+    assert_eq!(
+        res.status(),
+        warp::http::StatusCode::OK,
+        "Body: {}",
+        String::from_utf8_lossy(res.body())
+    );
+
+    let resp: bindle::MissingParcelsResponse =
+        toml::from_slice(res.body()).expect("should be valid invoice response TOML");
+
+    assert_eq!(
+        resp.missing.len(),
+        2,
+        "Expected 2 missing parcels, got {}",
+        resp.missing.len()
+    );
+
+    assert!(
+        resp.missing.iter().any(|l| l.name.contains("crate")),
+        "Missing labels does not contain correct data: {:?}",
+        resp.missing
+    );
+    assert!(
+        resp.missing.iter().any(|l| l.name.contains("barrel")),
+        "Missing labels does not contain correct data: {:?}",
+        resp.missing
+    );
 }
