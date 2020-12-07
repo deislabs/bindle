@@ -324,6 +324,8 @@ async fn generate_label(
             .to_string()
     });
     info!("Using media type {}", media_type);
+    // Note: Should be able to unwrap here because the file opening step would have
+    // failed in conditions where this returns `None`
     let name = name.unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().to_string());
     info!("Using name {}", name);
     let size = file.metadata().await?.len();
@@ -335,8 +337,6 @@ async fn generate_label(
         sha256: format!("{:x}", result),
         media_type,
         size,
-        // Note: Should be able to unwrap here because the file opening step would have
-        // failed in conditions where this returns `None`
         name,
         annotations: None, // TODO: allow annotations from command line
     })
@@ -359,49 +359,7 @@ async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -
 
 async fn push_all(client: Client, opts: Push) -> Result<()> {
     let standalone = StandaloneRead::new(opts.path, &opts.bindle_id).await?;
-
-    // TODO: Implement checking for already existing invoices and bindles
-    let inv_create = client
-        .create_invoice_from_file(standalone.invoice_file)
-        .await?;
-    let missing = inv_create.missing.unwrap_or_default();
-    let to_upload: Vec<(bindle::Label, PathBuf)> = standalone
-        .parcels
-        .into_iter()
-        .filter_map(|path| {
-            let sha = match path.file_stem() {
-                Some(s) => s.to_string_lossy().to_string(),
-                None => return None,
-            };
-            Some((sha, path))
-        })
-        .filter_map(|(sha, path)| {
-            if let Some(label) = missing.iter().find(|label| label.sha256 == sha) {
-                Some((label.clone(), path))
-            } else {
-                info!("Parcel {} not in missing parcels, skipping...", sha);
-                None
-            }
-        })
-        .collect();
-
-    // NOTE: This will not work with streams until reqwest cuts a new release with the mutltipart
-    // fix I added, so right now we are loading the files in memory
-    let parcel_futures = to_upload
-        .into_iter()
-        .map(|(label, path)| (label, path, client.clone()))
-        .map(|(label, path, client)| async move {
-            let raw = tokio::fs::read(path).await?;
-            info!("Uploading parcel {} to server", label.sha256);
-            let label = client.create_parcel(label, raw).await?;
-            info!("Finished uploading parcel {} to server", label.sha256);
-            Ok(())
-        });
-
-    futures::future::join_all(parcel_futures)
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+    standalone.push(&client).await?;
     println!("Pushed bindle {}", opts.bindle_id);
     Ok(())
 }

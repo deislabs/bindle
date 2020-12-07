@@ -55,8 +55,8 @@ pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
             error = StorageError::NotFound;
             StatusCode::NOT_FOUND
         }
-        StorageError::Exists
-        | StorageError::Malformed(_)
+        StorageError::Exists => StatusCode::CONFLICT,
+        StorageError::Malformed(_)
         | StorageError::Unserializable(_)
         | StorageError::DigestMismatch
         | StorageError::InvalidId => StatusCode::BAD_REQUEST,

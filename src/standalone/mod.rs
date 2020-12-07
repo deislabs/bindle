@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
-use log::debug;
+use log::{debug, info};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::stream::{Stream, StreamExt};
 
-use crate::client::{ClientError, Result};
+use crate::client::{Client, ClientError, Result};
 use crate::Id;
 
 /// The name of the invoice file
@@ -61,6 +61,84 @@ impl StandaloneRead {
     }
 
     // TODO: from a tarball
+
+    /// Push this standalone bindle to a bindle server using the given client. This function will
+    /// automatically handle cases where the invoice or some of the parcels already exist on the
+    /// target bindle server
+    pub async fn push(&self, client: &Client) -> Result<()> {
+        let inv_create = create_or_get_invoice(client, &self.invoice_file).await?;
+        let missing = inv_create.missing.unwrap_or_default();
+        let to_upload: Vec<(crate::Label, PathBuf)> = self
+            .parcels
+            .iter()
+            .filter_map(|path| {
+                let sha = match path.file_stem() {
+                    Some(s) => s.to_string_lossy().to_string(),
+                    None => return None,
+                };
+                Some((sha, path))
+            })
+            .filter_map(|(sha, path)| {
+                if let Some(label) = missing.iter().find(|label| label.sha256 == sha) {
+                    Some((label.clone(), path.clone()))
+                } else {
+                    info!("Parcel {} not in missing parcels, skipping...", sha);
+                    None
+                }
+            })
+            .collect();
+
+        debug!(
+            "Found {} parcels in this bindle that do not yet exist on the server: {:?}",
+            to_upload.len(),
+            to_upload
+        );
+        // NOTE: This will not work with streams until reqwest cuts a new release with the mutltipart
+        // fix I added, so right now we are loading the files in memory
+        let parcel_futures = to_upload
+            .into_iter()
+            .map(|(label, path)| (label, path, client.clone()))
+            .map(|(label, path, client)| async move {
+                let raw = tokio::fs::read(path).await?;
+                info!("Uploading parcel {} to server", label.sha256);
+                let label = client.create_parcel(label, raw).await?;
+                info!("Finished uploading parcel {} to server", label.sha256);
+                Ok(())
+            });
+
+        futures::future::join_all(parcel_futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+        Ok(())
+    }
+}
+
+/// Helper function for creating an invoice or fetching it if it already exists. For security
+/// reasons, we need to fetch the invoice (and its missing parcels) if it already exists as the user
+/// submitted one could be incorrect (intentionally or unintentionally)
+async fn create_or_get_invoice(
+    client: &Client,
+    invoice_path: &PathBuf,
+) -> Result<crate::InvoiceCreateResponse> {
+    // Load the invoice into memory so we can have access to its ID for fetching if needed
+    let inv: crate::Invoice = crate::client::load::toml(invoice_path).await?;
+    let id = inv.bindle.id.clone();
+    match client.create_invoice(inv).await {
+        Ok(resp) => Ok(resp),
+        Err(e) if matches!(e, crate::client::ClientError::InvoiceAlreadyExists) => {
+            info!("Invoice {} already exists on the bindle server. Fetching existing invoice and missing parcels list", id);
+            let invoice = client.get_invoice(&id).await?;
+            let missing = client.get_missing_parcels(id).await?;
+            let missing = if missing.is_empty() {
+                None
+            } else {
+                Some(missing)
+            };
+            Ok(crate::InvoiceCreateResponse { invoice, missing })
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// A type that can write all bindle data to the appropriate location

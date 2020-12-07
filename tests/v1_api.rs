@@ -156,7 +156,7 @@ async fn test_yank() {
 
     assert_eq!(
         res.status(),
-        warp::http::StatusCode::BAD_REQUEST,
+        warp::http::StatusCode::FORBIDDEN,
         "Body: {}",
         String::from_utf8_lossy(res.body())
     );
@@ -202,7 +202,7 @@ async fn test_invoice_validation() {
 
     assert_eq!(
         res.status(),
-        warp::http::StatusCode::BAD_REQUEST,
+        warp::http::StatusCode::CONFLICT,
         "Trying to upload existing invoice should fail"
     );
 
@@ -253,7 +253,7 @@ async fn test_parcel_validation() {
         .await;
     assert_eq!(
         res.status(),
-        warp::http::StatusCode::BAD_REQUEST,
+        warp::http::StatusCode::CONFLICT,
         "Body: {}",
         String::from_utf8_lossy(res.body())
     );
