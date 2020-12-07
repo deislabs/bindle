@@ -288,7 +288,7 @@ fn validate_shas<'a, T: Iterator<Item = &'a String>>(
         })
         .cloned()
         .collect();
-    if offending_shas.is_empty() {
+    if !offending_shas.is_empty() {
         Err(ClientError::Other(format!(
             "Got collection of parcels containing parcels that do not exist in the invoice: {}",
             offending_shas.join(", ")
