@@ -35,7 +35,7 @@ impl StandaloneRead {
     /// # }
     /// ```
     ///
-    /// In the above example, the `StandaloneWrite` will be configured to read  bindle data from the
+    /// In the above example, the `StandaloneWrite` will be configured to read bindle data from the
     /// `/foo/bar/187e908f466500c76c13953c3191fafa869c277e2689f451e92d75cda32452df` directory
     pub async fn new<P, I>(base_path: P, bindle_id: I) -> Result<StandaloneRead>
     where
