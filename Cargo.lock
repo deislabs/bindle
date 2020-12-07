@@ -103,6 +103,7 @@ dependencies = [
  "hyper 0.13.9",
  "log 0.4.11",
  "mime 0.3.16",
+ "mime_guess 2.0.3",
  "multipart",
  "reqwest",
  "semver",

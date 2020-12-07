@@ -105,7 +105,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                 // been read after we try to insert
                 let stream = match self
                     .inner
-                    .create_parcel(&label, &mut crate::stream_util::BodyReadBuffer(stream))
+                    .create_parcel(&label, &mut crate::async_util::BodyReadBuffer(stream))
                     .await
                 {
                     Ok(_) => return self.inner.get_parcel(parcel_id).await,
@@ -114,7 +114,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                         self.client.get_parcel_stream(parcel_id).await?
                     }
                 };
-                Ok(Box::new(crate::stream_util::BodyReadBuffer(stream)))
+                Ok(Box::new(crate::async_util::BodyReadBuffer(stream)))
             }
         }
     }

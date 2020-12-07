@@ -1,13 +1,15 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bindle::client::{Client, ClientError, Result};
+use bindle::standalone::StandaloneRead;
 use bindle::storage::StorageError;
 use bindle::{
     cache::{Cache, DumbCache},
     storage::Storage,
 };
 use clap::Clap;
-use log::warn;
+use log::{info, warn};
+use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 
 const DESCRIPTION: &str = r#"
@@ -63,6 +65,11 @@ enum SubCommand {
         about = "get only the specified invoice (does not download parcels) and store it to a specific location"
     )]
     GetInvoice(GetInvoice),
+    #[clap(
+        name = "generate-label",
+        about = "generates a label.toml for the given file"
+    )]
+    GenerateLabel(GenerateLabel),
 }
 
 #[derive(Clap)]
@@ -79,7 +86,15 @@ struct Info {
 
 #[derive(Clap)]
 struct Push {
-    // TODO: Do we want to take a path to an invoice and a directory containing parcels?
+    #[clap(index = 1, value_name = "BINDLE")]
+    bindle_id: String,
+    #[clap(
+        short = 'p',
+        long = "path",
+        default_value = "./",
+        about = "a path where the standalone bindle directory is located"
+    )]
+    path: PathBuf,
 }
 
 #[derive(Clap)]
@@ -188,6 +203,33 @@ struct GetInvoice {
     yanked: bool,
 }
 
+#[derive(Clap)]
+struct GenerateLabel {
+    #[clap(index = 1, value_name = "FILE")]
+    path: PathBuf,
+    #[clap(
+        short = 'o',
+        long = "output",
+        default_value = "./label.toml",
+        about = "The file where to output the label to"
+    )]
+    output: PathBuf,
+    #[clap(
+        short = 'n',
+        long = "name",
+        about = "the name of the parcel, defaults to the name + extension of the file"
+    )]
+    name: Option<String>,
+    #[clap(
+        short = 'm',
+        long = "media-type",
+        about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
+    )]
+    media_type: Option<String>,
+}
+
+// TODO: push file and push invoice
+
 #[tokio::main]
 async fn main() -> std::result::Result<(), ClientError> {
     let opts = Opts::parse();
@@ -247,10 +289,57 @@ async fn main() -> std::result::Result<(), ClientError> {
                 .await?;
         }
         SubCommand::Get(get_opts) => get_all(cache, get_opts).await?,
-        SubCommand::Push(_) => return Err(ClientError::Other("Command unimplemented".to_string())),
+        SubCommand::Push(push_opts) => push_all(bindle_client, push_opts).await?,
+        SubCommand::GenerateLabel(generate_opts) => {
+            let label = generate_label(
+                generate_opts.path,
+                generate_opts.name,
+                generate_opts.media_type,
+            )
+            .await?;
+            tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true) // Make sure we aren't overwriting
+                .open(&generate_opts.output)
+                .await?
+                .write_all(&toml::to_vec(&label)?)
+                .await?;
+            println!("Wrote label to {}", generate_opts.output.display());
+        }
     }
 
     Ok(())
+}
+
+async fn generate_label(
+    file_path: impl AsRef<Path>,
+    name: Option<String>,
+    media_type: Option<String>,
+) -> Result<bindle::Label> {
+    let path = file_path.as_ref().to_owned();
+    let mut file = tokio::fs::File::open(&path).await?;
+    let media_type = media_type.unwrap_or_else(|| {
+        mime_guess::from_path(&path)
+            .first_or_octet_stream()
+            .to_string()
+    });
+    info!("Using media type {}", media_type);
+    // Note: Should be able to unwrap here because the file opening step would have
+    // failed in conditions where this returns `None`
+    let name = name.unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().to_string());
+    info!("Using name {}", name);
+    let size = file.metadata().await?.len();
+    let mut sha = bindle::async_util::AsyncSha256::new();
+    tokio::io::copy(&mut file, &mut sha).await?;
+    let result = sha.into_inner().expect("data lock error").finalize();
+
+    Ok(bindle::Label {
+        sha256: format!("{:x}", result),
+        media_type,
+        size,
+        name,
+        annotations: None, // TODO: allow annotations from command line
+    })
 }
 
 async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -> Result<()> {
@@ -265,6 +354,13 @@ async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -
         .await?;
     tokio::io::copy(&mut parcel, &mut file).await?;
     println!("Wrote parcel {} to {}", opts.sha, opts.output.display());
+    Ok(())
+}
+
+async fn push_all(client: Client, opts: Push) -> Result<()> {
+    let standalone = StandaloneRead::new(opts.path, &opts.bindle_id).await?;
+    standalone.push(&client).await?;
+    println!("Pushed bindle {}", opts.bindle_id);
     Ok(())
 }
 

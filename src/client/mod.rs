@@ -26,6 +26,7 @@ pub type Result<T> = std::result::Result<T, ClientError>;
 const INVOICE_ENDPOINT: &str = "_i";
 const PARCEL_ENDPOINT: &str = "_p";
 const QUERY_ENDPOINT: &str = "_q";
+const RELATIONSHIP_ENDPOINT: &str = "_r";
 const TOML_MIME_TYPE: &str = "application/toml";
 
 #[derive(Clone)]
@@ -261,6 +262,25 @@ impl Client {
             .send()
             .await?;
         unwrap_status(resp, Endpoint::Parcel).await
+    }
+
+    //////////////// Relationship Endpoints ////////////////
+
+    pub async fn get_missing_parcels<I>(&self, id: I) -> Result<Vec<crate::Label>>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+    {
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
+        let req = self.client.get(self.base_url.join(&format!(
+            "{}/{}/{}",
+            RELATIONSHIP_ENDPOINT,
+            "missing",
+            parsed_id.to_string()
+        ))?);
+        let resp = req.send().await?;
+        let resp = unwrap_status(resp, Endpoint::Invoice).await?;
+        Ok(toml::from_slice::<crate::MissingParcelsResponse>(&resp.bytes().await?)?.missing)
     }
 }
 

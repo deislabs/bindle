@@ -17,6 +17,9 @@ HTTP Endpoints:
 - `/_p`
     - `POST`: Create a parcel if it does not already exist. This may be disallowed. This MUST post both the label and the parcel data with a `multipart/form-data` content type, with the label data as the first part in the request
 - `/_q`: The query endpoint
+- `/_r`: The relationships endpoint. This endpoint allows for querying of various relationships between parts of a bindle.
+    - `/_r/missing/{bindle-name}`: An endpoint for retrieving missing parcels in a bindle. `{bindle-name}` follows the same aforementioned rules around bindle naming
+        - `GET`: Returns a list of label objects for missing parcels (i.e. parcels that haven't been uploaded). Yanked bindles are not supported by this endpoint as parcels for yanked bindles should not be uploaded
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_p` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
 
@@ -34,7 +37,7 @@ A bindle that is marked `yanked = true` MUST be treated according to the followi
 - It MUST NOT be served in a `_q` query
 - It MUST NOT be accepted by a `POST` operation
 - The `DELETE` operation is a no-up on a yanked Bindle
-- A `GET` request should only be fulfilled if the `yanked=true` query parameter is set. In any other case, it should mark it as "access denied" (TODO: what is the actual HTTP code)
+- A `GET` request should only be fulfilled if the `yanked=true` query parameter is set. In any other case, it should mark it as "access denied"
     - If `yanked=true` in the query string, the server SHOULD serve the bindle unaltered, including the `invoice.toml`'s `yanked = true` attribute.
 - The query endpoint MUST NOT return yanked bindles unless the `yanked=true` parameter is set. If that optional parameter is not provided by the implementation, the implementation MUST NOT return yanked bindles in a query.
 
