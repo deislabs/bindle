@@ -75,7 +75,7 @@ pub enum StorageError {
     CreateYanked,
     #[error("resource not found")]
     NotFound,
-    #[error("resource could not be loaded")]
+    #[error("resource could not be loaded: {0:?}")]
     Io(#[from] std::io::Error),
     #[error("resource already exists")]
     Exists,
@@ -88,10 +88,9 @@ pub enum StorageError {
     #[error("cache fill error: {0:?}")]
     CacheError(#[from] crate::client::ClientError),
 
-    // TODO: Investigate how to make this more helpful
-    #[error("resource is malformed")]
+    #[error("resource is malformed: {0:?}")]
     Malformed(#[from] toml::de::Error),
-    #[error("resource cannot be stored")]
+    #[error("resource cannot be stored: {0:?}")]
     Unserializable(#[from] toml::ser::Error),
 
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying
