@@ -49,6 +49,13 @@ enum SubCommand {
         about = "push a bindle and all its parcels to the server"
     )]
     Push(Push),
+    #[clap(name = "push-invoice", about = "push an invoice file to the server")]
+    PushInvoice(PushInvoice),
+    #[clap(
+        name = "push-file",
+        about = "push an arbitrary file as a parcel to the server"
+    )]
+    PushFile(PushFile),
     #[clap(name = "get", about = "download the given bindle and all its parcels")]
     Get(Get),
     #[clap(name = "yank", about = "yank an existing bindle")]
@@ -228,6 +235,30 @@ struct GenerateLabel {
     media_type: Option<String>,
 }
 
+#[derive(Clap)]
+struct PushInvoice {
+    #[clap(index = 1, value_name = "FILE", default_value = "./invoice.toml")]
+    path: PathBuf,
+}
+
+#[derive(Clap)]
+struct PushFile {
+    #[clap(index = 1, value_name = "FILE")]
+    path: PathBuf,
+    #[clap(
+        short = 'n',
+        long = "name",
+        about = "the name of the parcel, defaults to the name + extension of the file"
+    )]
+    name: Option<String>,
+    #[clap(
+        short = 'm',
+        long = "media-type",
+        about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
+    )]
+    media_type: Option<String>,
+}
+
 // TODO: push file and push invoice
 
 #[tokio::main]
@@ -290,6 +321,22 @@ async fn main() -> std::result::Result<(), ClientError> {
         }
         SubCommand::Get(get_opts) => get_all(cache, get_opts).await?,
         SubCommand::Push(push_opts) => push_all(bindle_client, push_opts).await?,
+        SubCommand::PushInvoice(push_opts) => {
+            let resp = bindle_client
+                .create_invoice_from_file(push_opts.path)
+                .await?;
+            println!("Invoice {} created", resp.invoice.bindle.id);
+        }
+        SubCommand::PushFile(push_opts) => {
+            let label =
+                generate_label(&push_opts.path, push_opts.name, push_opts.media_type).await?;
+            // TODO: update this to use the from file method once we can update reqwest
+            println!("Uploading file {} to server", push_opts.path.display());
+            bindle_client
+                .create_parcel(label, tokio::fs::read(push_opts.path).await?)
+                .await?;
+            println!("File successfully uploaded");
+        }
         SubCommand::GenerateLabel(generate_opts) => {
             let label = generate_label(
                 generate_opts.path,

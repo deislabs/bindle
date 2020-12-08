@@ -9,6 +9,7 @@ use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncRead, AsyncWriteExt};
+use tokio::stream::StreamExt;
 
 use crate::search::Search;
 use crate::storage::{Result, Storage, StorageError};
@@ -67,8 +68,16 @@ impl<T: Search + Send + Sync> FileStorage<T> {
         // Read all invoices
         debug!("Beginning index warm from {}", self.root.display());
         let mut total_indexed: u64 = 0;
-        // TODO: this is not async and should be
-        for e in self.invoice_path("").read_dir()? {
+        // Check if the invoice directory exists. If it doesn't, this is likely the first time and
+        // we should just return
+        let invoice_path = self.invoice_path("");
+        match tokio::fs::metadata(&invoice_path).await {
+            Ok(_) => (),
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
+        let mut readdir = tokio::fs::read_dir(invoice_path).await?;
+        while let Some(e) = readdir.next().await {
             let p = match e {
                 Ok(path) => path.path(),
                 Err(e) => {
