@@ -26,7 +26,7 @@ tokio-util = "0.3"
 # Please node that many of these dependencies below this point that are out of date below here match
 # the versions as used in other dependencies (such as warp or reqwest). So don't change them before
 # the other crates change versions
-warp = "0.2"
+warp = { version = "0.2", features = ["tls"] }
 bytes = "0.5"
 async-trait = "0.1"
 futures = "0.3"
