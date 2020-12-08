@@ -1,8 +1,13 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
-use clap::{App, Arg};
+use clap::Clap;
 
-use bindle::{search, server::server, storage};
+use bindle::{
+    search,
+    server::{server, TlsConfig},
+    storage,
+};
 
 const DESCRIPTION: &str = r#"
 The Bindle Server
@@ -11,41 +16,70 @@ Bindle is a technology for storing and retrieving aggregate applications.
 This program runs an HTTP frontend for a Bindle repository.
 "#;
 
+#[derive(Clap)]
+#[clap(name = "bindle-server", version = "0.1.0", author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
+struct Opts {
+    #[clap(
+        short = 'i',
+        long = "address",
+        env = "BINDLE_IP_ADDRESS_PORT",
+        default_value = "127.0.0.1:8080",
+        about = "the IP address and port to listen on"
+    )]
+    address: String,
+    #[clap(
+        name = "bindle_directory",
+        short = 'd',
+        long = "directory",
+        env = "BINDLE_DIRECTORY",
+        default_value = "/tmp",
+        about = "the path to the directory in which bindles will be stored"
+    )]
+    bindle_directory: PathBuf,
+    #[clap(
+        name = "cert_path",
+        short = 'c',
+        long = "cert-path",
+        env = "BINDLE_CERT_PATH",
+        requires = "key_path",
+        about = "the path to the TLS certificate to use. If set, --key-path must be set as well. If not set, the server will use HTTP"
+    )]
+    cert_path: Option<PathBuf>,
+    #[clap(
+        name = "key_path",
+        short = 'k',
+        long = "key-path",
+        env = "BINDLE_KEY_PATH",
+        requires = "cert_path",
+        about = "the path to the TLS certificate key to use. If set, --cert-path must be set as well. If not set, the server will use HTTP"
+    )]
+    key_path: Option<PathBuf>,
+}
+
 #[tokio::main(threaded_scheduler)]
 async fn main() -> anyhow::Result<()> {
+    let opts = Opts::parse();
     env_logger::init();
-    let app = App::new("bindle-server")
-        .version("0.1.0")
-        .author("DeisLabs at Microsoft Azure")
-        .about(DESCRIPTION)
-        .arg(
-            Arg::new("address")
-                .short('i')
-                .long("address")
-                .value_name("IP_ADDRESS_PORT")
-                .about("the IP address and port to listen on")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("dir")
-                .short('d')
-                .long("directory")
-                .value_name("PATH")
-                .about("the path to the directory in which bindles will be stored")
-                .takes_value(true),
-        )
-        .get_matches();
 
-    let raw_addr = app.value_of("addr").unwrap_or("127.0.0.1:8080");
-    let dir = app.value_of("dir").unwrap_or("/tmp");
-    let addr: SocketAddr = raw_addr.parse()?;
+    let addr: SocketAddr = opts.address.parse()?;
     let index = search::StrictEngine::default();
-    let store = storage::file::FileStorage::new(dir, index.clone()).await;
+    let store = storage::file::FileStorage::new(&opts.bindle_directory, index.clone()).await;
 
     log::info!(
         "Starting server at {}, and serving bindles from {}",
-        raw_addr,
-        dir
+        addr.to_string(),
+        opts.bindle_directory.display()
     );
-    server(store, index, addr).await
+
+    // Map doesn't work here because we've already moved data out of opts
+    let tls = match opts.cert_path {
+        None => None,
+        Some(p) => Some(TlsConfig {
+            cert_path: p,
+            key_path: opts
+                .key_path
+                .expect("--key-path should be set if --cert-path was set"),
+        }),
+    };
+    server(store, index, addr, tls).await
 }
