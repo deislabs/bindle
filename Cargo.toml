@@ -6,9 +6,10 @@ edition = "2018"
 
 [features]
 default = ["server", "client", "caching"]
-server = []
-client = []
+server = ["warp"]
+client = ["reqwest", "mime_guess", "dirs"]
 caching = ["client"]
+cli = ["clap"]
 
 [dependencies]
 anyhow = "1.0"
@@ -26,18 +27,18 @@ tokio-util = "0.3"
 # Please node that many of these dependencies below this point that are out of date below here match
 # the versions as used in other dependencies (such as warp or reqwest). So don't change them before
 # the other crates change versions
-warp = { version = "0.2", features = ["tls"] }
+warp = { version = "0.2", features = ["tls"], optional = true }
 bytes = "0.5"
 async-trait = "0.1"
 futures = "0.3"
-clap = "3.0.0-beta.2"
-reqwest = { version = "0.10", features = ["stream"] }
+clap = { version = "3.0.0-beta.2", optional = true }
+reqwest = { version = "0.10", features = ["stream"], optional = true }
 hyper = "0.13"
 url = "2.2"
 log = "0.4.11"
 env_logger = "0.8"
-dirs = "3.0"
-mime_guess = "2.0"
+dirs = { version = "3.0", optional = true }
+mime_guess = { version = "2.0", optional = true }
 
 [dev-dependencies]
 multipart = "0.17"
@@ -46,15 +47,19 @@ mime = "0.3"
 [[bin]]
 name = "bindle-server"
 path = "bin/server.rs"
+required-features = ["cli"]
 
 [[bin]]
 name = "bindle"
 path = "bin/client.rs"
+required-features = ["cli"]
 
 [[bin]]
 name = "cargo2bindle"
 path = "bin/cargo2bindle.rs"
+required-features = ["cli"]
 
 [[bin]]
 name = "as2bindle"
 path = "bin/as2bindle.rs"
+required-features = ["cli"]

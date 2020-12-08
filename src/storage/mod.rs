@@ -85,6 +85,7 @@ pub enum StorageError {
     DigestMismatch,
     /// An error that occurs when the storage implementation uses a cache and filling that cache
     /// from another source encounters an error
+    #[cfg(feature = "caching")]
     #[error("cache fill error: {0:?}")]
     CacheError(#[from] crate::client::ClientError),
 
