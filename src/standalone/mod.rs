@@ -182,7 +182,8 @@ impl StandaloneWrite {
     ) -> anyhow::Result<()> {
         validate_shas(&inv, parcels.keys())?;
 
-        tokio::fs::create_dir_all(&self.base_path).await?;
+        // Should create all the directories needed down to the parcels directory
+        tokio::fs::create_dir_all(self.base_path.join(PARCEL_DIR)).await?;
 
         // Write the invoice into the directory
         write_invoice(&self.base_path, &inv).await?;
@@ -223,7 +224,8 @@ impl StandaloneWrite {
     {
         validate_shas(&inv, parcels.keys())?;
 
-        tokio::fs::create_dir_all(&self.base_path).await?;
+        // Should create all the directories needed down to the parcels directory
+        tokio::fs::create_dir_all(self.base_path.join(PARCEL_DIR)).await?;
 
         write_invoice(&self.base_path, &inv).await?;
 
