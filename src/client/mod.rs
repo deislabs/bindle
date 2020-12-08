@@ -186,37 +186,38 @@ impl Client {
         self.create_parcel_request(multipart).await
     }
 
-    /// Same as [`create_parcel`](Client::create_parcel), but takes paths to the label and parcel
-    /// files. This will be more efficient for large files as it will stream the data into the body
-    /// rather than taking the intermediate step of loading the bytes into a `Vec`
-    pub async fn create_parcel_from_files<L, D>(
+    /// Same as [`create_parcel`](Client::create_parcel), but takes a path to the parcel
+    /// file. This will be more efficient for large files as it will stream the data into the body
+    /// rather than taking the intermediate step of loading the bytes into a `Vec`.
+    ///
+    /// NOTE: Currently this function does not work due to a missing upstream dependency feature.
+    /// This feature has been added and we will update our code with the new version as soon as it
+    /// is available. Right now, this will return an error if called
+    pub async fn create_parcel_from_file<D: AsRef<Path>>(
         &self,
-        label_path: L,
-        data_path: D,
-    ) -> Result<crate::Label>
-    where
-        L: AsRef<Path>,
-        D: AsRef<Path>,
-    {
-        // Get copies of the path to avoid lifetime issues
-        let label = label_path.as_ref().to_owned();
-        debug!("Loading label from {}", label.display());
-        let (stream, _) = load::raw(label).await?;
-        debug!("Successfully loaded label stream");
-        let label_body = Body::wrap_stream(stream);
-        let data = data_path.as_ref().to_owned();
-        debug!("Loading parcel data from {}", data.display());
-        let (stream, _) = load::raw(data).await?;
-        debug!("Successfully loaded parcel stream");
-        let data_body = Body::wrap_stream(stream);
+        _label: crate::Label,
+        _data_path: D,
+    ) -> Result<crate::Label> {
+        Err(ClientError::Other(
+            "Method is not currently supported. See documentation for additional details"
+                .to_string(),
+        ))
+        // Copy the path to avoid lifetime issues
+        // let data = data_path.as_ref().to_owned();
+        // debug!("Loading parcel data from {}", data.display());
+        // let (stream, _) = load::raw(data).await?;
+        // debug!("Successfully loaded parcel stream");
+        // let data_body = Body::wrap_stream(stream);
 
-        let multipart = Form::new()
-            .part(
-                "label.toml",
-                Part::stream(label_body).mime_str(TOML_MIME_TYPE).unwrap(),
-            )
-            .part("parcel.dat", Part::stream(data_body));
-        self.create_parcel_request(multipart).await
+        // let multipart = Form::new()
+        //     .part(
+        //         "label.toml",
+        //         Part::bytes(toml::to_vec(&label)?)
+        //             .mime_str(TOML_MIME_TYPE)
+        //             .unwrap(),
+        //     )
+        //     .part("parcel.dat", Part::stream(data_body));
+        // self.create_parcel_request(multipart).await
     }
 
     async fn create_parcel_request(&self, form: Form) -> Result<crate::Label> {
