@@ -1,8 +1,30 @@
 [package]
 name = "bindle"
 version = "0.1.0"
-authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+authors = [
+    "Matt Butcher <matt.butcher@microsoft.com>",
+    "Taylor Thomas <taylor.thomas@microsoft.com>"
+]
 edition = "2018"
+license-file = "LICENSE.txt"
+description = "An aggregate object storage system for applications"
+repository = "https://github.com/deislabs/bindle"
+documentation = "https://github.com/deislabs/bindle/tree/master/docs"
+readme = "docs/crate-readme.md"
+keywords = [
+    "storage",
+    "package",
+]
+exclude = [
+    "docs/*",
+    ".github/*",
+    ".gitignore",
+    "bin/",
+    "test/"
+]
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [features]
 default = ["server", "client", "caching"]
