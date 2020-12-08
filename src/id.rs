@@ -1,5 +1,5 @@
-/// Contains the implementations for bindle ID representations, which are composed of a name (with
-/// possible path delimitation) and a semver compatible version
+//! Contains the implementations for bindle ID representations, which are composed of a name (with
+//! possible path delimitation) and a semver compatible version
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -21,9 +21,28 @@ type Result<T> = std::result::Result<T, ParseError>;
 
 /// A parsed representation of an ID string for a bindle. This is currently defined as an arbitrary
 /// path with a version string at the end. Examples of valid ID strings include:
-/// `foo/0.1.0`
-/// `example.com/foo/1.2.3`
-/// `example.com/a/longer/path/foo/1.10.0-rc.1`
+///
+/// - `foo/0.1.0`
+/// - `example.com/foo/1.2.3`
+/// - `example.com/a/longer/path/foo/1.10.0-rc.1`
+///
+/// An `Id` can be parsed from any string using the `.parse()` method:
+/// ```
+/// use bindle::Id;
+///
+/// let id: Id = "example.com/foo/1.2.3".parse().expect("should parse");
+/// println!("{}", id);
+/// ```
+///
+/// An `Id` can also be parsed from any `Path` like object using the `TryFrom` or `TryInto` trait:
+/// ```
+/// use bindle::Id;
+/// use std::convert::TryInto;
+///
+/// let id: Id = std::path::PathBuf::from("example.com/a/longer/path/foo/1.10.0-rc.1")
+///     .try_into().expect("should parse");
+/// println!("{}", id);
+/// ```
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Id {
     name: String,

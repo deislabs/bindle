@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+/// Creates a fake parcel in memory using the given content for use in testing
 pub async fn parcel_fixture(content: &str) -> (crate::Label, tokio::fs::File) {
     let data = tempfile::tempfile().unwrap();
     let sha = format!("{:x}", Sha256::digest(content.as_bytes()));
@@ -27,6 +28,7 @@ pub async fn parcel_fixture(content: &str) -> (crate::Label, tokio::fs::File) {
     )
 }
 
+/// Creates a fake invoice for use in testing
 pub fn invoice_fixture() -> crate::Invoice {
     let labels = vec![
         crate::Label {

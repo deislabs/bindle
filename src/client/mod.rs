@@ -1,7 +1,5 @@
 //! Client implementation for consuming a Bindle API. Although written in Rust, it is not specific
 //! to the Rust implementation. It is meant to consume any spec-compliant bindle implementation.
-//! Also included are various filtering tools for selecting the correct parcels as specified by an
-//! invoice
 
 mod error;
 pub mod load;
@@ -267,6 +265,7 @@ impl Client {
 
     //////////////// Relationship Endpoints ////////////////
 
+    /// Gets the labels of missing parcels, if any, of the specified bindle
     pub async fn get_missing_parcels<I>(&self, id: I) -> Result<Vec<crate::Label>>
     where
         I: TryInto<Id>,

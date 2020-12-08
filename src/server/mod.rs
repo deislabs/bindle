@@ -1,3 +1,7 @@
+//! Server implementation of the [Bindle Protocol
+//! Spec](https://github.com/deislabs/bindle/blob/master/docs/protocol-spec.md), with associated
+//! HTTP handlers and functions
+
 mod filters;
 mod handlers;
 mod reply;

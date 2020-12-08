@@ -79,18 +79,6 @@ impl Search for StrictEngine {
         Ok(matches)
     }
 
-    /// Given an invoice, extract information from it that will be useful for searching.
-    ///
-    /// This high-level feature does not provide any guarantees about how it will
-    /// process the invoice. But it may implement Strict and/or Standard modes
-    /// described in the protocol specification.
-    ///
-    /// If the index function is given an invoice it has already indexed, it treats
-    /// the call as an update. Otherwise, it adds a new entry to the index.
-    ///
-    /// As a special note, if an invoice is yanked, the index function will mark it
-    /// as such, following the protocol specification's requirements for yanked
-    /// invoices.
     async fn index(&self, invoice: &crate::Invoice) -> anyhow::Result<()> {
         self.index
             .write()

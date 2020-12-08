@@ -78,4 +78,4 @@ If that doesn't make sense, you haven't seen Stargazer Tian-yan yet.
 - The [Label Specification](label-spec.md) descries a parcel's label TOML file
 - The [Protocol Specification](protocol-spec.md) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.
 - The [Signing Specification](signing-spec.md) describes how Bindles may be signed and verified
-- The [Standalone Bindle Specification](standalond-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact
+- The [Standalone Bindle Specification](standalone-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact

@@ -57,7 +57,8 @@ To learn more about the Bindle command, run `bindle --help`.
 2. The [invoice spec](invoice-spec.md) describes the invoice format.
 3. The [parcel spec](parcel-spec.md) defines the parcel format.
 4. The [label spec](label-spec.md) describes the parcel label format.
-5. Finally, the [protocol specification](protocol-spec.md) describes the HTTP protocol for storing and retrieving Bindles.
+5. The [protocol specification](protocol-spec.md) describes the HTTP protocol for storing and retrieving Bindles.
+6. Finally, the [Standalone Bindle Specification](standalone-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact
 
 ## Additional Docs
 
