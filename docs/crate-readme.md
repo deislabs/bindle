@@ -21,6 +21,7 @@ bindle = { version = "0.1", default-features = false, features = ["client"]}
 - `client`: The client component of Bindle. This includes a fully featured client SDK.
 - `caching` (also enables `client`): An optional caching component for Bindle. Currently, these are just used to keep a local cache of bindles
 - `server`: The server side components necessary to run a bindle server
+- `test-tools`: A helpful set of testing tools for loading and managing bindles
 
 ## Compatibility
 

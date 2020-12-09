@@ -1,9 +1,18 @@
+//! Some helpful utilities for testing. This module is only available if the `test-tools` feature is
+//! enabled. Its main feature is allowing the use of prebuilt scaffolds for testing. See the
+//! [README](https://github.com/deislabs/bindle/blob/master/tests/scaffolds/README.md) in the
+//! testing directory of bindle for more information on scaffolding structure. All loading functions
+//! will load scaffolds by default from `$CARGO_MANIFEST_DIR/tests/scaffolds`. However, this
+//! directory can be configured by setting the `BINDLE_SCAFFOLD_DIR` environment variable to your
+//! desired path. All functions will panic if they encounter an error to make it easier on users (so
+//! they don't have to handle the errors in their tests in the exact same way)
+
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use bindle::search::StrictEngine;
-use bindle::storage::file::FileStorage;
+use crate::search::StrictEngine;
+use crate::storage::file::FileStorage;
 
 use multipart::client::lazy::Multipart;
 use tempfile::tempdir;
@@ -15,11 +24,21 @@ const PARCEL_DIR: &str = "parcels";
 const PARCEL_EXTENSION: &str = "dat";
 const LABEL_EXTENSION: &str = "toml";
 
-fn scaffold_dir() -> PathBuf {
+/// The environment variable name used for setting the scaffolds directory
+pub const SCAFFOLD_DIR_ENV: &str = "BINDLE_SCAFFOLD_DIR";
+
+fn default_scaffold_dir() -> PathBuf {
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let mut path = PathBuf::from(root);
     path.push(SCAFFOLD_DIR);
     path
+}
+
+fn scaffold_dir() -> PathBuf {
+    std::env::var(SCAFFOLD_DIR_ENV)
+        .ok()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_scaffold_dir)
 }
 
 /// A scaffold loaded from disk, containing the raw bytes for all files in the bindle. Both
@@ -34,7 +53,7 @@ pub struct RawScaffold {
 
 impl RawScaffold {
     /// Loads the raw scaffold files. Will panic if the scaffold doesn't exist. Returns a RawScaffold
-    /// containing all the raw files
+    /// containing all the raw files.
     pub async fn load(name: &str) -> RawScaffold {
         let dir = scaffold_dir().join(name);
 
@@ -149,8 +168,8 @@ impl From<Scaffold> for RawScaffold {
 /// easy lookups in both maps as they should have the same name
 #[derive(Clone, Debug)]
 pub struct Scaffold {
-    pub invoice: bindle::Invoice,
-    pub labels: HashMap<String, bindle::Label>,
+    pub invoice: crate::Invoice,
+    pub labels: HashMap<String, crate::Label>,
     pub parcel_files: HashMap<String, Vec<u8>>,
 }
 
@@ -166,7 +185,7 @@ impl Scaffold {
 // Because this is a test, just panicing if conversion fails
 impl From<RawScaffold> for Scaffold {
     fn from(mut raw: RawScaffold) -> Scaffold {
-        let invoice: bindle::Invoice =
+        let invoice: crate::Invoice =
             toml::from_slice(&raw.invoice).expect("Unable to deserialize invoice TOML");
 
         let labels = raw
