@@ -98,9 +98,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                 let label = crate::Label {
                     sha256: parcel_id.to_owned(),
                     name: "".to_string(),
-                    size: 0,
-                    media_type: "*/*".to_string(),
-                    annotations: None,
+                    ..crate::Label::default()
                 };
                 let stream = self.client.get_parcel_stream(parcel_id).await?;
                 // Attempt to insert the parcel into the store, if it fails, warn the user and

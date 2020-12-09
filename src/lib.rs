@@ -23,6 +23,8 @@ pub mod storage;
 #[cfg(feature = "test-tools")]
 pub mod testing;
 
+mod filters;
+
 #[doc(inline)]
 pub use id::Id;
 #[doc(inline)]
@@ -32,7 +34,7 @@ use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::hash::Hash;
 
 use search::SearchOptions;
 
@@ -41,6 +43,9 @@ pub const BINDLE_VERSION_1: &str = "1.0.0";
 
 /// Alias for feature map in an Invoice's parcel
 type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
+
+/// Alias for annotations map
+type AnnotationMap = BTreeMap<String, String>;
 
 /// The main structure for a Bindle invoice.
 ///
@@ -99,119 +104,6 @@ impl Invoice {
     }
 }
 
-/// Key identifying data for a Bindle. The most important being the [`Id`](crate::Id)
-pub struct MetadataReference {
-    group: String,
-    name: String,
-    value: String,
-}
-
-/// BindleFilter walks an invoice and resolves a list of parcels.
-pub struct BindleFilter {
-    // The invoice that we operate on.
-    invoice: Invoice,
-    groups: HashSet<String>,
-    exclude_groups: HashSet<String>,
-    features: Vec<MetadataReference>,
-    exclude_features: Vec<MetadataReference>,
-}
-
-impl BindleFilter {
-    fn new(invoice: &Invoice) -> Self {
-        Self {
-            // For now, we clone just in case we have to mutate the ivoice in the builder.
-            // If it turns out we don't need to mutate the invoice, then we can use a ref
-            // instead.
-            invoice: invoice.clone(),
-            groups: HashSet::new(),
-            exclude_groups: HashSet::new(),
-            features: vec![],
-            exclude_features: vec![],
-        }
-    }
-    fn with_group(&mut self, group_name: String) -> &mut Self {
-        self.groups.insert(group_name);
-        self
-    }
-    fn without_group(&mut self, group_name: String) -> &mut Self {
-        self
-    }
-    fn enable_feature(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
-        self
-    }
-    fn disable_feature(&mut self, group: &str, key: &str, value: &str) -> &mut Self {
-        self
-    }
-
-    /// Determine whether a given parcel should be disabled according to the filter.
-    fn is_disabled(&self, parcel: &Parcel) -> bool {
-        match parcel.label.features {
-            None => false,
-            Some(map) => {
-                // If the exclude list comes up empty then this parcel is fine.
-                // But if there are any matches, the parcel should be disabled.
-                self.exclude_features.iter().any(|key| {
-                    parcel
-                        .label
-                        .features
-                        .map(|f| match f.get(&key.group) {
-                            None => false,
-                            Some(features) => {
-                                features.get(&key.name).unwrap_or(&"".to_owned()) == &key.value
-                            }
-                        })
-                        .unwrap_or(false)
-                })
-            }
-        }
-    }
-
-    // Do we filter media types, too?
-    // Do we filter by size?
-    fn filter(&self) -> Vec<Parcel> {
-        // Start with the global parcels that are not explicitly disabled by features.
-        // These parcels are for sure in the outcome.
-        let mut parcels = self
-            .invoice
-            .parcels
-            .unwrap_or_else(|| vec![])
-            .iter()
-            .filter(|p| self.is_disabled(p))
-            .map(|&p| p)
-            .collect();
-
-        // Next we need to find all of the groups that should be enabled. These can be
-        // enabled because of their 'required' flag or because they are in the the
-        // 'groups' set on this struct. This is a special pass over groups because it
-        // must take into account the 'required' flag. Subsequent passes do not.
-        let groups = match self.invoice.group {
-            Some(group) => {
-                group
-                    .iter()
-                    .filter(|&i| {
-                        // Skip any group explicitly in the exclude list
-                        if self.exclude_groups.contains(&i.name) {
-                            return false;
-                        }
-                        i.required.unwrap_or(false) || self.groups.contains(&i.name)
-                    })
-                    .collect()
-            }
-            // If there are no groups, then our current list of parcels is complete.
-            None => vec![],
-        };
-
-        // Now that we have groups, we need to do the following:
-        // 1. Go through each group and get the parcels
-        // 2. Apply the parcel filters
-        // 3. Make sure the resulting list fulfills the group condition (one of, all of, etc.)
-        // 4. For each matched parcel, find out if we need to re-run this for its 'requires'
-        //    condition.
-
-        parcels
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
@@ -226,7 +118,7 @@ pub struct BindleSpec {
 /// A parcel file can be an arbitrary "blob" of data. This could be binary or text files. This
 /// object contains the metadata and associated conditions for using a parcel. For more information,
 /// see the [Bindle Spec](https://github.com/deislabs/bindle/blob/master/docs/bindle-spec.md)
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Parcel {
     pub label: Label,
@@ -235,8 +127,8 @@ pub struct Parcel {
 
 impl Parcel {
     pub fn member_of(&self, group: &str) -> bool {
-        match self.conditions {
-            Some(conditions) => match conditions.member_of {
+        match &self.conditions {
+            Some(conditions) => match &conditions.member_of {
                 Some(groups) => groups.iter().any(|g| *g == group),
                 None => false,
             },
@@ -249,8 +141,8 @@ impl Parcel {
     /// a member of the "default unnamed group". Therefore, if this returns true,
     /// it is a member of the "default unnamed group."
     pub fn no_groups(&self) -> bool {
-        match self.conditions {
-            Some(conditions) => match conditions.member_of {
+        match &self.conditions {
+            Some(conditions) => match &conditions.member_of {
                 Some(groups) => groups.is_empty(),
                 None => true,
             },
@@ -263,19 +155,42 @@ impl Parcel {
 ///
 /// See the [Label Spec](https://github.com/deislabs/bindle/blob/master/docs/label-spec.md) for more
 /// detailed information
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Label {
     pub sha256: String,
     pub media_type: String,
     pub name: String,
     pub size: u64,
-    pub annotations: Option<BTreeMap<String, String>>,
-    pub features: Option<BTreeMap<String, BTreeMap<String, String>>>,
+    pub annotations: Option<AnnotationMap>,
+    pub feature: Option<FeatureMap>,
+}
+
+impl Label {
+    fn new(name: String, sha256: String) -> Self {
+        Label {
+            name,
+            sha256,
+            ..Label::default()
+        }
+    }
+}
+
+impl Default for Label {
+    fn default() -> Self {
+        Self {
+            sha256: "".to_owned(),
+            media_type: "application/octet-stream".to_owned(),
+            name: "".to_owned(),
+            size: 0,
+            annotations: None,
+            feature: None,
+        }
+    }
 }
 
 /// Conditions associate parcels to [`Group`](crate::Group)s
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Condition {
     pub member_of: Option<Vec<String>>,
@@ -391,7 +306,7 @@ mod test {
             name: "foo.toml".to_owned(),
             size: 101,
             annotations: None,
-            features: None,
+            feature: None,
         };
         let parcel = Parcel {
             label,
@@ -450,7 +365,6 @@ mod test {
 
         // Now we serialize it and compare it to the original version
         let raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
-        println!("===========\n{}\n===========", raw2);
         // FIXME: Do we care about this detail?
         //assert_eq!(raw, raw2);
     }
@@ -475,94 +389,45 @@ mod test {
             .for_each(|r| assert!(!version_compare(&version, r)));
     }
 
-    // That's right, YAML-loving world, I can RECKLESSLY INDENT this stuff WITHOUT
-    // causing the parser problems.
-    const test_bindle_filters_invoice: &str = r#"
-    bindleVersion = "1.0.0"
-
-    [bindle]
-    name = "example/weather-progressive"
-    version = "0.1.0"
-    authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
-    description = "Weather Prediction"
-
-    [[group]]
-    name = "entrypoint"
-    satisfiedBy = "oneOf"
-    required = true
-
-    [[group]]
-    name = "ui-support"
-    satisfiedBy = "allOf"
-    required = false
-
-    [[parcel]]
-    [parcel.label]
-    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
-    mediaType = "application/wasm"
-    name = "weather-ui.wasm"
-    size = 1710256
-    [parcel.label.feature.wasm]
-    ui-kit = "electron+sgu"
-    [parcel.conditions]
-    memberOf = ["entrypoint"]
-    requires = ["ui-support"]
-
-    [[parcel]]
-    [parcel.label]
-    sha256 = "048264cef43e4fead1701e48f3287d35386474cb"
-    mediaType = "application/wasm"
-    name = "weather-cli.wasm"
-    size = 1410256
-    [parcel.conditions]
-    memberOf = ["entrypoint"]
-
-    [[parcel]]
-    [parcel.label]
-    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
-    mediaType = "application/wasm"
-    name = "libalmanac.wasm"
-    size = 2561710
-    [parcel.label.feature.wasm]
-    type = "library"
-
-    [[parcel]]
-    [parcel.label]
-    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
-    mediaType = "text/html"
-    name = "almanac-ui.html"
-    size = 2561710
-    [parcel.label.feature.wasm]
-    type = "data"
-    [parcel.conditions]
-    memberOf = ["ui-support"]
-
-    [[parcel]]
-    [parcel.label]
-    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
-    mediaType = "text/css"
-    name = "styles.css"
-    size = 2561710
-    [parcel.label.feature.wasm]
-    type = "data"
-    [parcel.conditions]
-    memberOf = ["ui-support"]
-
-    [[parcel]]
-    [parcel.label]
-    sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
-    mediaType = "application/wasm"
-    name = "uibuilder.wasm"
-    size = 2561710
-    [parcel.label.feature.wasm]
-    type = "library"
-    [parcel.conditions]
-    memberOf = ["ui-support"]
-    "#;
-
     #[test]
-    fn test_bindle_filters() {
-        let inv: Invoice =
-            toml::from_str(test_bindle_filters_invoice).expect("test invoice parsed");
+    fn parcel_no_groups() {
+        let invoice = r#"
+        bindleVersion = "1.0.0"
+
+        [bindle]
+        name = "aricebo"
+        version = "1.2.3"
+
+        [[group]]
+        name = "images"
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeefff"
+        name = "telescope.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        [parcel.conditions]
+        memberOf = ["telescopes"]
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "111aaabbbcccdddeee"
+        name = "telescope.txt"
+        mediaType = "text/plain"
+        size = 123_456
+        "#;
+
+        let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
+        let parcels = invoice.parcel.expect("expected some parcels");
+
+        let img = &parcels[0];
+        let txt = &parcels[1];
+
+        assert!(img.member_of("telescopes"));
+        assert!(!img.no_groups());
+
+        assert!(txt.no_groups());
+        assert!(!txt.member_of("telescopes"));
     }
 }

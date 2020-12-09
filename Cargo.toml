@@ -69,7 +69,6 @@ multipart = { version = "0.17", optional = true }
 
 [dev-dependencies]
 mime = "0.3"
-maplit = "1.0.2"
 
 [[bin]]
 name = "bindle-server"

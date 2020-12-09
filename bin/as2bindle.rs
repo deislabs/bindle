@@ -79,7 +79,7 @@ async fn main() {
         media_type: "application/wasm".to_owned(),
         sha256: sha,
         size: md.len() as u64,
-        annotations: None,
+        ..bindle::Label::default()
     };
 
     // Return the parcel section to be added to the invoice.
