@@ -2,7 +2,6 @@
 //! possible path delimitation) and a semver compatible version
 use std::convert::TryFrom;
 use std::fmt;
-use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use sha2::{Digest, Sha256};
@@ -19,6 +18,8 @@ pub enum ParseError {
 
 type Result<T> = std::result::Result<T, ParseError>;
 
+const PATH_SEPARATOR: char = '/';
+
 /// A parsed representation of an ID string for a bindle. This is currently defined as an arbitrary
 /// path with a version string at the end. Examples of valid ID strings include:
 ///
@@ -34,12 +35,12 @@ type Result<T> = std::result::Result<T, ParseError>;
 /// println!("{}", id);
 /// ```
 ///
-/// An `Id` can also be parsed from any `Path` like object using the `TryFrom` or `TryInto` trait:
+/// An `Id` can also be parsed from any string using the `TryFrom` or `TryInto` trait:
 /// ```
 /// use bindle::Id;
 /// use std::convert::TryInto;
 ///
-/// let id: Id = std::path::PathBuf::from("example.com/a/longer/path/foo/1.10.0-rc.1")
+/// let id: Id = String::from("example.com/a/longer/path/foo/1.10.0-rc.1")
 ///     .try_into().expect("should parse");
 /// println!("{}", id);
 /// ```
@@ -82,43 +83,11 @@ impl Id {
         let result = hasher.finalize();
         format!("{:x}", result)
     }
-
-    fn parse_from_path<P: AsRef<Path>>(id_path: P) -> Result<Self> {
-        let ref_path = id_path.as_ref();
-        let parent = match ref_path.parent() {
-            Some(p) => p,
-            None => return Err(ParseError::InvalidId),
-        };
-
-        let name = match parent.to_str() {
-            Some(s) if !s.is_empty() => s.to_owned(),
-            _ => return Err(ParseError::InvalidId),
-        };
-
-        let version_part = match ref_path.file_name() {
-            Some(s) => s,
-            None => return Err(ParseError::InvalidId),
-        };
-
-        let version = match version_part.to_str() {
-            Some(s) if !s.is_empty() => s.to_owned(),
-            _ => return Err(ParseError::InvalidId),
-        };
-
-        let version = version.parse().map_err(|_| ParseError::InvalidSemver)?;
-
-        Ok(Id { name, version })
-    }
 }
 
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // NOTE: If we find that every Storage implementation is using the
-        // `canonical_invoice_name_strings` method of hashing, we can do that here instead
-        Path::new(&self.name)
-            .join(self.version_string())
-            .display()
-            .fmt(f)
+        format_args!("{}{}{}", self.name, PATH_SEPARATOR, self.version).fmt(f)
     }
 }
 
@@ -126,8 +95,29 @@ impl FromStr for Id {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self> {
-        let id_path = Path::new(s);
-        Self::parse_from_path(id_path)
+        // Every ID should contain at least one separator or it is invalid
+        let last_separator_index = match s.rfind(PATH_SEPARATOR) {
+            Some(i) => i,
+            None => return Err(ParseError::InvalidId),
+        };
+
+        let (name_part, version_part) = s.split_at(last_separator_index);
+
+        // The split still returns the separator, so trim it off
+        let version_part = version_part.trim_start_matches(PATH_SEPARATOR);
+
+        if name_part.is_empty() || version_part.is_empty() {
+            return Err(ParseError::InvalidId);
+        }
+
+        let version = version_part
+            .parse()
+            .map_err(|_| ParseError::InvalidSemver)?;
+
+        Ok(Id {
+            name: name_part.to_owned(),
+            version,
+        })
     }
 }
 
@@ -137,9 +127,9 @@ impl From<&Id> for Id {
     }
 }
 
-// Unfortunately I can't do a generic implementation using AsRef<str>/AsRef<Path> due to this issue
-// in Rust with the blanket implementation: https://github.com/rust-lang/rust/issues/50133. So we
-// get _all_ the implementations
+// Unfortunately I can't do a generic implementation using AsRef<str> due to this issue in Rust with
+// the blanket implementation: https://github.com/rust-lang/rust/issues/50133. So we get _all_ the
+// implementations
 impl TryFrom<String> for Id {
     type Error = ParseError;
 
@@ -164,30 +154,6 @@ impl TryFrom<&str> for Id {
     }
 }
 
-impl TryFrom<&Path> for Id {
-    type Error = ParseError;
-
-    fn try_from(value: &Path) -> Result<Self> {
-        Self::parse_from_path(value)
-    }
-}
-
-impl TryFrom<PathBuf> for Id {
-    type Error = ParseError;
-
-    fn try_from(value: PathBuf) -> Result<Self> {
-        Self::parse_from_path(value)
-    }
-}
-
-impl TryFrom<&PathBuf> for Id {
-    type Error = ParseError;
-
-    fn try_from(value: &PathBuf) -> Result<Self> {
-        Self::parse_from_path(value)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -195,20 +161,18 @@ mod test {
     #[test]
     fn test_id_parsing() {
         // Valid paths
-        Id::parse_from_path("foo/1.0.0").expect("Should parse simple ID");
-        Id::parse_from_path("example.com/foo/1.0.0").expect("Should parse namespaced ID");
-        Id::parse_from_path("example.com/a/long/path/foo/1.0.0").expect("Should parse long ID");
-        // Obviously this doesn't matter right now, but if we want to start parsing versions in the
-        // future, it will
-        Id::parse_from_path("example.com/foo/1.0.0-rc.1").expect("Should parse RC version ID");
+        Id::from_str("foo/1.0.0").expect("Should parse simple ID");
+        Id::from_str("example.com/foo/1.0.0").expect("Should parse namespaced ID");
+        Id::from_str("example.com/a/long/path/foo/1.0.0").expect("Should parse long ID");
+        Id::from_str("example.com/foo/1.0.0-rc.1").expect("Should parse RC version ID");
 
         // Invalid paths
         assert!(
-            Id::parse_from_path("foo/").is_err(),
+            Id::from_str("foo/").is_err(),
             "Missing version should fail parsing"
         );
         assert!(
-            Id::parse_from_path("1.0.0").is_err(),
+            Id::from_str("1.0.0").is_err(),
             "Missing name should fail parsing"
         );
     }
