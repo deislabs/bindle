@@ -1,3 +1,5 @@
+//! The `Storage` trait definition and various implementations
+
 pub mod file;
 
 #[cfg(test)]
@@ -11,13 +13,15 @@ use tokio::io::AsyncRead;
 use crate::id::ParseError;
 use crate::Id;
 
+/// A custom shorthand result type that always has an error type of [`StorageError`](StorageError)
 pub type Result<T> = core::result::Result<T, StorageError>;
 
 #[async_trait::async_trait]
 pub trait Storage {
     /// This takes an invoice and creates it in storage.
-    /// It must verify that each referenced box is present in storage. Any box that
-    /// is not present must be returned in the list of IDs.
+    ///
+    /// It must verify that each referenced parcel is present in storage. Any parcel that is not
+    /// present must be returned in the list of IDs.
     async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>>;
 
     /// Load an invoice and return it
@@ -37,7 +41,8 @@ pub trait Storage {
         }
     }
 
-    /// Load an invoice, even if it is yanked.
+    /// Load an invoice, even if it is yanked. This is called by the default implementation of
+    /// `get_invoice`
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<super::Invoice>
     where
         I: TryInto<Id> + Send,
@@ -69,29 +74,38 @@ pub trait Storage {
 /// StorageError describes the possible error states when storing and retrieving bindles.
 #[derive(Error, Debug)]
 pub enum StorageError {
+    /// The invoice being accessed has been yanked
     #[error("bindle is yanked")]
     Yanked,
+    /// The error returned when the invoice is valid, but is already set to yanked
     #[error("bindle cannot be created as yanked")]
     CreateYanked,
+    /// When the resource is not found in the store
     #[error("resource not found")]
     NotFound,
-    #[error("resource could not be loaded")]
+    /// Any errors that occur due to IO issues. Contains the underlying IO `Error`
+    #[error("resource could not be loaded: {0:?}")]
     Io(#[from] std::io::Error),
+    /// The resource being created already exists in the system
     #[error("resource already exists")]
     Exists,
+    /// The error returned when the given `Id` was invalid and unable to be parsed
     #[error("invalid ID given")]
     InvalidId,
+    /// An uploaded parcel does not match the SHA-256 sum provided with its label
     #[error("digest does not match")]
     DigestMismatch,
     /// An error that occurs when the storage implementation uses a cache and filling that cache
-    /// from another source encounters an error
+    /// from another source encounters an error. Only available with the `caching` feature enabled
+    #[cfg(feature = "caching")]
     #[error("cache fill error: {0:?}")]
     CacheError(#[from] crate::client::ClientError),
 
-    // TODO: Investigate how to make this more helpful
-    #[error("resource is malformed")]
+    /// The data cannot be properly deserialized from TOML
+    #[error("resource is malformed: {0:?}")]
     Malformed(#[from] toml::de::Error),
-    #[error("resource cannot be stored")]
+    /// The data cannot be properly serialized from TOML
+    #[error("resource cannot be stored: {0:?}")]
     Unserializable(#[from] toml::ser::Error),
 
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying

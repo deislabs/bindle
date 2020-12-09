@@ -10,11 +10,13 @@ use warp::Filter;
 
 use super::TOML_MIME_TYPE;
 
+/// Query string options for the invoice endpoint
 #[derive(Debug, Deserialize)]
 pub struct InvoiceQuery {
     pub yanked: Option<bool>,
 }
 
+/// A warp filter that parses the body of a request from TOML to the specified type
 // Lovingly borrowed from https://docs.rs/warp/0.2.5/src/warp/filters/body.rs.html
 pub fn toml<T: DeserializeOwned + Send>() -> impl Filter<Extract = (T,), Error = Rejection> + Copy {
     // We can't use the http type constant here because clippy is warning about it having internal
@@ -32,7 +34,7 @@ async fn parse_toml<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T
     toml::from_slice(&raw).map_err(|err| custom(BodyDeserializeError { cause: err.into() }))
 }
 
-pub async fn handle_deserialize_rejection(
+pub(crate) async fn handle_deserialize_rejection(
     err: warp::Rejection,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if let Some(e) = err.find::<BodyDeserializeError>() {
@@ -46,7 +48,7 @@ pub async fn handle_deserialize_rejection(
 }
 
 #[derive(Debug)]
-pub struct BodyDeserializeError {
+struct BodyDeserializeError {
     cause: Box<dyn Error + Send + Sync>,
 }
 

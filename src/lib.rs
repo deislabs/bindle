@@ -1,12 +1,19 @@
-#![macro_use]
-extern crate serde;
+//! A crate for interacting with Bindles
+//!
+//! Bindle is an aggregate object storage system used for storing aggregate applications. For more
+//! information and examples, see the
+//! [README](https://github.com/deislabs/bindle/blob/master/README.md) in the Bindle repo.
+//!
+//! This crate is the reference implementation of the [Bindle
+//! Spec](https://github.com/deislabs/bindle/blob/master/docs/bindle-spec.md) and it contains both a
+//! client and a server implementation, along with various other utilities
 
 pub mod async_util;
 #[cfg(feature = "caching")]
 pub mod cache;
 #[cfg(feature = "client")]
 pub mod client;
-pub mod id;
+mod id;
 pub mod search;
 #[cfg(feature = "server")]
 pub mod server;
@@ -14,6 +21,7 @@ pub mod server;
 pub mod standalone;
 pub mod storage;
 
+#[doc(inline)]
 pub use id::Id;
 pub use search::Matches;
 
@@ -83,6 +91,7 @@ impl Invoice {
     }
 }
 
+/// Key identifying data for a Bindle. The most important being the [`Id`](crate::Id)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
@@ -92,6 +101,11 @@ pub struct BindleSpec {
     pub authors: Option<Vec<String>>,
 }
 
+/// A description of a stored parcel file
+///
+/// A parcel file can be an arbitrary "blob" of data. This could be binary or text files. This
+/// object contains the metadata and associated conditions for using a parcel. For more information,
+/// see the [Bindle Spec](https://github.com/deislabs/bindle/blob/master/docs/bindle-spec.md)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Parcel {
@@ -99,6 +113,10 @@ pub struct Parcel {
     pub conditions: Option<Condition>,
 }
 
+/// Metadata of a stored parcel
+///
+/// See the [Label Spec](https://github.com/deislabs/bindle/blob/master/docs/label-spec.md) for more
+/// detailed information
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Label {
@@ -109,6 +127,7 @@ pub struct Label {
     pub annotations: Option<BTreeMap<String, String>>,
 }
 
+/// Conditions associate parcels to [`Group`](crate::Group)s
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Condition {
@@ -116,6 +135,8 @@ pub struct Condition {
     pub requires: Option<Vec<String>>,
 }
 
+/// A group is a top-level organization object that may contain zero or more parcels. Every parcel
+/// belongs to at least one group, but may belong to others.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Group {
@@ -124,9 +145,9 @@ pub struct Group {
     pub satisfied_by: Option<String>,
 }
 
-/// A custom wrapper for responding to invoice creation responses. Because invoices can be created
-/// before parcels are uploaded, we need to inform the user if there are missing parcels in the
-/// bindle spec
+/// A custom type for responding to invoice creation requests. Because invoices can be created
+/// before parcels are uploaded, this allows the API to inform the user if there are missing parcels
+/// in the bindle spec
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct InvoiceCreateResponse {
@@ -134,7 +155,7 @@ pub struct InvoiceCreateResponse {
     pub missing: Option<Vec<Label>>,
 }
 
-/// A custom wrapper for a missing parcels response. TOML doesn't support top level arrays, so they
+/// A response to a missing parcels request. TOML doesn't support top level arrays, so they
 /// must be embedded in a table
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]

@@ -141,7 +141,7 @@ async fn create_or_get_invoice(
     }
 }
 
-/// A type that can write all bindle data to the appropriate location
+/// A type that can write all bindle data to the configured location as a standalone bindle
 pub struct StandaloneWrite {
     base_path: PathBuf,
 }
@@ -174,7 +174,8 @@ impl StandaloneWrite {
 
     // TODO: From a tarball
 
-    /// Writes the given invoice and `HashMap` of parcel streams. The key of the `HashMap` should be the SHA of the parcel
+    /// Writes the given invoice and `HashMap` of parcel streams. The key of the `HashMap` should be
+    /// the SHA of the parcel
     pub async fn write<T: AsyncRead + Unpin + Send + Sync>(
         &self,
         inv: crate::Invoice,

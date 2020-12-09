@@ -1,3 +1,5 @@
+//! Common types and traits for use in implementing query functionality for a Bindle server. Note
+//! that this functionality is quite likely to change
 use serde::{Deserialize, Serialize};
 
 mod noop;

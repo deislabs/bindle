@@ -61,9 +61,9 @@ pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
         | StorageError::DigestMismatch
         | StorageError::InvalidId => StatusCode::BAD_REQUEST,
         StorageError::Yanked => StatusCode::FORBIDDEN,
-        StorageError::Other(_) | StorageError::CacheError(_) | StorageError::Io(_) => {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        #[cfg(feature = "caching")]
+        StorageError::CacheError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        StorageError::Other(_) | StorageError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
 
     reply_from_error(error, status_code)

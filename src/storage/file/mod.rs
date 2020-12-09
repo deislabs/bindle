@@ -1,3 +1,7 @@
+//! A file system `Storage` implementation. The format on disk is
+//! [documented](https://github.com/deislabs/bindle/blob/master/docs/file-layout.md) in the main
+//! Bindle repo.
+
 use std::convert::TryInto;
 use std::io::Write;
 use std::path::{Path, PathBuf};

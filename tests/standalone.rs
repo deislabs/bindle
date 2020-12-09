@@ -158,11 +158,14 @@ async fn test_push() {
     let tempdir = tempfile::tempdir().expect("unable to create tempdir");
 
     // Build all the binaries and wait for it to complete
-    let build_result =
-        tokio::task::spawn_blocking(|| std::process::Command::new("cargo").arg("build").output())
-            .await
-            .unwrap()
-            .expect("unable to run build command");
+    let build_result = tokio::task::spawn_blocking(|| {
+        std::process::Command::new("cargo")
+            .args(&["build", "--features", "cli"])
+            .output()
+    })
+    .await
+    .unwrap()
+    .expect("unable to run build command");
 
     assert!(
         build_result.status.success(),
@@ -173,6 +176,8 @@ async fn test_push() {
     let mut handle = std::process::Command::new("cargo")
         .args(&[
             "run",
+            "--features",
+            "cli",
             "--bin",
             "bindle-server",
             "--",

@@ -6,8 +6,9 @@ use crate::storage::{Storage, StorageError};
 pub mod dumb;
 pub use dumb::DumbCache;
 
-pub mod lru;
-pub use lru::LruCache;
+// Once implemented, we can export this
+mod lru;
+// pub use lru::LruCache;
 
 /// A marker trait that indicates this is a caching implementation (as opposed to just storage)
 pub trait Cache: Storage {}
