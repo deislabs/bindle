@@ -81,7 +81,7 @@ pub enum StorageError {
     #[error("bindle cannot be created as yanked")]
     CreateYanked,
     /// When the resource is not found in the store
-    #[error("resource not found")]
+    #[error("resource not found: if an item does not appear in our records, it does not exist!")]
     NotFound,
     /// Any errors that occur due to IO issues. Contains the underlying IO `Error`
     #[error("resource could not be loaded: {0:?}")]
