@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use bindle::client::{Client, ClientError, Result};
 use bindle::standalone::StandaloneRead;
@@ -7,263 +7,19 @@ use bindle::{
     cache::{Cache, DumbCache},
     storage::Storage,
 };
+
 use clap::Clap;
 use log::{info, warn};
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 
-const DESCRIPTION: &str = r#"
-The Bindle Client
+mod opts;
 
-Bindle is a technology for storing and retrieving aggregate applications.
-This program provides tools for working with Bindle servers.
-"#;
-
-#[derive(Clap)]
-#[clap(name = "bindle", version = "0.1.0", author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
-struct Opts {
-    #[clap(
-        short = 's',
-        long = "server",
-        env = "BINDLE_SERVER_URL",
-        about = "The address of the bindle server"
-    )]
-    server_url: String,
-    #[clap(
-        short = 'd',
-        long = "bindle-dir",
-        env = "BINDLE_DIR",
-        about = "The directory where bindles are stored/cached, defaults to $HOME/.bindle/bindles"
-    )]
-    bindle_dir: Option<PathBuf>,
-    #[clap(subcommand)]
-    subcmd: SubCommand,
-}
-
-#[derive(Clap)]
-enum SubCommand {
-    #[clap(name = "info", about = "get the bindle invoice and display it")]
-    Info(Info),
-    #[clap(
-        name = "push",
-        about = "push a bindle and all its parcels to the server"
-    )]
-    Push(Push),
-    #[clap(name = "push-invoice", about = "push an invoice file to the server")]
-    PushInvoice(PushInvoice),
-    #[clap(
-        name = "push-file",
-        about = "push an arbitrary file as a parcel to the server"
-    )]
-    PushFile(PushFile),
-    #[clap(name = "get", about = "download the given bindle and all its parcels")]
-    Get(Get),
-    #[clap(name = "yank", about = "yank an existing bindle")]
-    Yank(Yank),
-    #[clap(name = "search", about = "search for bindles")]
-    Search(Search),
-    #[clap(
-        name = "get-parcel",
-        about = "get an individual parcel by SHA and store it to a specific location"
-    )]
-    GetParcel(GetParcel),
-    #[clap(
-        name = "get-invoice",
-        about = "get only the specified invoice (does not download parcels) and store it to a specific location"
-    )]
-    GetInvoice(GetInvoice),
-    #[clap(
-        name = "generate-label",
-        about = "generates a label.toml for the given file"
-    )]
-    GenerateLabel(GenerateLabel),
-}
-
-#[derive(Clap)]
-struct Info {
-    #[clap(index = 1, value_name = "BINDLE")]
-    bindle_id: String,
-    #[clap(
-        short = 'y',
-        long = "yanked",
-        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
-    )]
-    yanked: bool,
-}
-
-#[derive(Clap)]
-struct Push {
-    #[clap(index = 1, value_name = "BINDLE")]
-    bindle_id: String,
-    #[clap(
-        short = 'p',
-        long = "path",
-        default_value = "./",
-        about = "a path where the standalone bindle directory is located"
-    )]
-    path: PathBuf,
-}
-
-#[derive(Clap)]
-struct Get {
-    #[clap(index = 1, value_name = "BINDLE")]
-    bindle_id: String,
-    #[clap(
-        short = 'y',
-        long = "yanked",
-        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
-    )]
-    yanked: bool,
-}
-
-#[derive(Clap)]
-struct Yank {
-    #[clap(index = 1, value_name = "BINDLE")]
-    bindle_id: String,
-}
-
-const VERSION_QUERY: &str = r#"version constraint of the bindle to search for. This is a semver range modifier that can either denote an exact version, or a range of versions.
-
-For example, the range modifier `v=1.0.0-beta.1` indicates that a version MUST match version `1.0.0-beta.1`. Version `1.0.0-beta.12` does NOT match this modifier. 
-
-The range modifiers will include the following modifiers, all based on the Node.js de facto behaviors (found at https://www.npmjs.com/package/semver):
-
-- `<`, `>`, `<=`, `>=`, `=` -- all approximately their mathematical equivalents
-- `-` (`1.2.3 - 1.5.6`) -- range declaration
-- `^` -- patch/minor updates allow (`^1.2.3` would accept `1.2.4` and `1.3.0`)
-- `~` -- at least the given version
-"#;
-
-#[derive(Clap)]
-struct Search {
-    // TODO: Figure out output format (like tables)
-    #[clap(
-        short = 'q',
-        long = "query",
-        about = "name of the bindle to search for, an empty query means all bindles"
-    )]
-    query: Option<String>,
-    #[clap(short = 'b', long = "bindle-version", about = "version constraint of the bindle to search for", long_about = VERSION_QUERY)]
-    version: Option<String>,
-    #[clap(
-        long = "offset",
-        about = "the offset where to start the next page of results"
-    )]
-    offset: Option<u64>,
-    #[clap(long = "limit", about = "the limit of results per page")]
-    limit: Option<u8>,
-    #[clap(
-        long = "strict",
-        about = "whether or not to use strict mode",
-        long_about = "whether or not to use strict mode. Please note that bindle servers must implement a strict mode per the specification, a non-strict (standard) mode is optional"
-    )]
-    strict: Option<bool>,
-    #[clap(
-        long = "yanked",
-        about = "whether or not to include yanked bindles in the search result"
-    )]
-    yanked: Option<bool>,
-}
-
-impl From<Search> for bindle::QueryOptions {
-    fn from(s: Search) -> Self {
-        bindle::QueryOptions {
-            query: s.query,
-            version: s.version,
-            offset: s.offset,
-            limit: s.limit,
-            strict: s.strict,
-            yanked: s.yanked,
-        }
-    }
-}
-
-#[derive(Clap)]
-struct GetParcel {
-    #[clap(index = 1, value_name = "PARCEL_SHA")]
-    sha: String,
-    #[clap(
-        short = 'o',
-        long = "output",
-        default_value = "./parcel.dat",
-        about = "The location where to output the parcel to"
-    )]
-    output: PathBuf,
-}
-
-#[derive(Clap)]
-struct GetInvoice {
-    #[clap(index = 1, value_name = "BINDLE")]
-    bindle_id: String,
-    #[clap(
-        short = 'o',
-        long = "output",
-        default_value = "./invoice.toml",
-        about = "The location where to output the invoice to"
-    )]
-    output: PathBuf,
-    #[clap(
-        short = 'y',
-        long = "yanked",
-        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
-    )]
-    yanked: bool,
-}
-
-#[derive(Clap)]
-struct GenerateLabel {
-    #[clap(index = 1, value_name = "FILE")]
-    path: PathBuf,
-    #[clap(
-        short = 'o',
-        long = "output",
-        default_value = "./label.toml",
-        about = "The file where to output the label to"
-    )]
-    output: PathBuf,
-    #[clap(
-        short = 'n',
-        long = "name",
-        about = "the name of the parcel, defaults to the name + extension of the file"
-    )]
-    name: Option<String>,
-    #[clap(
-        short = 'm',
-        long = "media-type",
-        about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
-    )]
-    media_type: Option<String>,
-}
-
-#[derive(Clap)]
-struct PushInvoice {
-    #[clap(index = 1, value_name = "FILE", default_value = "./invoice.toml")]
-    path: PathBuf,
-}
-
-#[derive(Clap)]
-struct PushFile {
-    #[clap(index = 1, value_name = "FILE")]
-    path: PathBuf,
-    #[clap(
-        short = 'n',
-        long = "name",
-        about = "the name of the parcel, defaults to the name + extension of the file"
-    )]
-    name: Option<String>,
-    #[clap(
-        short = 'm',
-        long = "media-type",
-        about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
-    )]
-    media_type: Option<String>,
-}
-
-// TODO: push file and push invoice
+use opts::*;
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), ClientError> {
-    let opts = Opts::parse();
+    let opts = opts::Opts::parse();
     // TODO: Allow log level setting
     env_logger::init();
 
@@ -418,7 +174,9 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
     }
     .await
     .map_err(map_storage_error)?;
+
     println!("Fetched invoice. Starting fetch of parcels");
+
     let parcel_fetch = inv
         .parcel
         .unwrap_or_default()
