@@ -281,7 +281,6 @@ pub mod v1 {
         let inv = match store.get_invoice(id).await {
             Ok(i) => i,
             Err(e) => {
-                println!("Got error during invoice fetch: {:?}", e);
                 trace!("Got error during get missing request: {:?}", e);
                 return Ok(reply::into_reply(e));
             }
