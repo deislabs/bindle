@@ -1,5 +1,4 @@
-#[allow(dead_code)]
-mod common;
+use bindle::testing;
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -12,7 +11,7 @@ use tokio::stream::StreamExt;
 async fn test_successful_write() {
     let tempdir = tempfile::tempdir().expect("unable to create tempdir");
 
-    let scaffold = common::Scaffold::load("lotsa_parcels").await;
+    let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
         .expect("Unable to create new standalone write");
@@ -45,7 +44,7 @@ async fn test_successful_write() {
 async fn test_successful_write_stream() {
     let tempdir = tempfile::tempdir().expect("unable to create tempdir");
 
-    let scaffold = common::Scaffold::load("lotsa_parcels").await;
+    let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
         .expect("Unable to create new standalone write");
@@ -124,7 +123,7 @@ async fn validate_write(id: bindle::Id, tempdir: std::path::PathBuf, expected_fi
 async fn test_invalid_standalone_write() {
     let tempdir = tempfile::tempdir().expect("unable to create tempdir");
 
-    let scaffold = common::Scaffold::load("lotsa_parcels").await;
+    let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
         .expect("Unable to create new standalone write");

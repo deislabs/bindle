@@ -20,6 +20,8 @@ pub mod server;
 #[cfg(feature = "client")]
 pub mod standalone;
 pub mod storage;
+#[cfg(feature = "test-tools")]
+pub mod testing;
 
 #[doc(inline)]
 pub use id::Id;
