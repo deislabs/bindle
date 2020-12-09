@@ -163,8 +163,8 @@ impl Client {
             parsed_id.to_string()
         ))?);
         let resp = req.send().await?;
-        let resp = unwrap_status(resp, Endpoint::Invoice).await?;
-        Ok(toml::from_slice(&resp.bytes().await?)?)
+        unwrap_status(resp, Endpoint::Invoice).await?;
+        Ok(())
     }
 
     //////////////// Create Parcel ////////////////
@@ -265,7 +265,8 @@ impl Client {
 
     //////////////// Relationship Endpoints ////////////////
 
-    /// Gets the labels of missing parcels, if any, of the specified bindle
+    /// Gets the labels of missing parcels, if any, of the specified bindle. If the bindle is
+    /// yanked, this will fail
     pub async fn get_missing_parcels<I>(&self, id: I) -> Result<Vec<crate::Label>>
     where
         I: TryInto<Id>,
@@ -296,7 +297,9 @@ async fn unwrap_status(resp: reqwest::Response, endpoint: Endpoint) -> Result<re
     match (resp.status(), endpoint) {
         (StatusCode::OK, _) => Ok(resp),
         (StatusCode::ACCEPTED, Endpoint::Invoice) => Ok(resp),
-        (StatusCode::NOT_FOUND, Endpoint::Invoice) => Err(ClientError::InvoiceNotFound),
+        (StatusCode::NOT_FOUND, Endpoint::Invoice) | (StatusCode::FORBIDDEN, Endpoint::Invoice) => {
+            Err(ClientError::InvoiceNotFound)
+        }
         (StatusCode::NOT_FOUND, Endpoint::Parcel) => Err(ClientError::ParcelNotFound),
         (StatusCode::CONFLICT, Endpoint::Invoice) => Err(ClientError::InvoiceAlreadyExists),
         (StatusCode::CONFLICT, Endpoint::Parcel) => Err(ClientError::ParcelAlreadyExists),
