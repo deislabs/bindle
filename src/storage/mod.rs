@@ -67,7 +67,8 @@ pub trait Storage {
     ) -> Result<()>;
 
     /// Get a specific parcel using its SHA
-    async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>>;
+    async fn get_parcel(&self, parcel_id: &str)
+        -> Result<Box<dyn AsyncRead + Unpin + Send + Sync>>;
 
     /// Get the label for a parcel
     ///

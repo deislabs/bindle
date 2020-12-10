@@ -80,7 +80,10 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
         ))
     }
 
-    async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>> {
+    async fn get_parcel(
+        &self,
+        parcel_id: &str,
+    ) -> Result<Box<dyn AsyncRead + Unpin + Send + Sync>> {
         let possible_entry = into_cache_result(self.inner.get_parcel(parcel_id).await)?;
         match possible_entry {
             Some(parcel) => Ok(parcel),

@@ -172,6 +172,11 @@ impl StandaloneWrite {
         })
     }
 
+    /// Returns a reference to the output directory for this standalone bindle
+    pub fn path(&self) -> &Path {
+        self.base_path.as_ref()
+    }
+
     // TODO: From a tarball
 
     /// Writes the given invoice and `HashMap` of parcel streams. The key of the `HashMap` should be
@@ -180,7 +185,7 @@ impl StandaloneWrite {
         &self,
         inv: crate::Invoice,
         parcels: HashMap<String, T>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         validate_shas(&inv, parcels.keys())?;
 
         // Should create all the directories needed down to the parcels directory

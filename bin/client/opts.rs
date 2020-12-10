@@ -103,6 +103,12 @@ pub struct Get {
         about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
+    #[clap(
+        short = 'e',
+        long = "export",
+        about = "if specified, export the bindle as a standlone bindle in the given directory"
+    )]
+    pub export: Option<PathBuf>,
 }
 
 #[derive(Clap)]
