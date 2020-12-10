@@ -178,7 +178,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = library
 ```
 
@@ -233,7 +233,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = library
 ```
 
@@ -305,7 +305,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = library
 [parcel.conditions]
 memberOf = ["almanac"]
@@ -316,7 +316,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac-lite.wasm"
 size = 11710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = library
 [parcel.conditions]
 memberOf = ["almanac"]
@@ -382,7 +382,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "weather.wasm"
 size = 1710256
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 ui-kit = "electron+sgu"
 
 [[parcel]]
@@ -391,7 +391,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "library"
 ```
 
@@ -427,7 +427,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "weather.wasm"
 size = 1710256
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 ui-kit = "electron+sgu"
 
 [[parcel]]
@@ -436,7 +436,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "library"
 
 [[parcel]]
@@ -445,7 +445,7 @@ sha256 = "ef43e4fead1701e48f3287d35386474cb048264c"
 mediaType = "text/css"
 name = "style.css"
 size = 6620
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 ui-kit = "electron+sgu"
 ```
 
@@ -481,7 +481,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "weather-ui.wasm"
 size = 1710256
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 ui-kit = "electron+sgu"
 [parcel.conditions]
 memberOf = ["entrypoint"]
@@ -501,7 +501,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "library"
 ```
 
@@ -546,7 +546,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "weather-ui.wasm"
 size = 1710256
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 ui-kit = "electron+sgu"
 [parcel.conditions]
 memberOf = ["entrypoint"]
@@ -567,7 +567,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "library"
 
 [[parcel]]
@@ -576,7 +576,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "text/html"
 name = "almanac-ui.html"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "data"
 [parcel.conditions]
 memberOf = ["ui-support"]
@@ -587,7 +587,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "text/css"
 name = "styles.css"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "data"
 [parcel.conditions]
 memberOf = ["ui-support"]
@@ -598,7 +598,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "uibuilder.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "library"
 [parcel.conditions]
 memberOf = ["ui-support"]
@@ -616,11 +616,11 @@ When sg1 inspects this invoice and builds an app, it will select the `weather-cl
 
 When sgu inspects this invoice, it will build a more complex app. It will select `weather-ui.wasm`, which in turn will require sgu to include the group `ui-support`. That group requires the selection of three more parcels (`almanac-ui.html`, `styles.css`, and `uibuilder.wasm`). So when sgu finally assembles the app, it will have five total parcels.
 
-One difficulty stems from the possibility of running part of this on a remote host: The host may not be able to determine whether a data file like `styles.css` is required by `weather-ui.wasm` or by `uibuilder.wasm` (or both). Any resources marked `data` are ambiguous in this way. Runtimes may support any number of ways to disambiguate this problem, or we may need to add some additional metadata in the `metadata.wasm` section for `type = "data"`. For example, we could add a `requiredBy = []` definition.
+One difficulty stems from the possibility of running part of this on a remote host: The host may not be able to determine whether a data file like `styles.css` is required by `weather-ui.wasm` or by `uibuilder.wasm` (or both). Any resources marked `data` are ambiguous in this way. Runtimes may support any number of ways to disambiguate this problem, or we may need to add some additional features in the `feature.wasm` section for `type = "data"`. For example, we could add a `requiredBy = []` definition.
 
 ## Example 10: The shim parcel pattern
 
-**TODO:** Consider a polypfill `type` as an alternative approach to this.
+**TODO:** Consider a polyfill `type` as an alternative approach to this.
 
 In the last few examples, we have seen cases where the runtime provides particular features that a client may take advantage of. The sgu runtime exposes an `electron+sgu` UI toolkit.
 
@@ -648,7 +648,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "weather.wasm"
 size = 1710256
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 ui-kit = "electron+sgu"
 [parcel.conditions]
 memberOf = ["ui-shim"]
@@ -668,7 +668,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
-[parcel.label.metadata.wasm]
+[parcel.label.feature.wasm]
 type = "library"
 ```
 
@@ -694,17 +694,17 @@ The algorithm may then be something like this:
 2. Look at the local cache for any parcels that match SHAs in the bindle invoice
 3. For any unfound parcels, fetch them from the remote bindle server
 
-## The `metadata.wasm` fields
+## The `feature.wasm` fields
 
-The following is a definition of the fields that can be in the Parcel label's `metadata.wasm` field.
+The following is a definition of the fields that can be in the Parcel label's `feature.wasm` field.
 
 - `type`: String. One of `library`, `entrypoint`, `data`. The default is `entrypoint`, which marks this as an executable.
 - `ui-kit`: String. The name of a UI toolkit that must be present to execute this module. The value is undefined by the spec, and individual runtimes are allowed to declare their own. If this is not present, agents must assume that the app does not require a UI toolkit.
 - `wasi`: boolean. Whether or not WASI support is required. The default is `true`.
 
-We might also add a `metadata.wasm-opt` field that would allow optional (not required) "progressive enhancements" as well.
+We might also add a `feature.wasm-opt` field that would allow optional (not required) "progressive enhancements" as well.
 
-TODO: How might we handle the case where a shim module could mock a requirement declared in `metadata.wasm`?
+TODO: How might we handle the case where a shim module could mock a requirement declared in `feature.wasm`?
 
 ## Considerations for Beaming Parcels
 

@@ -37,7 +37,7 @@ label.size = 248098
 ```
 (Source)[../test/data/simple-invoice.toml]
 
-The above bindle declares its metadata, and then declares a manifest containing three parcels.
+The above bindle declares its `bindle` description, and then declares a manifest containing three parcels.
 
 ## Top-level Fields
 
