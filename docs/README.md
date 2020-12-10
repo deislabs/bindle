@@ -1,5 +1,44 @@
 # Bindle Documentation
 
+## Installing Bindle
+
+### From the Binary Releases
+
+Every release of Bindle provides compiled releases for a variety of operating systems. These
+compiled releases can be manually downloaded and installed. Please note these instructions will work
+on Linux, MacOS, and Windows (in PowerShell):
+
+1. Download your desired version from [the releases
+   page](https://github.com/deislabs/bindles/releases)
+1. Unpack it (`tar -xzf bindle-v0.1.0-linux-amd64.tar.gz`)
+1. Move the bindle and bindle CLIs to their desired
+   destinations somewhere in your `$PATH` (e.g. `mv bindle bindle-server /usr/local/bin/` on Unix-like
+   systems or `mv *.exe C:\Windows\system32\` on Windows)
+
+From there, you should be able to run the client in your terminal emulator. If your terminal cannot
+find Bindle, check to make sure that your `$PATH` environment variable is set correctly.
+
+#### Validating
+
+If you'd like to validate the download, checksums can be downloaded from
+https://bindle.blob.core.windows.net/releases/checksums-v0.1.0.txt
+
+### From Canary Builds
+
+“Canary” builds are versions of Bindle that are built from `master`. They are not official
+releases, and may not be stable. However, they offer the opportunity to test the cutting edge
+features before they are released.
+
+Here are links to the common builds:
+
+- [checksum file](https://bindle.blob.core.windows.net/releases/checksums-canary.txt)
+- [64-bit Linux (AMD
+  architecture)](https://bindle.blob.core.windows.net/releases/bindle-canary-linux-amd64.tar.gz)
+- [64-bit macOS (AMD
+  architecture)](https://bindle.blob.core.windows.net/releases/bindle-canary-macos-amd64.tar.gz)
+- [64-bit Windows](https://bindle.blob.core.windows.net/releases/bindle-canary-windows-amd64.tar.gz)
+
+
 ## Using Bindle
 
 The `bindle` program is the client. The `bindle-server` program is the HTTP server.
