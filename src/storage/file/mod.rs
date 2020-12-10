@@ -466,22 +466,19 @@ mod test {
     #[tokio::test]
     async fn test_should_generate_paths() {
         let f = FileStorage::new("test", crate::search::StrictEngine::default()).await;
-        assert_eq!("test/invoices/123", f.invoice_path("123").to_string_lossy());
+        assert_eq!(PathBuf::from("test/invoices/123"), f.invoice_path("123"));
         assert_eq!(
-            "test/invoices/123/invoice.toml",
-            f.invoice_toml_path("123").to_string_lossy()
+            PathBuf::from("test/invoices/123/invoice.toml"),
+            f.invoice_toml_path("123")
+        );
+        assert_eq!(PathBuf::from("test/parcels/123"), f.parcel_path("123"));
+        assert_eq!(
+            PathBuf::from("test/parcels/123/label.toml"),
+            f.label_toml_path("123")
         );
         assert_eq!(
-            "test/parcels/123".to_owned(),
-            f.parcel_path("123").to_string_lossy()
-        );
-        assert_eq!(
-            "test/parcels/123/label.toml".to_owned(),
-            f.label_toml_path("123").to_string_lossy()
-        );
-        assert_eq!(
-            "test/parcels/123/parcel.dat".to_owned(),
-            f.parcel_data_path("123").to_string_lossy()
+            PathBuf::from("test/parcels/123/parcel.dat"),
+            f.parcel_data_path("123")
         );
     }
 
