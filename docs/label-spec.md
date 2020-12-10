@@ -12,9 +12,9 @@ size = 248098
 key1 = "value 1"
 
 [feature.wasm]
-# These fields are illustrative only
-runtime = "wasmtime-v1.2.3"
-dependencies = [foo-v1.0.0, bar-v2.3.4]
+# These fields are illustrative only. They don't have any meaning to Bindle.
+runtime = "wasmtime-1.2.3"
+dependencies = ["foo-1.0.0", "bar-2.3.4"]
 ```
 
 ## Top Level Fields
@@ -36,7 +36,7 @@ The individual elements in the `feature` section are not dictated by the specifi
 Implementations are free to use this section to facilitate runtime-specific metadata.
 
 ```
-[feature.SECION_NAME]
+[feature.SECTION_NAME]
 PROPERTY_NAME = "PROPERTY VALUE"
 PROPERTY_NAME_2 = "PROPERTY VALUE 2"
 ```
@@ -84,10 +84,10 @@ For example, consider a two-section feature set:
 [label]
 # ...
 [feature.wasm]
-stack_size: 2048
-wasi: false
+stack_size = 2048
+wasi = false
 [feature.gpu]
-required_cores: 4
+required_cores = 4
 ```
 
 The first section defines features for a WebAssembly (Wasm) runtime.
