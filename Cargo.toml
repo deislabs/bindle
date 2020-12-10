@@ -34,6 +34,9 @@ caching = ["client"]
 test-tools = ["multipart"]
 cli = ["clap"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 anyhow = "1.0"
 toml = "0.5"

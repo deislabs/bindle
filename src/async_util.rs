@@ -11,9 +11,10 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncRead;
 use tokio::stream::Stream;
 
-/// A wrapper around a Warp stream of bytes that implements AsyncRead. This might no longer be
-/// necessary once we hit tokio 0.3 and upgrade tokio-util. Tokio util has a StreamReader wrapper we
-/// can use, but there might still be some conversion stuff to deal with
+/// A wrapper around a Warp stream of bytes that implements AsyncRead.
+///
+/// This might no longer be necessary once we hit tokio 0.3 and upgrade tokio-util. Tokio util has a
+/// StreamReader wrapper we can use, but there might still be some conversion stuff to deal with
 pub struct BodyReadBuffer<B, T, E>(pub T)
 where
     B: Buf,

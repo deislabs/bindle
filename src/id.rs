@@ -21,7 +21,9 @@ type Result<T> = std::result::Result<T, ParseError>;
 const PATH_SEPARATOR: char = '/';
 
 /// A parsed representation of an ID string for a bindle. This is currently defined as an arbitrary
-/// path with a version string at the end. Examples of valid ID strings include:
+/// path with a version string at the end.
+///
+/// Examples of valid ID strings include:
 ///
 /// - `foo/0.1.0`
 /// - `example.com/foo/1.2.3`
@@ -73,7 +75,7 @@ impl Id {
     /// would impose both naming constraints on the bindle and security issues on the
     /// storage layout. So this function hashes the name/version data (which together
     /// MUST be unique in the system) and uses the resulting hash as the canonical
-    /// name. The hash is guaranteed to be in the character set [a-zA-Z0-9].
+    /// name. The hash is guaranteed to be in the character set `[a-zA-Z0-9]`.
     pub fn sha(&self) -> String {
         let mut hasher = Sha256::new();
         hasher.update(&self.name);

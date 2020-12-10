@@ -32,7 +32,7 @@ impl Default for SearchOptions {
     }
 }
 
-/// Describes the matches that are returned
+/// Describes the matches that are returned from a query
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Matches {
     /// The query used to find this match set
@@ -78,8 +78,11 @@ impl Matches {
 }
 
 /// This trait describes the minimal set of features a Bindle provider must implement to provide
-/// query support. Implementors of this trait should handle any locking of the internal index in
-/// their implementation
+/// query support.
+///
+/// Implementors of this trait should handle any locking of the internal index in their
+/// implementation Please note that due to this being an `async_trait`, the types might look
+/// complicated. Look at the code directly to see the simpler function signatures for implementation
 #[async_trait::async_trait]
 pub trait Search {
     /// A high-level function that can take raw search strings (queries and filters) and options.

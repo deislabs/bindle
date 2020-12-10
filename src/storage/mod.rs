@@ -16,6 +16,10 @@ use crate::Id;
 /// A custom shorthand result type that always has an error type of [`StorageError`](StorageError)
 pub type Result<T> = core::result::Result<T, StorageError>;
 
+/// The basic functionality required for bindle to use something as a storage engine.
+///
+/// Please note that due to this being an `async_trait`, the types might look complicated. Look at
+/// the code directly to see the simpler function signatures for implementation
 #[async_trait::async_trait]
 pub trait Storage {
     /// This takes an invoice and creates it in storage.
