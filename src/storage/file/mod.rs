@@ -349,7 +349,10 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         Ok(())
     }
 
-    async fn get_parcel(&self, parcel_id: &str) -> Result<Box<dyn AsyncRead + Unpin + Send>> {
+    async fn get_parcel(
+        &self,
+        parcel_id: &str,
+    ) -> Result<Box<dyn AsyncRead + Unpin + Send + Sync>> {
         debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
         let reader = File::open(name).await.map_err(map_io_error)?;

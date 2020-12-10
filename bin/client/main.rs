@@ -1,7 +1,8 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
-use bindle::standalone::StandaloneRead;
+use bindle::standalone::{StandaloneRead, StandaloneWrite};
 use bindle::storage::StorageError;
 use bindle::{
     cache::{Cache, DumbCache},
@@ -12,6 +13,7 @@ use clap::Clap;
 use log::{info, warn};
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 mod opts;
 
@@ -177,30 +179,42 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
 
     println!("Fetched invoice. Starting fetch of parcels");
 
+    let parcels = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    let zero_vec = Vec::with_capacity(0);
+    let is_export = opts.export.is_some();
     let parcel_fetch = inv
         .parcel
-        .unwrap_or_default()
-        .into_iter()
-        .map(|p| (p.label.sha256, cache.clone()))
-        .map(|(sha, c)| async move {
-            if let Err(e) = c.get_parcel(&sha).await {
-                match e {
-                    StorageError::NotFound => warn!("Parcel {} does not exist", sha),
-                    StorageError::CacheError(err) if matches!(err, ClientError::ParcelNotFound) => {
-                        warn!("Parcel {} does not exist", sha)
-                    }
-                    // Only return an error if it isn't a not found error. By design, an invoice
-                    // can contain parcels that don't yet exist
-                    StorageError::CacheError(inner) => return Err(inner),
-                    _ => {
-                        return Err(ClientError::Other(format!(
-                            "Unable to get parcel {}: {:?}",
-                            sha, e
-                        )))
+        .as_ref()
+        .unwrap_or(&zero_vec)
+        .iter()
+        .map(|p| (p.label.sha256.clone(), cache.clone(), parcels.clone()))
+        .map(|(sha, c, parcels)| async move {
+            match c.get_parcel(&sha).await {
+                Ok(p) => {
+                    println!("Fetched parcel {}", sha);
+                    if is_export {
+                        parcels.lock().await.insert(sha, p);
                     }
                 }
-            } else {
-                println!("Fetched parcel {}", sha);
+                Err(e) => {
+                    match e {
+                        StorageError::NotFound => warn!("Parcel {} does not exist", sha),
+                        StorageError::CacheError(err)
+                            if matches!(err, ClientError::ParcelNotFound) =>
+                        {
+                            warn!("Parcel {} does not exist", sha)
+                        }
+                        // Only return an error if it isn't a not found error. By design, an invoice
+                        // can contain parcels that don't yet exist
+                        StorageError::CacheError(inner) => return Err(inner),
+                        _ => {
+                            return Err(ClientError::Other(format!(
+                                "Unable to get parcel {}: {:?}",
+                                sha, e
+                            )))
+                        }
+                    }
+                }
             }
             Ok(())
         });
@@ -208,6 +222,21 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
         .await
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
+    if let Some(p) = opts.export {
+        let standalone = StandaloneWrite::new(p, &inv.bindle.id)?;
+        standalone
+            .write(
+                inv,
+                // All locks should be done at this point (as all futures exited), so panicing feels
+                // right here as it is an unrecoverable condition
+                Arc::try_unwrap(parcels)
+                    .map_err(|_| ClientError::Other("Unexpected lock error".to_string()))
+                    .unwrap()
+                    .into_inner(),
+            )
+            .await?;
+    }
+
     Ok(())
 }
 

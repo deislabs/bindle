@@ -185,7 +185,7 @@ impl StandaloneWrite {
         &self,
         inv: crate::Invoice,
         parcels: HashMap<String, T>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         validate_shas(&inv, parcels.keys())?;
 
         // Should create all the directories needed down to the parcels directory
