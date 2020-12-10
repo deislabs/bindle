@@ -25,6 +25,7 @@ pub mod testing;
 
 #[doc(inline)]
 pub use id::Id;
+#[doc(inline)]
 pub use search::Matches;
 
 use semver::{Compat, Version, VersionReq};
@@ -34,6 +35,7 @@ use std::collections::BTreeMap;
 
 use search::SearchOptions;
 
+/// The version string for the v1 Bindle Spec
 pub const BINDLE_VERSION_1: &str = "1.0.0";
 
 /// The main structure for a Bindle invoice.

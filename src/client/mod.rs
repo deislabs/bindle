@@ -19,6 +19,7 @@ use crate::Id;
 
 pub use error::ClientError;
 
+/// A shorthand `Result` type that always uses `ClientError` as its error variant
 pub type Result<T> = std::result::Result<T, ClientError>;
 
 const INVOICE_ENDPOINT: &str = "_i";
@@ -27,6 +28,7 @@ const QUERY_ENDPOINT: &str = "_q";
 const RELATIONSHIP_ENDPOINT: &str = "_r";
 const TOML_MIME_TYPE: &str = "application/toml";
 
+/// A client type for interacting with a Bindle server
 #[derive(Clone)]
 pub struct Client {
     client: HttpClient,

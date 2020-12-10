@@ -1,11 +1,12 @@
 //! Some helpful utilities for testing. This module is only available if the `test-tools` feature is
-//! enabled. Its main feature is allowing the use of prebuilt scaffolds for testing. See the
-//! [README](https://github.com/deislabs/bindle/blob/master/tests/scaffolds/README.md) in the
-//! testing directory of bindle for more information on scaffolding structure. All loading functions
-//! will load scaffolds by default from `$CARGO_MANIFEST_DIR/tests/scaffolds`. However, this
-//! directory can be configured by setting the `BINDLE_SCAFFOLD_DIR` environment variable to your
-//! desired path. All functions will panic if they encounter an error to make it easier on users (so
-//! they don't have to handle the errors in their tests in the exact same way)
+//! enabled. Its main feature is allowing the use of prebuilt scaffolds for testing.
+//!
+//! See the [README](https://github.com/deislabs/bindle/blob/master/tests/scaffolds/README.md) in
+//! the testing directory of bindle for more information on scaffolding structure. All loading
+//! functions will load scaffolds by default from `$CARGO_MANIFEST_DIR/tests/scaffolds`. However,
+//! this directory can be configured by setting the `BINDLE_SCAFFOLD_DIR` environment variable to
+//! your desired path. All functions will panic if they encounter an error to make it easier on
+//! users (so they don't have to handle the errors in their tests in the exact same way)
 
 use std::collections::HashMap;
 use std::io::Read;
