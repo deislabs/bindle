@@ -96,7 +96,7 @@ async fn main() {
                 parcel_map.lock().await.insert(sha.clone(), file);
 
                 // Create the label object
-                let md = path.metadata().expect("failed to stat");
+                let md = tokio::fs::metadata(&path).await.expect("failed to stat");
                 let label = bindle::Label {
                     name: format!("{}", path.file_name().unwrap().to_string_lossy()),
                     media_type: "application/wasm".to_owned(),
