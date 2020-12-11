@@ -144,6 +144,7 @@ async fn generate_label(
         size,
         name,
         annotations: None, // TODO: allow annotations from command line
+        ..bindle::Label::default()
     })
 }
 

@@ -23,6 +23,8 @@ pub mod storage;
 #[cfg(feature = "test-tools")]
 pub mod testing;
 
+pub mod filters;
+
 #[doc(inline)]
 pub use id::Id;
 #[doc(inline)]
@@ -32,11 +34,18 @@ use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
+use std::hash::Hash;
 
 use search::SearchOptions;
 
 /// The version string for the v1 Bindle Spec
 pub const BINDLE_VERSION_1: &str = "1.0.0";
+
+/// Alias for feature map in an Invoice's parcel
+pub type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
+
+/// Alias for annotations map
+pub type AnnotationMap = BTreeMap<String, String>;
 
 /// The main structure for a Bindle invoice.
 ///
@@ -95,7 +104,6 @@ impl Invoice {
     }
 }
 
-/// Key identifying data for a Bindle. The most important being the [`Id`](crate::Id)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct BindleSpec {
@@ -110,29 +118,79 @@ pub struct BindleSpec {
 /// A parcel file can be an arbitrary "blob" of data. This could be binary or text files. This
 /// object contains the metadata and associated conditions for using a parcel. For more information,
 /// see the [Bindle Spec](https://github.com/deislabs/bindle/blob/master/docs/bindle-spec.md)
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Parcel {
     pub label: Label,
     pub conditions: Option<Condition>,
 }
 
+impl Parcel {
+    pub fn member_of(&self, group: &str) -> bool {
+        match &self.conditions {
+            Some(conditions) => match &conditions.member_of {
+                Some(groups) => groups.iter().any(|g| *g == group),
+                None => false,
+            },
+            None => false,
+        }
+    }
+    /// returns true if this parcel is a member of the "global" group (default).
+    ///
+    /// The spec says: "An implicit global group exists. It has no name, and includes
+    /// _only_ the parcels that are not assigned to any other group."
+    /// Therefore, if this returns true, it is a member of the "global" group.
+    pub fn is_global_group(&self) -> bool {
+        match &self.conditions {
+            Some(conditions) => match &conditions.member_of {
+                Some(groups) => groups.is_empty(),
+                None => true,
+            },
+            None => true,
+        }
+    }
+}
+
 /// Metadata of a stored parcel
 ///
 /// See the [Label Spec](https://github.com/deislabs/bindle/blob/master/docs/label-spec.md) for more
 /// detailed information
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Label {
     pub sha256: String,
     pub media_type: String,
     pub name: String,
     pub size: u64,
-    pub annotations: Option<BTreeMap<String, String>>,
+    pub annotations: Option<AnnotationMap>,
+    pub feature: Option<FeatureMap>,
+}
+
+impl Label {
+    fn new(name: String, sha256: String) -> Self {
+        Label {
+            name,
+            sha256,
+            ..Label::default()
+        }
+    }
+}
+
+impl Default for Label {
+    fn default() -> Self {
+        Self {
+            sha256: "".to_owned(),
+            media_type: "application/octet-stream".to_owned(),
+            name: "".to_owned(),
+            size: 0,
+            annotations: None,
+            feature: None,
+        }
+    }
 }
 
 /// Conditions associate parcels to [`Group`](crate::Group)s
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Condition {
     pub member_of: Option<Vec<String>>,
@@ -248,6 +306,7 @@ mod test {
             name: "foo.toml".to_owned(),
             size: 101,
             annotations: None,
+            feature: None,
         };
         let parcel = Parcel {
             label,
@@ -305,8 +364,7 @@ mod test {
         let invoice = toml::from_str::<Invoice>(raw.as_str()).expect("clean parse of invoice");
 
         // Now we serialize it and compare it to the original version
-        let raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
-        println!("===========\n{}\n===========", raw2);
+        let _raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
         // FIXME: Do we care about this detail?
         //assert_eq!(raw, raw2);
     }
@@ -329,5 +387,47 @@ mod test {
         let reqs = vec!["2", "%^&%^&%"];
         reqs.iter()
             .for_each(|r| assert!(!version_compare(&version, r)));
+    }
+
+    #[test]
+    fn parcel_no_groups() {
+        let invoice = r#"
+        bindleVersion = "1.0.0"
+
+        [bindle]
+        name = "aricebo"
+        version = "1.2.3"
+
+        [[group]]
+        name = "images"
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeefff"
+        name = "telescope.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        [parcel.conditions]
+        memberOf = ["telescopes"]
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "111aaabbbcccdddeee"
+        name = "telescope.txt"
+        mediaType = "text/plain"
+        size = 123_456
+        "#;
+
+        let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
+        let parcels = invoice.parcel.expect("expected some parcels");
+
+        let img = &parcels[0];
+        let txt = &parcels[1];
+
+        assert!(img.member_of("telescopes"));
+        assert!(!img.is_global_group());
+
+        assert!(txt.is_global_group());
+        assert!(!txt.member_of("telescopes"));
     }
 }
