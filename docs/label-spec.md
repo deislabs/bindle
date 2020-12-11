@@ -145,3 +145,122 @@ An implementation would therefore be correct in interpreting example 3 as "this 
 This distinction is important when filtering a list of parcels based on features.
 To arrive at a list of parcels that have a `ui_framework` not equal to `v2`, the implementation should return only the first parcel above.
 The last parcel does not have any `ui_framework`.
+
+#### Filtering Features
+
+This section describes how clients can filter based upon features.
+
+A feature is a special annotation on a parcel. For example, in this excerpt from an `invoice.toml`, this parcel declares a single feature:
+
+```toml
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "libalmanac.wasm"
+size = 2561710
+[parcel.label.feature.wasm]
+type = "library"
+```
+
+While group membership is attached to the parcel declaration, a feature is attached to the parcel's label. What this means is that features are durable across invoice usages.
+
+When evaluating an invoice, a client implementation MAY choose to provide filtering on features. That is, a client may choose parcels based on which features are present/absent, or on what the value of a feature is. This section describes normative behaviors of filtering that must be applied so that parcels are evaluated without contradiction by runtimes.
+
+**A feature name is unique to a section.** No section can have two features with the same name. The following is therefore illegal:
+
+```toml
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "libalmanac.wasm"
+size = 2561710
+[parcel.label.feature.wasm]
+type = "library"
+type = "executable"
+```
+
+It is illegal because `wasm.type` is specified twice inside the same section.
+
+**Names are not global across sections.** If two sections have features of the same name, an implementation SHOULD NOT assume that they refer to the same feature. For example, the two `type` declarations in this example are not equivalent.
+
+```toml
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "libalmanac.wasm"
+size = 2561710
+[parcel.label.feature.wasm]
+type = "library"
+[parcel.label.feature.architecture]
+type = "x86"
+```
+
+Consequently, implementations SHOULD NOT provide support for filtering based on name without consideration for section.
+
+**Values of features are considered mutually exclusive.** That is, filters should not allow two effective rules that specify the same group/name, but different values. Allowing this would potentially allow conflicting features to be simultaneously loaded by a client.
+
+For example, when supporting a set of parcels that act as an aggregate application, where some parcels are libraries and some are executables, this structure is NOT recommended:
+
+```toml
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "example/weather"
+version = "0.1.0"
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "weather.wasm"
+size = 1710256
+[parcel.label.feature.wasm]
+type = "executable"
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "libalmanac.wasm"
+size = 2561710
+[parcel.label.feature.wasm]
+type = "library"
+```
+
+This structure labels one parcel of type "executable" and another of type "library". But it is not considered legal to run a filter that says `wasm.type = library or wasm.type = executable`.
+
+One alternative would be to not label the executable with a `type`. A better solution would be to specify these as two separate options:
+
+```toml
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "example/weather"
+version = "0.1.0"
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "weather.wasm"
+size = 1710256
+[parcel.label.feature.wasm]
+executable = "true"
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "libalmanac.wasm"
+size = 2561710
+[parcel.label.feature.wasm]
+library = "true"
+```
+
+In this case, the filter `wasm.library = "true" or wasm.executable = "true"` is a legal feature selector because it selects on two different _names_, not two different _values_.
+
+> NOTE: This particular rule may be reconsidered in the future. At present, we are primarily interested in systematically avoiding conflicting feature loading.
+
