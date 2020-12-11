@@ -23,7 +23,7 @@ pub mod storage;
 #[cfg(feature = "test-tools")]
 pub mod testing;
 
-mod filters;
+pub mod filters;
 
 #[doc(inline)]
 pub use id::Id;
@@ -42,10 +42,10 @@ use search::SearchOptions;
 pub const BINDLE_VERSION_1: &str = "1.0.0";
 
 /// Alias for feature map in an Invoice's parcel
-type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
+pub type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
 
 /// Alias for annotations map
-type AnnotationMap = BTreeMap<String, String>;
+pub type AnnotationMap = BTreeMap<String, String>;
 
 /// The main structure for a Bindle invoice.
 ///
@@ -135,12 +135,12 @@ impl Parcel {
             None => false,
         }
     }
-    /// returns true if this parcel is a member of no defined groups.
+    /// returns true if this parcel is a member of the "global" group (default).
     ///
-    /// The spec says that if a parcel is not a member of any defined groups, it is
-    /// a member of the "default unnamed group". Therefore, if this returns true,
-    /// it is a member of the "default unnamed group."
-    pub fn no_groups(&self) -> bool {
+    /// The spec says: "An implicit global group exists. It has no name, and includes
+    /// _only_ the parcels that are not assigned to any other group."
+    /// Therefore, if this returns true, it is a member of the "global" group.
+    pub fn is_global_group(&self) -> bool {
         match &self.conditions {
             Some(conditions) => match &conditions.member_of {
                 Some(groups) => groups.is_empty(),

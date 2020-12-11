@@ -33,7 +33,7 @@ struct FeatureReference {
 impl BindleFilter {
     pub fn new(invoice: &Invoice) -> Self {
         Self {
-            // For now, we clone just in case we have to mutate the ivoice in the builder.
+            // For now, we clone just in case we have to mutate the invoice in the builder.
             // If it turns out we don't need to mutate the invoice, then we can use a ref
             // instead.
             invoice: invoice.clone(),

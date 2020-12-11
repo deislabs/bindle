@@ -72,7 +72,6 @@ async fn main() {
             let path = entry.as_ref().unwrap().path();
             !path.is_dir() && path.extension().unwrap_or_else(|| std::ffi::OsStr::new("")) == "wasm"
         })
-<<<<<<< HEAD
         .map(|entry| entry.unwrap().path())
         .collect()
         .await;
@@ -103,7 +102,7 @@ async fn main() {
                     media_type: "application/wasm".to_owned(),
                     sha256: sha,
                     size: md.len() as u64,
-                    annotations: None,
+                    ..bindle::Label::default()
                 };
 
                 // Return the parcel section to be added to the invoice.
@@ -114,87 +113,6 @@ async fn main() {
             });
 
     let parcels: Vec<bindle::Parcel> = futures::future::join_all(parcel_futures).await;
-||||||| merged common ancestors
-        .map(|entry| {
-            // TODO: This is admittedly way to much to do in one closure.
-            let path = entry.unwrap().path();
-            // Calculate the hash of the WASM file
-            let mut file = std::fs::File::open(&path).expect("file cannot be opened");
-            let mut hasher = Sha256::new();
-            std::io::copy(&mut file, &mut hasher).expect("hashing file failed");
-            let sha = format!("{:x}", hasher.finalize());
-
-            // Create the label object
-            let md = path.metadata().expect("failed to stat");
-            let label = bindle::Label {
-                name: format!("{}", path.file_name().unwrap().to_string_lossy()),
-                media_type: "application/wasm".to_owned(),
-                sha256: sha,
-                size: md.len() as u64,
-                annotations: None,
-            };
-
-            // Write the parcel
-            let parcel_path = bindle_path.join("parcels").join(label.sha256.clone());
-            let parcel_dat = parcel_path.join("parcel.dat");
-            let label_path = parcel_path.join("label.toml");
-
-            fs::create_dir_all(parcel_path).expect("creating parcel dir failed");
-            let label_toml = toml::to_string(&label).expect("failed to serialize label.toml");
-            fs::write(label_path, label_toml).expect("failed to write label.toml");
-            let mut dat = fs::File::create(parcel_dat).expect("failed to create parcel.dat");
-            file.seek(SeekFrom::Start(0))
-                .expect("failed to seek to begining of WASM file");
-            std::io::copy(&mut file, &mut dat).expect("failed to copy data");
-
-            // Return the parcel section to be added to the invoice.
-            bindle::Parcel {
-                label,
-                conditions: None,
-            }
-        })
-        .collect();
-=======
-        .map(|entry| {
-            // TODO: This is admittedly way to much to do in one closure.
-            let path = entry.unwrap().path();
-            // Calculate the hash of the WASM file
-            let mut file = std::fs::File::open(&path).expect("file cannot be opened");
-            let mut hasher = Sha256::new();
-            std::io::copy(&mut file, &mut hasher).expect("hashing file failed");
-            let sha = format!("{:x}", hasher.finalize());
-
-            // Create the label object
-            let md = path.metadata().expect("failed to stat");
-            let label = bindle::Label {
-                name: format!("{}", path.file_name().unwrap().to_string_lossy()),
-                media_type: "application/wasm".to_owned(),
-                sha256: sha,
-                size: md.len() as u64,
-                ..bindle::Label::default()
-            };
-
-            // Write the parcel
-            let parcel_path = bindle_path.join("parcels").join(label.sha256.clone());
-            let parcel_dat = parcel_path.join("parcel.dat");
-            let label_path = parcel_path.join("label.toml");
-
-            fs::create_dir_all(parcel_path).expect("creating parcel dir failed");
-            let label_toml = toml::to_string(&label).expect("failed to serialize label.toml");
-            fs::write(label_path, label_toml).expect("failed to write label.toml");
-            let mut dat = fs::File::create(parcel_dat).expect("failed to create parcel.dat");
-            file.seek(SeekFrom::Start(0))
-                .expect("failed to seek to begining of WASM file");
-            std::io::copy(&mut file, &mut dat).expect("failed to copy data");
-
-            // Return the parcel section to be added to the invoice.
-            bindle::Parcel {
-                label,
-                conditions: None,
-            }
-        })
-        .collect();
->>>>>>> added support for global group
 
     // Create invoice
     let mut invoice = bindle::Invoice {
