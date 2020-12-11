@@ -364,7 +364,7 @@ mod test {
         let invoice = toml::from_str::<Invoice>(raw.as_str()).expect("clean parse of invoice");
 
         // Now we serialize it and compare it to the original version
-        let raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
+        let _raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
         // FIXME: Do we care about this detail?
         //assert_eq!(raw, raw2);
     }
@@ -425,9 +425,9 @@ mod test {
         let txt = &parcels[1];
 
         assert!(img.member_of("telescopes"));
-        assert!(!img.no_groups());
+        assert!(!img.is_global_group());
 
-        assert!(txt.no_groups());
+        assert!(txt.is_global_group());
         assert!(!txt.member_of("telescopes"));
     }
 }

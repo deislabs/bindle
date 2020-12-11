@@ -1,6 +1,111 @@
+//! A filtering library for extracing parcels from a bindle.
+//!
+//! A bindle's invoice may contain many different parcels. And those parcels may have
+//! groups and features associated with them. This library provides a way to filter a list
+//! of parcels, returning only the specific parcels applicable to the given scenario.
+//!
+//! The recommended way of running a filter is using the `BindleFilter` builder:
+//!
+//! ```
+//! use bindle::filters::BindleFilter;
+//!
+//! let toml = r#"
+//!    bindleVersion = "1.0.0"
+//!
+//!    [bindle]
+//!    name = "test/is-disabled"
+//!    version = "0.1.0"
+//!
+//!    [[group]]
+//!    name = "is_required"
+//!    required = true
+//!
+//!    [[group]]
+//!    name = "is_optional"
+//!
+//!    [[group]]
+//!    name = "also_optional"
+//!
+//!    [[parcel]]
+//!    [parcel.label]
+//!    name = "first"
+//!    sha256 = "12345"
+//!    mediaType = "application/octet-stream"
+//!    size = 123
+//!    [parcel.conditions]
+//!    memberOf = ["is_required"]
+//!
+//!    [[parcel]]
+//!    [parcel.label]
+//!    name = "second"
+//!    sha256 = "4321"
+//!    mediaType = "application/octet-stream"
+//!    size = 321
+//!    [parcel.conditions]
+//!    memberOf = ["is_optional", "also_optional"]
+//!
+//!    [[parcel]]
+//!    [parcel.label]
+//!    name = "third"
+//!    sha256 = "4321"
+//!    mediaType = "application/octet-stream"
+//!    size = 321
+//!    [parcel.conditions]
+//!    memberOf = ["also_optional"]
+//!    "#;
+//! let inv: bindle::Invoice = toml::from_str(toml).expect("test invoice parsed");
+//!
+//! let filter = BindleFilter::new(&inv).filter();
+//! assert_eq!(1, filter.len());
+//! ```
+//!
+//! It can also be used for enabling or disabling parcel features. For example, here's
+//! an invoice that uses features:
+//!
+//! ```
+//! use bindle::filters::BindleFilter;
+//! let toml = r#"
+//! bindleVersion = "1.0.0"
+//! [bindle]
+//! name = "test/activate"
+//! version = "0.1.0"
+//!
+//! [[parcel]]
+//! [parcel.label]
+//! name = "narwhal_handler"
+//! sha256 = "12345"
+//! mediaType = "application/octet-stream"
+//! size = 123
+//! [parcel.label.feature.testing]
+//! animal = "narwhal"
+//! color = "blue"
+//!
+//! [[parcel]]
+//! [parcel.label]
+//! name = "unicorn_handler"
+//! sha256 = "4321"
+//! mediaType = "application/octet-stream"
+//! size = 321
+//! [parcel.label.feature.testing]
+//! animal = "unicorn"
+//! color = "blue"
+//!
+//! [[parcel]]
+//! [parcel.label]
+//! name = "default_thinger"
+//! sha256 = "5432"
+//! mediaType = "application/octet-stream"
+//! size = 321
+//! "#;
+//! let inv: bindle::Invoice = toml::from_str(toml).expect("test invoice parsed");
+//! let filter = BindleFilter::new(&inv)
+//!     .activate_feature("testing", "animal", "narwhal")
+//!     .filter();
+//! assert_eq!(2, filter.len());
+//! ```
 use std::collections::HashSet;
 
-use crate::{Invoice, Label, Parcel};
+use crate::{Invoice, Parcel};
 
 /// BindleFilter walks an invoice and resolves a list of parcels.
 ///
