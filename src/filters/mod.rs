@@ -138,9 +138,6 @@ pub struct BindleFilter {
 impl BindleFilter {
     pub fn new(invoice: Invoice) -> Self {
         Self {
-            // For now, we clone just in case we have to mutate the invoice in the builder.
-            // If it turns out we don't need to mutate the invoice, then we can use a ref
-            // instead.
             invoice,
             groups: HashSet::new(),
             exclude_groups: HashSet::new(),
@@ -276,7 +273,7 @@ impl BindleFilter {
             .parcel
             .clone()
             .unwrap_or_else(Vec::new)
-            .iter()
+            .into_iter()
             .filter(|p| {
                 // Filter out any parcels that are not part of the global group or one
                 // of the enabled groups.
@@ -295,23 +292,22 @@ impl BindleFilter {
                     .unwrap_or(true) // No conditions means parcel is in global group
             })
             .filter(|p| !self.is_disabled(p))
-            .cloned()
             .collect();
 
         // Loop through the parcels and see if any of them require in more groups.
         // If so, descend down that tree and add parcels.
-        let mut dependencies: HashSet<Parcel> = HashSet::new();
-        parcels.iter().for_each(|p| {
+        let dependencies: HashSet<Parcel> = parcels.iter().fold(HashSet::new(), |mut deps, p| {
             if let Some(extras) = self.walk_parcel_requires(p, &mut groups) {
-                dependencies.extend(extras)
+                deps.extend(extras)
             }
+            deps
         });
 
         // Add all of the dependencies to the main parcel list.
         parcels.extend(dependencies);
 
-        // There is probably a better way to do this.
-        parcels.iter().cloned().collect()
+        // Collect it into a Vec
+        parcels.into_iter().collect()
     }
 
     /// Given a parcel, get a list of all of the parcels that are required via groups.

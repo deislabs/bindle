@@ -167,7 +167,7 @@ pub struct Label {
 }
 
 impl Label {
-    fn new(name: String, sha256: String) -> Self {
+    pub fn new(name: String, sha256: String) -> Self {
         Label {
             name,
             sha256,
