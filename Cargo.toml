@@ -9,7 +9,6 @@ edition = "2018"
 license-file = "LICENSE.txt"
 description = "An aggregate object storage system for applications"
 repository = "https://github.com/deislabs/bindle"
-documentation = "https://github.com/deislabs/bindle/tree/master/docs"
 readme = "docs/crate-readme.md"
 keywords = [
     "storage",
