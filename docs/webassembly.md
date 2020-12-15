@@ -179,7 +179,7 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = library
+library = "true"
 ```
 
 The weather app above is named `example/weather`, and has two parcels attached. Since neither is annotated otherwise, they are both required. When the `sg1` runtime executes this application, it will go through the following steps:
@@ -190,7 +190,7 @@ The weather app above is named `example/weather`, and has two parcels attached. 
     - The media type for each is runnable
 3. Fetch the parcels
 4. Start the runtime and load the parcel
-    - The `libalmanac.wasm` parcel is annotated with a label that says its `type` is `library`. So sg1 will assume that `libalmanac.wasm` is not the entry point
+    - The `libalmanac.wasm` parcel is annotated with a label that says it is a library (`library = "true"`). So sg1 will assume that `libalmanac.wasm` is not the entry point
     - The `weather.wasm` does not declare a type, so it is considered an entrypoint by default
 5. Run the program to completion
     - The runtime will load both modules, each into its own isolated environment.
@@ -234,7 +234,7 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = library
+library = "true"
 ```
 
 Say the combination of the `1710256` bytes for `weather.wasm` and the `2561710` for `libalmanac.wasm` exceed the total amount of space the system can accommodate. Further, imagine that `sg1` has been linked to an account that has the ability to execute on a remote host.
@@ -306,7 +306,7 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = library
+library = "true"
 [parcel.conditions]
 memberOf = ["almanac"]
 
@@ -317,7 +317,7 @@ mediaType = "application/wasm"
 name = "libalmanac-lite.wasm"
 size = 11710
 [parcel.label.feature.wasm]
-type = library
+library = "true"
 [parcel.conditions]
 memberOf = ["almanac"]
 ```
@@ -383,7 +383,7 @@ mediaType = "application/wasm"
 name = "weather.wasm"
 size = 1710256
 [parcel.label.feature.wasm]
-ui-kit = "electron+sgu"
+ui_kit = "electron+sgu"
 
 [[parcel]]
 [parcel.label]
@@ -392,19 +392,19 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "library"
+library = "true"
 ```
 
-The important thing in the example above is the new declaration on line 16: The main entrypoint declares that it needs a `ui-kit` of `electron+sgu`.
+The important thing in the example above is the new declaration on line 16: The main entrypoint declares that it needs a `ui_kit` of `electron+sgu`.
 
-When the sg1 runtime is used, it would read the Bindle invoice and see the `ui-kit` requirement. Since it cannot satisfy that condition, it must exit with an error.
+When the sg1 runtime is used, it would read the Bindle invoice and see the `ui_kit` requirement. Since it cannot satisfy that condition, it must exit with an error.
 
 ```console
 $ sg1 example.com/example/hello-world/0.1.0
-ERROR: sg1 does not support ui-kit "electron+sgu"
+ERROR: sg1 does not support ui_kit "electron+sgu"
 ```
 
-But if the sgu runtime executes this program, it will be able to satisfy the `ui-kit` requirement and run the program.
+But if the sgu runtime executes this program, it will be able to satisfy the `ui_kit` requirement and run the program.
 
 ## Example 7: Supporting files
 
@@ -428,7 +428,7 @@ mediaType = "application/wasm"
 name = "weather.wasm"
 size = 1710256
 [parcel.label.feature.wasm]
-ui-kit = "electron+sgu"
+ui_kit = "electron+sgu"
 
 [[parcel]]
 [parcel.label]
@@ -437,7 +437,7 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "library"
+library = "true"
 
 [[parcel]]
 [parcel.label]
@@ -446,16 +446,16 @@ mediaType = "text/css"
 name = "style.css"
 size = 6620
 [parcel.label.feature.wasm]
-ui-kit = "electron+sgu"
+ui_kit = "electron+sgu"
 ```
 
 The last item on this invoice is a CSS file (named `style.css` and with media type `text/css`).
 
-In this case, we add the `ui-kit` requirement to the CSS for added safety, though we know that the sg1 runtime would fail regardless of what this annotation is set to. Later, however, we will see how this can be useful.
+In this case, we add the `ui_kit` requirement to the CSS for added safety, though we know that the sg1 runtime would fail regardless of what this annotation is set to. Later, however, we will see how this can be useful.
 
-With the `ui-kit` label attached, we assume that the sgu runtime will read that file and understand what to do with it.
+With the `ui_kit` label attached, we assume that the sgu runtime will read that file and understand what to do with it.
 
-Again, the sg1 client would merely fail when confronted with one or more parcels with the `ui-kit` annotation.
+Again, the sg1 client would merely fail when confronted with one or more parcels with the `ui_kit` annotation.
 
 ## Example 8: Multiple UIs
 
@@ -482,7 +482,7 @@ mediaType = "application/wasm"
 name = "weather-ui.wasm"
 size = 1710256
 [parcel.label.feature.wasm]
-ui-kit = "electron+sgu"
+ui_kit = "electron+sgu"
 [parcel.conditions]
 memberOf = ["entrypoint"]
 
@@ -502,12 +502,12 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "library"
+library = "true"
 ```
 
-Above, we have used the `group` technique to declare two entrpoints, where the runtime must choose exactly one. One entrypoint has a `ui-kit` requirement and the other does not.
+Above, we have used the `group` technique to declare two entrpoints, where the runtime must choose exactly one. One entrypoint has a `ui_kit` requirement and the other does not.
 
-When sg1 executes the bundle above, it will read through the `entrypoint` group, determining that it cannot execute `weather-ui.wasm` (because of the `ui-kit` requirement), but determining that it can run `weather-cli.wasm`.
+When sg1 executes the bundle above, it will read through the `entrypoint` group, determining that it cannot execute `weather-ui.wasm` (because of the `ui_kit` requirement), but determining that it can run `weather-cli.wasm`.
 
 Sg1 will then fetch `weather-cli.wasm` and `libalmanac.wasm` and execute those two locally.
 
@@ -547,7 +547,7 @@ mediaType = "application/wasm"
 name = "weather-ui.wasm"
 size = 1710256
 [parcel.label.feature.wasm]
-ui-kit = "electron+sgu"
+ui_kit = "electron+sgu"
 [parcel.conditions]
 memberOf = ["entrypoint"]
 requires = ["ui-support"]
@@ -568,7 +568,7 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "library"
+library = "true"
 
 [[parcel]]
 [parcel.label]
@@ -577,7 +577,7 @@ mediaType = "text/html"
 name = "almanac-ui.html"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "data"
+dat = "true"
 [parcel.conditions]
 memberOf = ["ui-support"]
 
@@ -588,7 +588,7 @@ mediaType = "text/css"
 name = "styles.css"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "data"
+data = "true"
 [parcel.conditions]
 memberOf = ["ui-support"]
 
@@ -599,7 +599,7 @@ mediaType = "application/wasm"
 name = "uibuilder.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "library"
+library = "true"
 [parcel.conditions]
 memberOf = ["ui-support"]
 ```
@@ -616,13 +616,13 @@ When sg1 inspects this invoice and builds an app, it will select the `weather-cl
 
 When sgu inspects this invoice, it will build a more complex app. It will select `weather-ui.wasm`, which in turn will require sgu to include the group `ui-support`. That group requires the selection of three more parcels (`almanac-ui.html`, `styles.css`, and `uibuilder.wasm`). So when sgu finally assembles the app, it will have five total parcels.
 
-One difficulty stems from the possibility of running part of this on a remote host: The host may not be able to determine whether a data file like `styles.css` is required by `weather-ui.wasm` or by `uibuilder.wasm` (or both). Any resources marked `data` are ambiguous in this way. Runtimes may support any number of ways to disambiguate this problem, or we may need to add some additional features in the `feature.wasm` section for `type = "data"`. For example, we could add a `requiredBy = []` definition.
+One difficulty stems from the possibility of running part of this on a remote host: The host may not be able to determine whether a data file like `styles.css` is required by `weather-ui.wasm` or by `uibuilder.wasm` (or both). Any resources marked `data` are ambiguous in this way. Runtimes may support any number of ways to disambiguate this problem, or we may need to add some additional features in the `feature.wasm` section for `data = "true"`. For example, we could add a `requiredBy = []` definition.
 
 ## Example 10: The shim parcel pattern
 
 **TODO:** Consider a polyfill `type` as an alternative approach to this.
 
-In the last few examples, we have seen cases where the runtime provides particular features that a client may take advantage of. The sgu runtime exposes an `electron+sgu` UI toolkit.
+In the last few examples, we have seen cases where the runtime provides particular features that a client may take advantage of. The `sgu` runtime exposes an `electron+sgu` UI toolkit.
 
 What do we do if we want to make it possible for a selection algorithm to mock out a facility as a WASM module instead of having the host implement it?
 
@@ -649,7 +649,7 @@ mediaType = "application/wasm"
 name = "weather.wasm"
 size = 1710256
 [parcel.label.feature.wasm]
-ui-kit = "electron+sgu"
+ui_kit = "electron+sgu"
 [parcel.conditions]
 memberOf = ["ui-shim"]
 
@@ -669,7 +669,7 @@ mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
 [parcel.label.feature.wasm]
-type = "library"
+library = "true"
 ```
 
 In this case, we have two things that satisfy the entrypoint requirements, but one of them is a mock UI. THe idea is that a runtime would allow the user to select cases like this explicitly:
@@ -698,9 +698,11 @@ The algorithm may then be something like this:
 
 The following is a definition of the fields that can be in the Parcel label's `feature.wasm` field.
 
-- `type`: String. One of `library`, `entrypoint`, `data`. The default is `entrypoint`, which marks this as an executable.
-- `ui-kit`: String. The name of a UI toolkit that must be present to execute this module. The value is undefined by the spec, and individual runtimes are allowed to declare their own. If this is not present, agents must assume that the app does not require a UI toolkit.
-- `wasi`: boolean. Whether or not WASI support is required. The default is `true`.
+- `library`: Boolean string. Indicates that the parcel contains a library. One of `true`, `t`, `false`, `f`.
+- `entrypoint`: Boolean string. Indicates that the parcel contains a thing that can be executed to start an application. One of `true`, `t`, `false`, `f`.
+- `data`: Boolean string. Indicates that the parcel contains opaque data. One of `true`, `t`, `false`, `f`.
+- `ui_kit`: String. The name of a UI toolkit that must be present to execute this module. The value is undefined by the spec, and individual runtimes are allowed to declare their own. If this is not present, agents must assume that the app does not require a UI toolkit.
+- `wasi`: boolean string. Whether or not WASI support is required. One of `true`, `t`, `false`, `f`. The default is `true`.
 
 We might also add a `feature.wasm-opt` field that would allow optional (not required) "progressive enhancements" as well.
 
