@@ -56,15 +56,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let first_sha = label.sha256;
 
     // Upload a parcel using a stream instead of loading into memory
-    // println!("Creating parcel 2");
-    // let label = bindle_client
-    //     .create_parcel_from_files(
-    //         root_path.join("tests/scaffolds/valid_v2/parcels/parcel.toml"),
-    //         root_path.join("tests/scaffolds/valid_v2/parcels/parcel.dat"),
-    //     )
-    //     .await?;
-    // println!("{:?}", label);
-    // let second_sha = label.sha256;
+    println!("Creating parcel 2");
+    let label = toml::from_slice(
+        &tokio::fs::read(root_path.join("tests/scaffolds/valid_v2/parcels/parcel.toml")).await?,
+    )?;
+    let label = bindle_client
+        .create_parcel_from_file(
+            label,
+            root_path.join("tests/scaffolds/valid_v2/parcels/parcel.dat"),
+        )
+        .await?;
+    println!("{:?}", label);
+    let second_sha = label.sha256;
 
     // Get a parcel and load its bytes into memory
     println!("Loading parcel 1");
@@ -72,9 +75,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", data.len());
 
     // Get a parcel as a stream, and write it into a file somewhere
-    println!("Loading parcel 1 as stream");
+    println!("Loading parcel 2 as stream");
     let temp = tempdir()?;
-    let mut stream = bindle_client.get_parcel_stream(&first_sha).await?;
+    let mut stream = bindle_client.get_parcel_stream(&second_sha).await?;
 
     let file_path = temp.path().join("foo");
     let mut file = tokio::fs::OpenOptions::new()
@@ -90,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     file.flush().await?;
 
     // Read the whole file and make sure we got it
-    assert_eq!(tokio::fs::read(file_path).await?, b"a red one");
+    assert_eq!(tokio::fs::read(file_path).await?, b"a green one");
 
     Ok(())
 }

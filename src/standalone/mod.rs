@@ -93,15 +93,13 @@ impl StandaloneRead {
             to_upload.len(),
             to_upload
         );
-        // NOTE: This will not work with streams until reqwest cuts a new release with the mutltipart
-        // fix I added, so right now we are loading the files in memory
+
         let parcel_futures = to_upload
             .into_iter()
             .map(|(label, path)| (label, path, client.clone()))
             .map(|(label, path, client)| async move {
-                let raw = tokio::fs::read(path).await?;
                 info!("Uploading parcel {} to server", label.sha256);
-                let label = client.create_parcel(label, raw).await?;
+                let label = client.create_parcel_from_file(label, path).await?;
                 info!("Finished uploading parcel {} to server", label.sha256);
                 Ok(())
             });
@@ -179,8 +177,8 @@ impl StandaloneWrite {
 
     // TODO: From a tarball
 
-    /// Writes the given invoice and `HashMap` of parcel streams. The key of the `HashMap` should be
-    /// the SHA of the parcel
+    /// Writes the given invoice and `HashMap` of parcels (as readers). The key
+    /// of the `HashMap` should be the SHA of the parcel
     pub async fn write<T: AsyncRead + Unpin + Send + Sync>(
         &self,
         inv: crate::Invoice,
