@@ -17,7 +17,7 @@ This program runs an HTTP frontend for a Bindle repository.
 "#;
 
 #[derive(Clap)]
-#[clap(name = "bindle-server", version = "0.1.0", author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
+#[clap(name = "bindle-server", version = clap::crate_version!(), author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
 struct Opts {
     #[clap(
         short = 'i',
