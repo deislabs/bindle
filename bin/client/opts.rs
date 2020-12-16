@@ -9,7 +9,7 @@ This program provides tools for working with Bindle servers.
 "#;
 
 #[derive(Clap)]
-#[clap(name = "bindle", version = "0.1.0", author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
+#[clap(name = "bindle", version = clap::crate_version!(), author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
 pub struct Opts {
     #[clap(
         short = 's',

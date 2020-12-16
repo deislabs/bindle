@@ -24,7 +24,7 @@ write the results to a bindir/ directory as a standalone bindle.
 #[tokio::main]
 async fn main() {
     let app = App::new("cargo2bindle")
-        .version("0.1.0")
+        .version(clap::crate_version!())
         .author("DeisLabs at Microsoft Azure")
         .about(DESCRIPTION)
         .arg(
