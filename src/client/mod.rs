@@ -291,6 +291,7 @@ async fn unwrap_status(resp: reqwest::Response, endpoint: Endpoint) -> Result<re
     match (resp.status(), endpoint) {
         (StatusCode::OK, _) => Ok(resp),
         (StatusCode::ACCEPTED, Endpoint::Invoice) => Ok(resp),
+        (StatusCode::CREATED, Endpoint::Invoice) => Ok(resp),
         (StatusCode::NOT_FOUND, Endpoint::Invoice) | (StatusCode::FORBIDDEN, Endpoint::Invoice) => {
             Err(ClientError::InvoiceNotFound)
         }
