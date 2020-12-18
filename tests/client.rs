@@ -6,6 +6,8 @@ use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use bindle::client::Client;
 use bindle::testing;
 
+use tokio::stream::StreamExt;
+
 struct TestController {
     pub client: Client,
     server_handle: std::process::Child,
@@ -100,25 +102,30 @@ async fn test_successful() {
         .await
         .expect("Should be able to fetch newly created invoice");
 
-    for (k, parcel_data) in scaffold.parcel_files.into_iter() {
+    for (k, parcel_data) in scaffold.parcel_files.iter() {
         controller
             .client
-            .create_parcel(scaffold.labels.get(&k).unwrap().clone(), parcel_data)
+            .create_parcel(scaffold.labels.get(k).unwrap().clone(), parcel_data.clone())
             .await
             .expect("Unable to create parcel");
     }
 
     // Now check that we can get all the parcels
-    for label in scaffold.labels.values() {
-        controller
+    for (key, label) in scaffold.labels.iter() {
+        let data = controller
             .client
             .get_parcel(&label.sha256)
             .await
             .expect("unable to get parcel");
-        // TODO: Should we check content here?
+        let expected_len = scaffold.parcel_files.get(key).unwrap().len();
+        assert_eq!(
+            data.len(),
+            expected_len,
+            "Expected file to be {} bytes, got {} bytes",
+            expected_len,
+            data.len()
+        );
     }
-
-    // TODO: Add test for streaming parcel create after reqwest upgrade
 
     controller
         .client
@@ -134,6 +141,90 @@ async fn test_successful() {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn test_streaming_successful() {
+    let controller = TestController::new().await;
+
+    // Use raw paths instead of scaffolds so we can test the stream
+    let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
+    let base = std::path::PathBuf::from(root).join("tests/scaffolds/valid_v1");
+
+    let inv = controller
+        .client
+        .create_invoice_from_file(base.join("invoice.toml"))
+        .await
+        .expect("unable to create invoice")
+        .invoice;
+
+    controller
+        .client
+        .get_invoice(&inv.bindle.id)
+        .await
+        .expect("Should be able to fetch newly created invoice");
+
+    // Load the label from disk
+    let label: bindle::Label = toml::from_slice(
+        &tokio::fs::read(base.join("parcels/parcel.toml"))
+            .await
+            .expect("Unable to load label from disk"),
+    )
+    .expect("Unable to deserialize label");
+    let parcel_path = base.join("parcels/parcel.dat");
+    controller
+        .client
+        .create_parcel_from_file(label.clone(), &parcel_path)
+        .await
+        .expect("Unable to create parcel");
+
+    // Now check that we can get the parcel and read data from the stream
+    let mut stream = controller
+        .client
+        .get_parcel_stream(&label.sha256)
+        .await
+        .expect("unable to get parcel");
+
+    let mut data = Vec::new();
+    while let Some(res) = stream.next().await {
+        let bytes = res.expect("Shouldn't get an error in stream");
+        data.extend(bytes);
+    }
+
+    let on_disk_len = tokio::fs::metadata(parcel_path)
+        .await
+        .expect("Unable to get file info")
+        .len() as usize;
+    assert_eq!(
+        data.len(),
+        on_disk_len,
+        "Expected file to be {} bytes, got {} bytes",
+        on_disk_len,
+        data.len()
+    );
+}
+
+#[tokio::test]
+async fn test_already_created() {
+    let controller = TestController::new().await;
+
+    let scaffold = testing::Scaffold::load("valid_v1").await;
+
+    // Upload parcels first
+    for (k, parcel_data) in scaffold.parcel_files.into_iter() {
+        controller
+            .client
+            .create_parcel(scaffold.labels.get(&k).unwrap().clone(), parcel_data)
+            .await
+            .expect("Unable to create parcel");
+    }
+
+    // Make sure we can create an invoice where all parcels already exist
+    controller
+        .client
+        .create_invoice(scaffold.invoice)
+        .await
+        .expect("invoice creation should not error");
 }
 
 #[tokio::test]
