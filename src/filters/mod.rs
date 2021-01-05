@@ -331,7 +331,7 @@ impl BindleFilter {
 
         let mut ret: HashSet<Parcel> = HashSet::new();
         // For each parcel in this set, see if it has required groups.
-        p.conditions.as_ref().map(|c| {
+        if let Some(c) = p.conditions.as_ref() {
             if let Some(req) = &c.requires {
                 // Loop through the list of required groups and add any that are not present.
                 req.iter().for_each(|r| {
@@ -344,11 +344,11 @@ impl BindleFilter {
                     // to children. This prevents infinite recursion.
                     groupset.insert(r.to_owned());
                     // Loop through parcels to find ones in this group.
-                    self.invoice.parcel.as_ref().map(|pvec| {
+                    if let Some(pvec) = self.invoice.parcel.as_ref() {
                         pvec.iter().for_each(|p| {
                             // Loop through the member_of data and see if this
                             // parcel is a member of the r group.
-                            p.conditions.as_ref().map(|c| {
+                            if let Some(c) = p.conditions.as_ref() {
                                 if let Some(groups) = &c.member_of {
                                     if groups.iter().any(|g| g == r) {
                                         // Check to see if this parcel should be disabled.
@@ -366,13 +366,13 @@ impl BindleFilter {
                                         }
                                     }
                                 }
-                            });
+                            }
                         });
-                    });
+                    }
                 })
             }
-        });
-        if ret.len() == 0 {
+        }
+        if ret.is_empty() {
             return None;
         }
         Some(ret)
@@ -498,7 +498,7 @@ mod test {
 
         // If we disable "testing.disabled=false", this should be two.
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(inv)
                 .deactivate_feature("testing", "disabled", "false")
                 .filter();
             assert_eq!(2, filter.len());
@@ -577,7 +577,7 @@ mod test {
         // If we activate both narwhal and unicorn, we should get only the last one
         // activated. So we should get a match for unicorn, but not narwhal
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(inv)
                 .activate_feature("testing", "animal", "narwhal")
                 .activate_feature("testing", "animal", "unicorn")
                 .filter();
@@ -651,7 +651,7 @@ mod test {
         // Activating two groups should should get us two additional parcels. But parcel
         // two should not be present twice (it is a member of two groups)
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(inv)
                 .with_group("is_optional")
                 .with_group("also_optional")
                 .filter();
@@ -711,7 +711,7 @@ mod test {
         let inv: crate::Invoice = toml::from_str(toml).expect("test invoice parsed");
 
         // Should have three. More importantly, should not get stuck in an infinite loop.
-        let filter = BindleFilter::new(inv.clone()).filter();
+        let filter = BindleFilter::new(inv).filter();
         assert_eq!(3, filter.len());
     }
 
@@ -773,9 +773,7 @@ mod test {
 
         // Disabling "first" should disable all
         {
-            let filter = BindleFilter::new(inv.clone())
-                .without_group("first")
-                .filter();
+            let filter = BindleFilter::new(inv).without_group("first").filter();
             assert_eq!(0, filter.len());
         }
     }
@@ -881,9 +879,7 @@ mod test {
 
         // We can disable the "entrypoint" group, and then we should have only one group.
         {
-            let filter = BindleFilter::new(inv.clone())
-                .without_group("entrypoint")
-                .filter();
+            let filter = BindleFilter::new(inv).without_group("entrypoint").filter();
             assert_eq!(1, filter.len());
         }
     }

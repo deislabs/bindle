@@ -6,6 +6,7 @@ use std::io::Cursor;
 use bindle::standalone::{StandaloneRead, StandaloneWrite, INVOICE_FILE, PARCEL_DIR};
 
 use tokio::stream::StreamExt;
+use tokio_util::codec::{BytesCodec, FramedRead};
 
 #[tokio::test]
 async fn test_successful_write() {
@@ -52,17 +53,15 @@ async fn test_successful_write_stream() {
     let labels = scaffold.labels;
     let id = scaffold.invoice.bindle.id.clone();
 
-    // So this is ugly, but for some reason, the compiler things that `write_stream` needs a
-    // `BytesMut` when it clearly doesn't if I use a FramedRead
     let parcels = scaffold
         .parcel_files
         .into_iter()
         .map(|(name, data)| {
-            let stream = tokio::stream::iter(
-                data.into_iter()
-                    .map(|b| Ok::<_, std::convert::Infallible>(bytes::Bytes::from(vec![b]))),
-            );
-            (labels.get(&name).unwrap().sha256.to_owned(), stream)
+            (
+                labels.get(&name).unwrap().sha256.to_owned(),
+                FramedRead::new(std::io::Cursor::new(data), BytesCodec::default())
+                    .map(|res| res.map(|b| b.freeze())),
+            )
         })
         .collect();
     standalone

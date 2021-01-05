@@ -8,7 +8,7 @@ pub(crate) mod test_common;
 use std::convert::TryInto;
 
 use thiserror::Error;
-use tokio::io::AsyncRead;
+use tokio::stream::Stream;
 
 use crate::id::ParseError;
 use crate::Id;
@@ -59,16 +59,17 @@ pub trait Storage {
         I::Error: Into<StorageError>;
 
     /// Creates a parcel with the associated label data. The parcel can be anything that implements
-    /// `AsyncRead`
-    async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
-        &self,
-        label: &super::Label,
-        data: &mut R,
-    ) -> Result<()>;
+    /// `Stream`
+    async fn create_parcel<R, B>(&self, label: &super::Label, data: &mut R) -> Result<()>
+    where
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
+        B: bytes::Buf;
 
     /// Get a specific parcel using its SHA
-    async fn get_parcel(&self, parcel_id: &str)
-        -> Result<Box<dyn AsyncRead + Unpin + Send + Sync>>;
+    async fn get_parcel(
+        &self,
+        parcel_id: &str,
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>;
 
     /// Get the label for a parcel
     ///

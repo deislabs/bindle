@@ -149,7 +149,7 @@ async fn generate_label(
 }
 
 async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -> Result<()> {
-    let mut parcel = cache
+    let parcel = cache
         .get_parcel(&opts.sha)
         .await
         .map_err(map_storage_error)?;
@@ -158,7 +158,7 @@ async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -
         .create_new(true) // Make sure we aren't overwriting
         .open(&opts.output)
         .await?;
-    tokio::io::copy(&mut parcel, &mut file).await?;
+    tokio::io::copy(&mut bindle::async_util::BodyReadBuffer(parcel), &mut file).await?;
     println!("Wrote parcel {} to {}", opts.sha, opts.output.display());
     Ok(())
 }
@@ -194,7 +194,10 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
                 Ok(p) => {
                     println!("Fetched parcel {}", sha);
                     if is_export {
-                        parcels.lock().await.insert(sha, p);
+                        parcels
+                            .lock()
+                            .await
+                            .insert(sha, bindle::async_util::BodyReadBuffer(p));
                     }
                 }
                 Err(e) => {

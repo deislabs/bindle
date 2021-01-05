@@ -12,12 +12,13 @@ use std::task::{Context, Poll};
 use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
-use tokio::io::{AsyncRead, AsyncWriteExt};
-use tokio::stream::StreamExt;
+use tokio::io::AsyncWriteExt;
+use tokio::stream::{Stream, StreamExt};
+use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::search::Search;
 use crate::storage::{Result, Storage, StorageError};
 use crate::Id;
+use crate::{async_util, search::Search};
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
@@ -289,11 +290,11 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         Ok(())
     }
 
-    async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
-        &self,
-        label: &crate::Label,
-        data: &mut R,
-    ) -> Result<()> {
+    async fn create_parcel<R, B>(&self, label: &crate::Label, data: &mut R) -> Result<()>
+    where
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
+        B: bytes::Buf,
+    {
         let sha = label.sha256.as_str();
         debug!("Creating parcel with SHA {}", sha);
 
@@ -322,7 +323,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
                 .open(data_file.clone())
                 .await?;
 
-            tokio::io::copy(data, &mut out).await?;
+            tokio::io::copy(&mut async_util::BodyReadBuffer(data), &mut out).await?;
             // Verify parcel by rewinding the parcel and then hashing it.
             // This MUST be after the last write to out, otherwise the results will
             // not be correct.
@@ -352,11 +353,14 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn get_parcel(
         &self,
         parcel_id: &str,
-    ) -> Result<Box<dyn AsyncRead + Unpin + Send + Sync>> {
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>> {
         debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
         let reader = File::open(name).await.map_err(map_io_error)?;
-        Ok(Box::new(reader))
+        Ok(Box::new(
+            FramedRead::new(reader, BytesCodec::new())
+                .map(|res| res.map_err(map_io_error).map(|b| b.freeze())),
+        ))
     }
 
     async fn get_label(&self, parcel_id: &str) -> Result<crate::Label> {
@@ -536,7 +540,7 @@ mod test {
     #[tokio::test]
     async fn test_should_write_read_parcel() {
         let content = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(content).await;
+        let (label, data) = parcel_fixture(content).await;
         let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
         let store = FileStorage::new(
@@ -546,7 +550,7 @@ mod test {
         .await;
 
         store
-            .create_parcel(&label, &mut data)
+            .create_parcel(&label, &mut FramedRead::new(data, BytesCodec::new()))
             .await
             .expect("create parcel");
 
@@ -554,10 +558,12 @@ mod test {
 
         let label2 = store.get_label(id).await.expect("fetch label after saving");
         let mut data = String::new();
-        store
+        let stream = store
             .get_parcel(&label2.sha256)
             .await
-            .expect("load parcel data")
+            .expect("load parcel data");
+        let mut reader = crate::async_util::BodyReadBuffer(stream);
+        reader
             .read_to_string(&mut data)
             .await
             .expect("read file into string");
@@ -575,7 +581,7 @@ mod test {
 
         // Store a parcel
         let content = "abcdef1234567890987654321";
-        let (label, mut data) = parcel_fixture(content).await;
+        let (label, data) = parcel_fixture(content).await;
         let mut invoice = invoice_fixture();
 
         let parcel = crate::Parcel {
@@ -585,7 +591,7 @@ mod test {
         invoice.parcel = Some(vec![parcel]);
 
         store
-            .create_parcel(&label, &mut data)
+            .create_parcel(&label, &mut FramedRead::new(data, BytesCodec::new()))
             .await
             .expect("stored the parcel");
 
