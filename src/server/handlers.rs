@@ -16,7 +16,6 @@ pub mod v1 {
     use crate::QueryOptions;
     use bytes::buf::BufExt;
     use tokio::stream::StreamExt;
-    use tokio_util::codec::{BytesCodec, FramedRead};
 
     //////////// Invoice Functions ////////////
     pub async fn query_invoices<S: Search>(
@@ -203,7 +202,9 @@ pub mod v1 {
         if let Err(e) = store
             .create_parcel(
                 &label,
-                &mut crate::async_util::BodyReadBuffer(file_part.stream()),
+                &mut file_part.stream().map(|res| {
+                    res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                }),
             )
             .await
         {
@@ -237,15 +238,13 @@ pub mod v1 {
             }
         };
 
-        let stream = FramedRead::new(data, BytesCodec::new());
-
         // TODO: If we start to use compression on the body, we'll need a new custom header for
         // _actual_ size of the parcel, so the client can reconstruct the label data from headers
         // without needing to read the whole (possibly large) file
         let resp = warp::http::Response::builder()
             .header(warp::http::header::CONTENT_TYPE, label.media_type)
             .header(warp::http::header::CONTENT_LENGTH, label.size)
-            .body(hyper::Body::wrap_stream(stream))
+            .body(hyper::Body::wrap_stream(data))
             .unwrap();
 
         // Gotta box because this is not a toml reply type (which we use for sending error messages to the user)

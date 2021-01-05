@@ -71,6 +71,8 @@ mod test {
     use crate::storage::Storage;
     use crate::testing;
 
+    use tokio_util::codec::{BytesCodec, FramedRead};
+
     #[tokio::test]
     async fn test_successful_workflow() {
         let bindles = testing::load_all_files().await;
@@ -300,12 +302,12 @@ mod test {
         let api = super::routes::api(store.clone(), index);
         // Insert a parcel
         let scaffold = testing::Scaffold::load("valid_v1").await;
-        let mut data =
+        let data =
             std::io::Cursor::new(scaffold.parcel_files.get("parcel").expect("Missing parcel"));
         store
             .create_parcel(
                 scaffold.labels.get("parcel").expect("Missing parcel label"),
-                &mut data,
+                &mut FramedRead::new(data, BytesCodec::default()),
             )
             .await
             .expect("Unable to create parcel");
@@ -463,10 +465,13 @@ mod test {
             .create_invoice(&scaffold.invoice)
             .await
             .expect("Unable to load in invoice");
-        let mut parcel_data =
+        let parcel_data =
             std::io::Cursor::new(scaffold.parcel_files.get("parcel").unwrap().clone());
         store
-            .create_parcel(scaffold.labels.get("parcel").unwrap(), &mut parcel_data)
+            .create_parcel(
+                scaffold.labels.get("parcel").unwrap(),
+                &mut FramedRead::new(parcel_data, BytesCodec::default()),
+            )
             .await
             .expect("Unable to create parcel");
 

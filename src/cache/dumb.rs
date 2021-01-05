@@ -2,7 +2,7 @@
 use std::convert::TryInto;
 
 use log::{info, warn};
-use tokio::io::AsyncRead;
+use tokio::stream::{Stream, StreamExt};
 
 use super::{into_cache_result, Cache};
 use crate::client::Client;
@@ -70,11 +70,11 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
         self.inner.yank_invoice(id).await
     }
 
-    async fn create_parcel<R: AsyncRead + Unpin + Send + Sync>(
-        &self,
-        _: &crate::Label,
-        _: &mut R,
-    ) -> Result<()> {
+    async fn create_parcel<R, B>(&self, _: &crate::Label, _: &mut R) -> Result<()>
+    where
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
+        B: bytes::Buf,
+    {
         Err(StorageError::Other(
             "This cache implementation does not allow for creation of parcels".to_string(),
         ))
@@ -83,7 +83,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
     async fn get_parcel(
         &self,
         parcel_id: &str,
-    ) -> Result<Box<dyn AsyncRead + Unpin + Send + Sync>> {
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>> {
         let possible_entry = into_cache_result(self.inner.get_parcel(parcel_id).await)?;
         match possible_entry {
             Some(parcel) => Ok(parcel),
@@ -100,22 +100,27 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                     name: "".to_string(),
                     ..crate::Label::default()
                 };
-                let stream = self.client.get_parcel_stream(parcel_id).await?;
+                let mut stream = self
+                    .client
+                    .get_parcel_stream(parcel_id)
+                    .await?
+                    // This isn't my favorite. Right now we are mapping a client error to an io error, which will be mapped back to a storage error
+                    .map(|res| {
+                        res.map_err(|e| {
+                            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+                        })
+                    });
                 // Attempt to insert the parcel into the store, if it fails, warn the user and
                 // return the parcel anyway. Either way, we need to refetch the stream, since it has
                 // been read after we try to insert
-                let stream = match self
-                    .inner
-                    .create_parcel(&label, &mut crate::async_util::BodyReadBuffer(stream))
-                    .await
-                {
+                let stream = match self.inner.create_parcel(&label, &mut stream).await {
                     Ok(_) => return self.inner.get_parcel(parcel_id).await,
                     Err(e) => {
                         warn!("Fetched parcel from server, but encountered error when trying to save to local store: {:?}", e);
                         self.client.get_parcel_stream(parcel_id).await?
                     }
                 };
-                Ok(Box::new(crate::async_util::BodyReadBuffer(stream)))
+                Ok(Box::new(stream.map(|res| res.map_err(StorageError::from))))
             }
         }
     }
