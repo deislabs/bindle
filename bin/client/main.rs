@@ -88,10 +88,9 @@ async fn main() -> std::result::Result<(), ClientError> {
         SubCommand::PushFile(push_opts) => {
             let label =
                 generate_label(&push_opts.path, push_opts.name, push_opts.media_type).await?;
-            // TODO: update this to use the from file method once we can update reqwest
             println!("Uploading file {} to server", push_opts.path.display());
             bindle_client
-                .create_parcel(label, tokio::fs::read(push_opts.path).await?)
+                .create_parcel_from_file(push_opts.bindle_id, &label.sha256, push_opts.path)
                 .await?;
             println!("File successfully uploaded");
         }
@@ -102,14 +101,7 @@ async fn main() -> std::result::Result<(), ClientError> {
                 generate_opts.media_type,
             )
             .await?;
-            tokio::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true) // Make sure we aren't overwriting
-                .open(&generate_opts.output)
-                .await?
-                .write_all(&toml::to_vec(&label)?)
-                .await?;
-            println!("Wrote label to {}", generate_opts.output.display());
+            println!("{}", toml::to_string_pretty(&label)?);
         }
     }
 
@@ -150,7 +142,7 @@ async fn generate_label(
 
 async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -> Result<()> {
     let parcel = cache
-        .get_parcel(&opts.sha)
+        .get_parcel(opts.bindle_id, &opts.sha)
         .await
         .map_err(map_storage_error)?;
     let mut file = tokio::fs::OpenOptions::new()
@@ -188,9 +180,16 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
         .as_ref()
         .unwrap_or(&zero_vec)
         .iter()
-        .map(|p| (p.label.sha256.clone(), cache.clone(), parcels.clone()))
-        .map(|(sha, c, parcels)| async move {
-            match c.get_parcel(&sha).await {
+        .map(|p| {
+            (
+                p.label.sha256.clone(),
+                inv.bindle.id.clone(),
+                cache.clone(),
+                parcels.clone(),
+            )
+        })
+        .map(|(sha, bindle_id, c, parcels)| async move {
+            match c.get_parcel(bindle_id, &sha).await {
                 Ok(p) => {
                     println!("Fetched parcel {}", sha);
                     if is_export {

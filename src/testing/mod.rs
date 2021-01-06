@@ -9,13 +9,12 @@
 //! users (so they don't have to handle the errors in their tests in the exact same way)
 
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::search::StrictEngine;
 use crate::storage::file::FileStorage;
 
-use multipart::client::lazy::Multipart;
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use tokio::stream::StreamExt;
 
@@ -23,7 +22,6 @@ const SCAFFOLD_DIR: &str = "tests/scaffolds";
 const INVOICE_FILE: &str = "invoice.toml";
 const PARCEL_DIR: &str = "parcels";
 const PARCEL_EXTENSION: &str = "dat";
-const LABEL_EXTENSION: &str = "toml";
 
 /// The environment variable name used for setting the scaffolds directory
 pub const SCAFFOLD_DIR_ENV: &str = "BINDLE_SCAFFOLD_DIR";
@@ -42,14 +40,18 @@ fn scaffold_dir() -> PathBuf {
         .unwrap_or_else(default_scaffold_dir)
 }
 
-/// A scaffold loaded from disk, containing the raw bytes for all files in the bindle. Both
-/// `label_files` and `parcel_files` are the names of the files on disk with the extension removed.
-/// This allows for easy lookups in both maps as they should have the same name
+/// A struct containing the SHA of the data and the data as bytes
+#[derive(Clone, Debug)]
+pub struct ParcelInfo {
+    pub sha: String,
+    pub data: Vec<u8>,
+}
+
+/// A scaffold loaded from disk, containing the raw bytes for all files in the bindle.
 #[derive(Clone, Debug)]
 pub struct RawScaffold {
     pub invoice: Vec<u8>,
-    pub label_files: HashMap<String, Vec<u8>>,
-    pub parcel_files: HashMap<String, Vec<u8>>,
+    pub parcel_files: HashMap<String, ParcelInfo>,
 }
 
 impl RawScaffold {
@@ -67,14 +69,12 @@ impl RawScaffold {
             .expect("unable to read invoice file");
 
         let mut parcel_files = HashMap::new();
-        let mut label_files = HashMap::new();
 
         let mut files = match filter_files(&dir).await {
             Some(s) => s,
             None => {
                 return RawScaffold {
                     invoice,
-                    label_files,
                     parcel_files,
                 }
             }
@@ -89,89 +89,42 @@ impl RawScaffold {
                 .await
                 .expect("Unable to read parcel file");
             match file.extension().unwrap_or_default().to_str().unwrap() {
-                PARCEL_EXTENSION => parcel_files.insert(file_name, file_data),
-                LABEL_EXTENSION => label_files.insert(file_name, file_data),
+                PARCEL_EXTENSION => parcel_files.insert(
+                    file_name,
+                    ParcelInfo {
+                        sha: format!("{:x}", Sha256::digest(&file_data)),
+                        data: file_data,
+                    },
+                ),
                 _ => panic!("Found unknown extension, this is likely a programmer error"),
             };
         }
 
-        // Do a simple validation to make sure the scaffold has matching files
-        if parcel_files.len() != label_files.len() {
-            panic!("There are not an equal number of label files and parcel files")
-        }
-
         RawScaffold {
             invoice,
-            label_files,
             parcel_files,
         }
-    }
-
-    /// Prepares a raw multipart body for the given parcel name for sending in a request and returns
-    /// a warp test `RequestBuilder` with the body and `Content-Type` header set
-    pub fn parcel_body(&self, parcel_name: &str) -> warp::test::RequestBuilder {
-        let label = self
-            .label_files
-            .get(parcel_name)
-            .expect("non existent parcel in scaffold");
-        let data = self
-            .parcel_files
-            .get(parcel_name)
-            .expect("non existent parcel in scaffold");
-        // This behaves like a stack, so put on the label last
-        let mut mp = Multipart::new()
-            .add_stream(
-                format!("{}.{}", parcel_name, PARCEL_EXTENSION),
-                std::io::Cursor::new(data.clone()),
-                None::<&str>,
-                None,
-            )
-            .add_stream(
-                format!("{}.{}", parcel_name, LABEL_EXTENSION),
-                std::io::Cursor::new(label.clone()),
-                None::<&str>,
-                Some("application/toml".parse().unwrap()),
-            )
-            .prepare()
-            .expect("valid multipart body");
-
-        let mut body = Vec::new();
-        mp.read_to_end(&mut body).expect("Unable to read out body");
-        warp::test::request()
-            .header(
-                "Content-Type",
-                format!("multipart/form-data;boundary={}", mp.boundary().to_owned()),
-            )
-            .body(body)
     }
 }
 
 // This shouldn't fail as we built it from deserializing them
 impl From<Scaffold> for RawScaffold {
-    fn from(mut s: Scaffold) -> RawScaffold {
-        let mut label_files = HashMap::new();
-        for (k, v) in s.labels.drain() {
-            label_files.insert(k, toml::to_vec(&v).expect("Reserialization shouldn't fail"));
-        }
+    fn from(s: Scaffold) -> RawScaffold {
         let invoice = toml::to_vec(&s.invoice).expect("Reserialization shouldn't fail");
 
         RawScaffold {
             invoice,
-            label_files,
             parcel_files: s.parcel_files,
         }
     }
 }
 
 /// A scaffold loaded from disk, containing the bindle object representations for all files in the
-/// bindle (except for the parcels themselves, as they can be binary data). Both `labels and
-/// `parcel_files` are the names of the files on disk with the extension removed. This allows for
-/// easy lookups in both maps as they should have the same name
+/// bindle (except for the parcels themselves, as they can be binary data).
 #[derive(Clone, Debug)]
 pub struct Scaffold {
     pub invoice: crate::Invoice,
-    pub labels: HashMap<String, crate::Label>,
-    pub parcel_files: HashMap<String, Vec<u8>>,
+    pub parcel_files: HashMap<String, ParcelInfo>,
 }
 
 impl Scaffold {
@@ -183,26 +136,14 @@ impl Scaffold {
     }
 }
 
-// Because this is a test, just panicing if conversion fails
+// Because this is a test, just panic if conversion fails
 impl From<RawScaffold> for Scaffold {
-    fn from(mut raw: RawScaffold) -> Scaffold {
+    fn from(raw: RawScaffold) -> Scaffold {
         let invoice: crate::Invoice =
             toml::from_slice(&raw.invoice).expect("Unable to deserialize invoice TOML");
 
-        let labels = raw
-            .label_files
-            .drain()
-            .map(|(k, v)| {
-                (
-                    k,
-                    toml::from_slice(&v).expect("Unable to deserialize label TOML"),
-                )
-            })
-            .collect();
-
         Scaffold {
             invoice,
-            labels,
             parcel_files: raw.parcel_files,
         }
     }
@@ -236,7 +177,8 @@ pub async fn load_all_files() -> HashMap<String, RawScaffold> {
     all
 }
 
-/// Filters all items in a parcel directory that do not match the proper extensions. Returns None if there isn't a parcel directory
+/// Filters all items in a parcel directory that do not match the proper extensions. Returns None if
+/// there isn't a parcel directory
 async fn filter_files<P: AsRef<Path>>(
     root_path: P,
 ) -> Option<impl tokio::stream::Stream<Item = PathBuf>> {
@@ -248,10 +190,7 @@ async fn filter_files<P: AsRef<Path>>(
     Some(
         readdir
             .map(|entry| entry.expect("Error while reading parcel directory").path())
-            .filter(|p| {
-                let extension = p.extension().unwrap_or_default();
-                extension == PARCEL_EXTENSION || extension == LABEL_EXTENSION
-            }),
+            .filter(|p| p.extension().unwrap_or_default() == PARCEL_EXTENSION),
     )
 }
 

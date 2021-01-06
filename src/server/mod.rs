@@ -68,9 +68,12 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryInto;
+
     use crate::storage::Storage;
     use crate::testing;
 
+    use testing::Scaffold;
     use tokio_util::codec::{BytesCodec, FramedRead};
 
     #[tokio::test]
@@ -80,14 +83,42 @@ mod test {
 
         let api = super::routes::api(store, index);
 
-        // Upload the parcels for one of the invoices
-        let valid_v1 = bindles.get("valid_v1").expect("Missing scaffold");
+        // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
 
-        for k in valid_v1.label_files.keys() {
-            let res = valid_v1
-                .parcel_body(k)
+        let valid_v1 = bindles.get("valid_v1").expect("Missing scaffold");
+        // Create an invoice pointing to those parcels and make sure the correct response is returned
+        let res = warp::test::request()
+            .method("POST")
+            .header("Content-Type", "application/toml")
+            .path("/v1/_i")
+            .body(&valid_v1.invoice)
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::ACCEPTED,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+        let create_res: crate::InvoiceCreateResponse =
+            toml::from_slice(res.body()).expect("should be valid invoice response TOML");
+
+        assert!(
+            create_res.missing.is_some(),
+            "Invoice should have missing parcels"
+        );
+
+        // Upload the parcels for one of the invoices
+
+        for file in valid_v1.parcel_files.values() {
+            let res = warp::test::request()
                 .method("POST")
-                .path("/v1/_p/")
+                .path(&format!(
+                    "/v1/_i/{}@{}",
+                    create_res.invoice.bindle.id, file.sha
+                ))
+                .body(file.data.clone())
                 .reply(&api)
                 .await;
             assert_eq!(
@@ -96,16 +127,20 @@ mod test {
                 "Body: {}",
                 String::from_utf8_lossy(res.body())
             );
-            // Make sure the label we get back is valid toml
-            toml::from_slice::<crate::Label>(res.body()).expect("should be valid label TOML");
         }
 
-        // Create an invoice pointing to those parcels and make sure the correct response is returned
+        // Now create another invoice that references the same parcel and validated that it returns
+        // the proper response
+
+        let mut inv = Scaffold::from(valid_v1.to_owned()).invoice;
+        inv.bindle.id = "another.com/bindle/1.0.0".try_into().unwrap();
+        let inv = toml::to_vec(&inv).expect("serialization shouldn't fail");
+
         let res = warp::test::request()
             .method("POST")
             .header("Content-Type", "application/toml")
             .path("/v1/_i")
-            .body(&valid_v1.invoice)
+            .body(&inv)
             .reply(&api)
             .await;
 
@@ -123,7 +158,8 @@ mod test {
             "Invoice should not have missing parcels"
         );
 
-        // Create a second version of the same invoice with missing parcels and make sure the correct response is returned
+        // Create a second version of the same invoice with some missing and already existing
+        // parcels and make sure the correct response is returned
         let valid_v2 = bindles.get("valid_v2").expect("Missing scaffold");
 
         let res = warp::test::request()
@@ -169,7 +205,10 @@ mod test {
         // Get a parcel
         let parcel = &inv.parcel.expect("Should have parcels")[0];
         let res = warp::test::request()
-            .path(&format!("/v1/_p/{}", parcel.label.sha256))
+            .path(&format!(
+                "/v1/_i/enterprise.com/warpcore/1.0.0@{}",
+                parcel.label.sha256
+            ))
             .reply(&api)
             .await;
         assert_eq!(
@@ -181,7 +220,7 @@ mod test {
 
         assert_eq!(
             res.body().as_ref(),
-            valid_v1.parcel_files.get("parcel").unwrap().as_slice()
+            valid_v1.parcel_files.get("parcel").unwrap().data.as_slice()
         );
         assert_eq!(
             res.headers()
@@ -274,23 +313,6 @@ mod test {
             warp::http::StatusCode::CONFLICT,
             "Trying to upload existing invoice should fail"
         );
-
-        // Missing version
-        let invalid = bindles.get("invalid").expect("Missing scaffold");
-
-        let res = warp::test::request()
-            .method("POST")
-            .header("Content-Type", "application/toml")
-            .path("/v1/_i")
-            .body(&invalid.invoice)
-            .reply(&api)
-            .await;
-
-        assert_eq!(
-            res.status(),
-            warp::http::StatusCode::BAD_REQUEST,
-            "Missing information should fail"
-        );
     }
 
     #[tokio::test]
@@ -302,22 +324,28 @@ mod test {
         let api = super::routes::api(store.clone(), index);
         // Insert a parcel
         let scaffold = testing::Scaffold::load("valid_v1").await;
-        let data =
-            std::io::Cursor::new(scaffold.parcel_files.get("parcel").expect("Missing parcel"));
+        let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
+        let data = std::io::Cursor::new(parcel.data.clone());
+        store
+            .create_invoice(&scaffold.invoice)
+            .await
+            .expect("Unable to insert invoice into store");
         store
             .create_parcel(
-                scaffold.labels.get("parcel").expect("Missing parcel label"),
+                &parcel.sha,
                 &mut FramedRead::new(data, BytesCodec::default()),
             )
             .await
             .expect("Unable to create parcel");
 
         // Already created parcel
-        let scaffold = testing::RawScaffold::from(scaffold);
-        let res = scaffold
-            .parcel_body("parcel")
+        let res = warp::test::request()
             .method("POST")
-            .path("/v1/_p/")
+            .path(&format!(
+                "/v1/_i/{}@{}",
+                scaffold.invoice.bindle.id, &parcel.sha
+            ))
+            .body(parcel.data.clone())
             .reply(&api)
             .await;
         assert_eq!(
@@ -327,26 +355,26 @@ mod test {
             String::from_utf8_lossy(res.body())
         );
 
-        // Incorrect SHA
-        let scaffold = testing::RawScaffold::load("invalid").await;
-        let res = scaffold
-            .parcel_body("invalid_sha")
-            .method("POST")
-            .path("/v1/_p/")
-            .reply(&api)
-            .await;
-        assert_eq!(
-            res.status(),
-            warp::http::StatusCode::BAD_REQUEST,
-            "Body: {}",
-            String::from_utf8_lossy(res.body())
-        );
+        let scaffold = testing::Scaffold::load("invalid").await;
 
-        // Missing size
-        let res = scaffold
-            .parcel_body("missing")
+        // Create invoice first
+        store
+            .create_invoice(&scaffold.invoice)
+            .await
+            .expect("Unable to create invoice");
+
+        // Incorrect SHA
+        let parcel = scaffold
+            .parcel_files
+            .get("invalid_sha")
+            .expect("Missing parcel");
+        let res = warp::test::request()
             .method("POST")
-            .path("/v1/_p/")
+            .path(&format!(
+                "/v1/_i/{}@{}",
+                scaffold.invoice.bindle.id, &parcel.sha
+            ))
+            .body(parcel.data.clone())
             .reply(&api)
             .await;
         assert_eq!(
@@ -465,11 +493,14 @@ mod test {
             .create_invoice(&scaffold.invoice)
             .await
             .expect("Unable to load in invoice");
-        let parcel_data =
-            std::io::Cursor::new(scaffold.parcel_files.get("parcel").unwrap().clone());
+        let parcel = scaffold
+            .parcel_files
+            .get("parcel")
+            .expect("parcel doesn't exist");
+        let parcel_data = std::io::Cursor::new(parcel.data.clone());
         store
             .create_parcel(
-                scaffold.labels.get("parcel").unwrap(),
+                &parcel.sha,
                 &mut FramedRead::new(parcel_data, BytesCodec::default()),
             )
             .await

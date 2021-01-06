@@ -68,7 +68,8 @@ impl StandaloneRead {
     pub async fn push(&self, client: &Client) -> Result<()> {
         let inv_create = create_or_get_invoice(client, &self.invoice_file).await?;
         let missing = inv_create.missing.unwrap_or_default();
-        let to_upload: Vec<(crate::Label, PathBuf)> = self
+        let inv = inv_create.invoice;
+        let to_upload: Vec<(String, PathBuf)> = self
             .parcels
             .iter()
             .filter_map(|path| {
@@ -80,7 +81,7 @@ impl StandaloneRead {
             })
             .filter_map(|(sha, path)| {
                 if let Some(label) = missing.iter().find(|label| label.sha256 == sha) {
-                    Some((label.clone(), path.clone()))
+                    Some((label.sha256.clone(), path.clone()))
                 } else {
                     info!("Parcel {} not in missing parcels, skipping...", sha);
                     None
@@ -96,11 +97,13 @@ impl StandaloneRead {
 
         let parcel_futures = to_upload
             .into_iter()
-            .map(|(label, path)| (label, path, client.clone()))
-            .map(|(label, path, client)| async move {
-                info!("Uploading parcel {} to server", label.sha256);
-                let label = client.create_parcel_from_file(label, path).await?;
-                info!("Finished uploading parcel {} to server", label.sha256);
+            .map(|(sha, path)| (sha, path, inv.bindle.id.clone(), client.clone()))
+            .map(|(sha, path, bindle_id, client)| async move {
+                info!("Uploading parcel {} to server", sha);
+                client
+                    .create_parcel_from_file(bindle_id, &sha, path)
+                    .await?;
+                info!("Finished uploading parcel {} to server", sha);
                 Ok(())
             });
 

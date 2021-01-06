@@ -17,7 +17,7 @@ async fn test_successful_write() {
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
         .expect("Unable to create new standalone write");
 
-    let labels = scaffold.labels;
+    let expected_len = scaffold.parcel_files.len();
     let id = scaffold.invoice.bindle.id.clone();
 
     standalone
@@ -26,19 +26,14 @@ async fn test_successful_write() {
             scaffold
                 .parcel_files
                 .into_iter()
-                .map(|(name, data)| {
-                    (
-                        labels.get(&name).unwrap().sha256.to_owned(),
-                        Cursor::new(data),
-                    )
-                })
+                .map(|(_, parcel)| (parcel.sha, Cursor::new(parcel.data)))
                 .collect(),
         )
         .await
         .expect("write shouldn't error");
 
     // We should have the same amount of labels as files, so use that here
-    validate_write(id, tempdir.path().to_owned(), labels.len()).await;
+    validate_write(id, tempdir.path().to_owned(), expected_len).await;
 }
 
 #[tokio::test]
@@ -50,16 +45,16 @@ async fn test_successful_write_stream() {
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
         .expect("Unable to create new standalone write");
 
-    let labels = scaffold.labels;
+    let expected_len = scaffold.parcel_files.len();
     let id = scaffold.invoice.bindle.id.clone();
 
     let parcels = scaffold
         .parcel_files
         .into_iter()
-        .map(|(name, data)| {
+        .map(|(_, parcel)| {
             (
-                labels.get(&name).unwrap().sha256.to_owned(),
-                FramedRead::new(std::io::Cursor::new(data), BytesCodec::default())
+                parcel.sha,
+                FramedRead::new(std::io::Cursor::new(parcel.data), BytesCodec::default())
                     .map(|res| res.map(|b| b.freeze())),
             )
         })
@@ -70,7 +65,7 @@ async fn test_successful_write_stream() {
         .expect("write shouldn't error");
 
     // We should have the same amount of labels as files, so use that here
-    validate_write(id, tempdir.path().to_owned(), labels.len()).await;
+    validate_write(id, tempdir.path().to_owned(), expected_len).await;
 }
 
 async fn validate_write(id: bindle::Id, tempdir: std::path::PathBuf, expected_files: usize) {
@@ -127,17 +122,10 @@ async fn test_invalid_standalone_write() {
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
         .expect("Unable to create new standalone write");
 
-    let labels = scaffold.labels;
-
     let mut parcels: HashMap<String, Cursor<Vec<u8>>> = scaffold
         .parcel_files
         .into_iter()
-        .map(|(name, data)| {
-            (
-                labels.get(&name).unwrap().sha256.to_owned(),
-                Cursor::new(data),
-            )
-        })
+        .map(|(_, parcel)| (parcel.sha, Cursor::new(parcel.data)))
         .collect();
 
     parcels.insert(

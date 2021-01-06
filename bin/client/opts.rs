@@ -63,7 +63,7 @@ pub enum SubCommand {
     GetInvoice(GetInvoice),
     #[clap(
         name = "generate-label",
-        about = "generates a label.toml for the given file"
+        about = "generates a label for the given file and prints it to stdout. This can be used to generate the label and add it to an invoice"
     )]
     GenerateLabel(GenerateLabel),
 }
@@ -175,7 +175,9 @@ impl From<Search> for bindle::QueryOptions {
 
 #[derive(Clap)]
 pub struct GetParcel {
-    #[clap(index = 1, value_name = "PARCEL_SHA")]
+    #[clap(index = 1, value_name = "BINDLE_ID")]
+    pub bindle_id: bindle::Id,
+    #[clap(index = 2, value_name = "PARCEL_SHA")]
     pub sha: String,
     #[clap(
         short = 'o',
@@ -210,13 +212,6 @@ pub struct GenerateLabel {
     #[clap(index = 1, value_name = "FILE")]
     pub path: PathBuf,
     #[clap(
-        short = 'o',
-        long = "output",
-        default_value = "./label.toml",
-        about = "The file where to output the label to"
-    )]
-    pub output: PathBuf,
-    #[clap(
         short = 'n',
         long = "name",
         about = "the name of the parcel, defaults to the name + extension of the file"
@@ -238,7 +233,9 @@ pub struct PushInvoice {
 
 #[derive(Clap)]
 pub struct PushFile {
-    #[clap(index = 1, value_name = "FILE")]
+    #[clap(index = 1, value_name = "BINDLE_ID")]
+    pub bindle_id: bindle::Id,
+    #[clap(index = 2, value_name = "FILE")]
     pub path: PathBuf,
     #[clap(
         short = 'n',
