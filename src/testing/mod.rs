@@ -11,8 +11,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
-use crate::storage::file::FileStorage;
 
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
@@ -151,10 +151,10 @@ impl From<RawScaffold> for Scaffold {
 
 /// Returns a file `Store` implementation configured with a temporary directory and strict Search
 /// implementation for use in testing API endpoints
-pub async fn setup() -> (FileStorage<StrictEngine>, StrictEngine) {
+pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
-    let store = FileStorage::new(temp.path().to_owned(), index.clone()).await;
+    let store = FileProvider::new(temp.path().to_owned(), index.clone()).await;
     (store, index)
 }
 

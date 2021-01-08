@@ -14,12 +14,12 @@ pub mod cache;
 #[cfg(feature = "client")]
 pub mod client;
 mod id;
+pub mod provider;
 pub mod search;
 #[cfg(feature = "server")]
 pub mod server;
 #[cfg(feature = "client")]
 pub mod standalone;
-pub mod storage;
 #[cfg(feature = "test-tools")]
 pub mod testing;
 

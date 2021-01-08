@@ -2,12 +2,12 @@ use warp::Filter;
 
 /// A helper function that aggregates all routes into a complete API filter. If you only wish to
 /// serve specific endpoints or versions, you can assemble them with the individual submodules
-pub fn api<S, I>(
-    store: S,
+pub fn api<P, I>(
+    store: P,
     index: I,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
 where
-    S: crate::storage::Storage + Clone + Send + Sync + 'static,
+    P: crate::provider::Provider + Clone + Send + Sync + 'static,
     I: crate::search::Search + Clone + Send + Sync + 'static,
 {
     warp::path("v1").and(
@@ -22,10 +22,10 @@ where
 }
 
 pub mod v1 {
+    use crate::provider::Provider;
     use crate::search::Search;
     use crate::server::handlers::v1::*;
     use crate::server::{filters, routes::with_store};
-    use crate::storage::Storage;
 
     use warp::Filter;
 
@@ -45,11 +45,11 @@ pub mod v1 {
                 .and_then(query_invoices)
         }
 
-        pub fn create<S>(
-            store: S,
+        pub fn create<P>(
+            store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
-            S: Storage + Clone + Send + Sync,
+            P: Provider + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::end())
@@ -61,11 +61,11 @@ pub mod v1 {
         }
 
         // The GET and HEAD endpoints handle both parcels and invoices through the request router function
-        pub fn get<S>(
-            store: S,
+        pub fn get<P>(
+            store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
-            S: Storage + Clone + Send + Sync,
+            P: Provider + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::tail())
@@ -76,11 +76,11 @@ pub mod v1 {
                 .and_then(request_router)
         }
 
-        pub fn head<S>(
-            store: S,
+        pub fn head<P>(
+            store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
-            S: Storage + Clone + Send + Sync,
+            P: Provider + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::tail())
@@ -91,11 +91,11 @@ pub mod v1 {
                 .and_then(request_router)
         }
 
-        pub fn yank<S>(
-            store: S,
+        pub fn yank<P>(
+            store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
-            S: Storage + Clone + Send + Sync,
+            P: Provider + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::tail())
@@ -108,11 +108,11 @@ pub mod v1 {
     pub mod parcel {
         use super::*;
 
-        pub fn create<S>(
-            store: S,
+        pub fn create<P>(
+            store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
-            S: Storage + Clone + Send + Sync,
+            P: Provider + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::tail())
@@ -126,11 +126,11 @@ pub mod v1 {
     pub mod relationships {
         use super::*;
 
-        pub fn get_missing_parcels<S>(
-            store: S,
+        pub fn get_missing_parcels<P>(
+            store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
-            S: Storage + Clone + Send + Sync,
+            P: Provider + Clone + Send + Sync,
         {
             // For some reason, using the `path!` macro here was causing matching problems
             warp::path("_r")
@@ -143,11 +143,11 @@ pub mod v1 {
     }
 }
 
-pub(crate) fn with_store<S>(
-    store: S,
-) -> impl Filter<Extract = (S,), Error = std::convert::Infallible> + Clone
+pub(crate) fn with_store<P>(
+    store: P,
+) -> impl Filter<Extract = (P,), Error = std::convert::Infallible> + Clone
 where
-    S: crate::storage::Storage + Clone + Send,
+    P: crate::provider::Provider + Clone + Send,
 {
     // We have to clone for this to be Fn instead of FnOnce
     warp::any().map(move || store.clone())

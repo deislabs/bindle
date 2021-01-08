@@ -6,32 +6,32 @@ use tokio::stream::{Stream, StreamExt};
 
 use super::{into_cache_result, Cache};
 use crate::client::Client;
-use crate::storage::{Result, Storage, StorageError};
+use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
 
 /// A cache that doesn't ever expire entries. It fills the cache by requesting bindles from a bindle
 /// server using the configured client and stores them in the given storage implementation
 #[derive(Clone)]
-pub struct DumbCache<S: Storage + Clone> {
+pub struct DumbCache<P: Provider + Clone> {
     client: Client,
-    inner: S,
+    inner: P,
 }
 
-impl<S: Storage + Clone> DumbCache<S> {
-    pub fn new(client: Client, store: S) -> DumbCache<S> {
+impl<P: Provider + Clone> DumbCache<P> {
+    pub fn new(client: Client, provider: P) -> DumbCache<P> {
         DumbCache {
             client,
-            inner: store,
+            inner: provider,
         }
     }
 }
 
-impl<S: Storage + Send + Sync + Clone> Cache for DumbCache<S> {}
+impl<P: Provider + Send + Sync + Clone> Cache for DumbCache<P> {}
 
 #[async_trait::async_trait]
-impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
+impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
     async fn create_invoice(&self, _: &crate::Invoice) -> Result<Vec<crate::Label>> {
-        Err(StorageError::Other(
+        Err(ProviderError::Other(
             "This cache implementation does not allow for creation of invoices".to_string(),
         ))
     }
@@ -40,7 +40,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
         let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
         let possible_entry = into_cache_result(self.inner.get_yanked_invoice(&parsed_id).await)?;
@@ -64,7 +64,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
         // This is just an update of the local cache
         self.inner.yank_invoice(id).await
@@ -75,7 +75,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
         B: bytes::Buf,
     {
-        Err(StorageError::Other(
+        Err(ProviderError::Other(
             "This cache implementation does not allow for creation of parcels".to_string(),
         ))
     }
@@ -87,7 +87,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
     ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
         let possible_entry = into_cache_result(self.inner.get_parcel(&parsed_id, parcel_id).await)?;
@@ -125,13 +125,17 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                             .await?
                     }
                 };
-                Ok(Box::new(stream.map(|res| res.map_err(StorageError::from))))
+                Ok(Box::new(stream.map(|res| res.map_err(ProviderError::from))))
             }
         }
     }
 
     // In a cache implementation, this just checks for if the inner store has it
-    async fn parcel_exists(&self, parcel_id: &str) -> Result<bool> {
-        self.inner.parcel_exists(parcel_id).await
+    async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> Result<bool>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
+        self.inner.parcel_exists(bindle_id, parcel_id).await
     }
 }
