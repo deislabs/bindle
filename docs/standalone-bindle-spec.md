@@ -28,7 +28,7 @@ A standalone Bindle MAY be compressed into a `.tar.gz` file (i.e. tarball). Howe
 
 Items in a standalone Bindle MAY be sent to a Bindle server. Implementations SHOULD first create the invoice and use the returned list of missing parcels (if there are any) to selectively send only the needed parcels to the Bindle server. This is recommended to avoid consuming bandwidth while possibly sending large amounts of data to the bindle server that isn't needed.
 
-In cases where the invoice already exists, implementations SHOULD take advantage of the `HEAD` HTTP method on the parcel (`/_p`) endpoint to check if the parcel already exists before uploading. This is recommended to avoid consuming bandwidth while possibly sending large amounts of data to the bindle server that isn't needed.
+In cases where the invoice already exists, implementations SHOULD take advantage of the relationships (`/_r`) endpoint to check if the parcel already exists before uploading. This is recommended to avoid consuming bandwidth while possibly sending large amounts of data to the bindle server that isn't needed.
 
 ## Additional Notes
 

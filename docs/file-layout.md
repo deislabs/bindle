@@ -14,7 +14,6 @@ BINDIR/
   |       |- invoice.toml
   |- parcels/
       |- PARCEL_SHA
-         |- label.toml
          |- parcel.dat
 ```
 

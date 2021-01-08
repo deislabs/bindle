@@ -9,7 +9,6 @@ use std::path::Path;
 
 use log::{debug, info};
 use reqwest::header;
-use reqwest::multipart::{Form, Part};
 use reqwest::Client as HttpClient;
 use reqwest::{Body, RequestBuilder, StatusCode};
 use tokio::stream::{Stream, StreamExt};
@@ -23,7 +22,6 @@ pub use error::ClientError;
 pub type Result<T> = std::result::Result<T, ClientError>;
 
 const INVOICE_ENDPOINT: &str = "_i";
-const PARCEL_ENDPOINT: &str = "_p";
 const QUERY_ENDPOINT: &str = "_q";
 const RELATIONSHIP_ENDPOINT: &str = "_r";
 const TOML_MIME_TYPE: &str = "application/toml";
@@ -85,7 +83,7 @@ impl Client {
         // Create an owned version of the path to avoid worrying about lifetimes here for the stream
         let path = file_path.as_ref().to_owned();
         debug!("Loading invoice from {}", path.display());
-        let (inv_stream, _) = load::raw(path).await?;
+        let inv_stream = load::raw(path).await?;
         debug!("Successfully loaded invoice stream");
         let req = self
             .create_invoice_builder()
@@ -121,11 +119,10 @@ impl Client {
     {
         // Validate the id
         let parsed_id = id.try_into().map_err(|e| e.into())?;
-        let req = self.client.get(self.base_url.join(&format!(
-            "{}/{}",
-            INVOICE_ENDPOINT,
-            parsed_id.to_string()
-        ))?);
+        let req = self.client.get(
+            self.base_url
+                .join(&format!("{}/{}", INVOICE_ENDPOINT, parsed_id))?,
+        );
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
@@ -171,84 +168,112 @@ impl Client {
 
     //////////////// Create Parcel ////////////////
 
-    /// Creates the given parcel using the label and the raw parcel data to upload to the server.
-    /// Returns the label of the created parcel
-    pub async fn create_parcel(&self, label: crate::Label, data: Vec<u8>) -> Result<crate::Label> {
-        // Once again, we can unwrap here because a mime type error is our fault
-        let multipart = Form::new()
-            .part(
-                "label.toml",
-                Part::bytes(toml::to_vec(&label)?)
-                    .mime_str(TOML_MIME_TYPE)
-                    .unwrap(),
-            )
-            .part("parcel.dat", Part::bytes(data));
-        self.create_parcel_request(multipart).await
+    /// Creates the given parcel using the SHA and the raw parcel data to upload to the server.
+    ///
+    /// Parcels are only accessible through a bindle, so the Bindle ID is required as well
+    pub async fn create_parcel<I>(
+        &self,
+        bindle_id: I,
+        parcel_sha: &str,
+        data: Vec<u8>,
+    ) -> Result<()>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+    {
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        self.create_parcel_request(
+            self.create_parcel_builder(&parsed_id, parcel_sha)
+                .body(data),
+        )
+        .await
     }
 
     /// Same as [`create_parcel`](Client::create_parcel), but takes a path to the parcel
     /// file. This will be more efficient for large files as it will stream the data into the body
     /// rather than taking the intermediate step of loading the bytes into a `Vec`.
-    pub async fn create_parcel_from_file<D: AsRef<Path>>(
+    pub async fn create_parcel_from_file<D, I>(
         &self,
-        label: crate::Label,
+        bindle_id: I,
+        parcel_sha: &str,
         data_path: D,
-    ) -> Result<crate::Label> {
+    ) -> Result<()>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+        D: AsRef<Path>,
+    {
         // Copy the path to avoid lifetime issues
         let data = data_path.as_ref().to_owned();
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
         debug!("Loading parcel data from {}", data.display());
-        let (stream, size) = load::raw(data).await?;
+        let stream = load::raw(data).await?;
         debug!("Successfully loaded parcel stream");
         let data_body = Body::wrap_stream(stream);
 
-        let multipart = Form::new()
-            .part(
-                "label.toml",
-                Part::bytes(toml::to_vec(&label)?)
-                    .mime_str(TOML_MIME_TYPE)
-                    .unwrap(),
-            )
-            .part("parcel.dat", Part::stream_with_length(data_body, size));
-        self.create_parcel_request(multipart).await
+        self.create_parcel_request(
+            self.create_parcel_builder(&parsed_id, parcel_sha)
+                .body(data_body),
+        )
+        .await
     }
 
-    async fn create_parcel_request(&self, form: Form) -> Result<crate::Label> {
+    fn create_parcel_builder(&self, bindle_id: &Id, parcel_sha: &str) -> RequestBuilder {
         // We can unwrap here because any URL error would be programmers fault
-        let req = self
-            .client
-            .post(self.base_url.join(PARCEL_ENDPOINT).unwrap())
-            .multipart(form);
+        self.client.post(
+            self.base_url
+                .join(&format!(
+                    "{}/{}@{}",
+                    INVOICE_ENDPOINT, bindle_id, parcel_sha
+                ))
+                .unwrap(),
+        )
+    }
+
+    async fn create_parcel_request(&self, req: RequestBuilder) -> Result<()> {
+        // We can unwrap here because any URL error would be programmers fault
         let resp = req.send().await?;
-        let resp = unwrap_status(resp, Endpoint::Parcel).await?;
-        Ok(toml::from_slice(&resp.bytes().await?)?)
+        unwrap_status(resp, Endpoint::Parcel).await?;
+        Ok(())
     }
 
     //////////////// Get Parcel ////////////////
 
-    /// Returns the requested parcel (identified by its SHA) as a vector of bytes
-    pub async fn get_parcel(&self, sha: &str) -> Result<Vec<u8>> {
-        let resp = self.get_parcel_request(sha).await?;
+    /// Returns the requested parcel (identified by its Bindle ID and SHA) as a vector of bytes
+    pub async fn get_parcel<I>(&self, bindle_id: I, sha: &str) -> Result<Vec<u8>>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+    {
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        let resp = self.get_parcel_request(&parsed_id, sha).await?;
         Ok(resp.bytes().await?.to_vec())
     }
 
-    /// Returns the requested parcel (identified by its SHA) as a stream of bytes. This is useful
-    /// for when you don't want to read it into memory but are instead writing to a file or other
-    /// location
-    pub async fn get_parcel_stream(
+    /// Returns the requested parcel (identified by its Bindle ID and SHA) as a stream of bytes.
+    /// This is useful for when you don't want to read it into memory but are instead writing to a
+    /// file or other location
+    pub async fn get_parcel_stream<I>(
         &self,
+        bindle_id: I,
         sha: &str,
-    ) -> Result<impl Stream<Item = Result<bytes::Bytes>>> {
-        let resp = self.get_parcel_request(sha).await?;
+    ) -> Result<impl Stream<Item = Result<bytes::Bytes>>>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+    {
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        let resp = self.get_parcel_request(&parsed_id, sha).await?;
         Ok(resp.bytes_stream().map(|r| r.map_err(|e| e.into())))
     }
 
-    async fn get_parcel_request(&self, sha: &str) -> Result<reqwest::Response> {
+    async fn get_parcel_request(&self, bindle_id: &Id, sha: &str) -> Result<reqwest::Response> {
         // Override the default accept header
         let resp = self
             .client
             .get(
                 self.base_url
-                    .join(&format!("{}/{}", PARCEL_ENDPOINT, sha))
+                    .join(&format!("{}/{}@{}", INVOICE_ENDPOINT, bindle_id, sha))
                     .unwrap(),
             )
             .header(header::ACCEPT, "*/*")

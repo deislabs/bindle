@@ -8,14 +8,11 @@ complete bindle. That directory is structured like so:
 <DIRNAME>
 ├── invoice.toml
 └── parcels
-    ├── first.toml
     ├── first.dat
-    ├── second.toml
     └── second.dat
 ```
 
 The `invoice.toml` file should contain the invoice, and the parcels directory should contain all of
-the parcels you want to create that are connected to that invoice. Each parcel should have a
-`<parcel_name>.toml` file containing the `Label` and an opaque `<parcel_name>.dat` file that
-contains the actual data to be uploaded for the parcel. If the `parcels` directory is non-existent,
-it will assume there are no parcels to upload.
+the parcels you want to create that are connected to that invoice. Each parcel should have an opaque
+`<parcel_name>.dat` file that contains the actual data to be uploaded for the parcel. If the
+`parcels` directory is non-existent, it will assume there are no parcels to upload.

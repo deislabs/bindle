@@ -95,12 +95,10 @@ A bindle is composed of several parts:
 
 - The _invoice_ (`invoice.toml`) contains information about the bindle (`name`, `description`...)
   as well as a manifest of parcels (individual data items).
-- A _parcel_ contains two parts:
-  - The _label_ (`label.toml`) that contains data about the parcel
-  - the _parcel contents_ (`box.dat`) that contains the opaque data ("what's in the box")
+- A _parcel_ has a (`parcel.dat`) that contains the opaque and arbitrary data
 
 A _bindle hub_ is a service that manages storage and retrieval of bindles. It is available
-via an HTTP/3 connection (almost always over TLS). A hub supports the following actions:
+via an HTTP/2 connection (almost always over TLS). A hub supports the following actions:
 
 - GET: Get a bindle and any of its parcels that you don't currently have
 - POST: Push a bindle and any of its parcels that the hub currently doesn't have

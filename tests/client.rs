@@ -1,6 +1,7 @@
 //! Tests for the client. These tests are not intended to walk through all the API possibilites (as
 //! that is taken care of in the API tests), but instead focus on entire user workflows
 
+use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 
 use bindle::client::Client;
@@ -102,22 +103,22 @@ async fn test_successful() {
         .await
         .expect("Should be able to fetch newly created invoice");
 
-    for (k, parcel_data) in scaffold.parcel_files.iter() {
+    for parcel in scaffold.parcel_files.values() {
         controller
             .client
-            .create_parcel(scaffold.labels.get(k).unwrap().clone(), parcel_data.clone())
+            .create_parcel(&inv.bindle.id, &parcel.sha, parcel.data.clone())
             .await
             .expect("Unable to create parcel");
     }
 
     // Now check that we can get all the parcels
-    for (key, label) in scaffold.labels.iter() {
+    for parcel in scaffold.parcel_files.values() {
         let data = controller
             .client
-            .get_parcel(&label.sha256)
+            .get_parcel(&inv.bindle.id, &parcel.sha)
             .await
             .expect("unable to get parcel");
-        let expected_len = scaffold.parcel_files.get(key).unwrap().len();
+        let expected_len = parcel.data.len();
         assert_eq!(
             data.len(),
             expected_len,
@@ -165,23 +166,21 @@ async fn test_streaming_successful() {
         .expect("Should be able to fetch newly created invoice");
 
     // Load the label from disk
-    let label: bindle::Label = toml::from_slice(
-        &tokio::fs::read(base.join("parcels/parcel.toml"))
-            .await
-            .expect("Unable to load label from disk"),
-    )
-    .expect("Unable to deserialize label");
     let parcel_path = base.join("parcels/parcel.dat");
+    let parcel_sha = inv.parcel.expect("Should have parcels in invoice")[0]
+        .label
+        .sha256
+        .to_owned();
     controller
         .client
-        .create_parcel_from_file(label.clone(), &parcel_path)
+        .create_parcel_from_file(&inv.bindle.id, &parcel_sha, &parcel_path)
         .await
         .expect("Unable to create parcel");
 
     // Now check that we can get the parcel and read data from the stream
     let mut stream = controller
         .client
-        .get_parcel_stream(&label.sha256)
+        .get_parcel_stream(&inv.bindle.id, &parcel_sha)
         .await
         .expect("unable to get parcel");
 
@@ -208,21 +207,33 @@ async fn test_streaming_successful() {
 async fn test_already_created() {
     let controller = TestController::new().await;
 
-    let scaffold = testing::Scaffold::load("valid_v1").await;
+    let scaffold = testing::Scaffold::load("valid_v2").await;
 
-    // Upload parcels first
-    for (k, parcel_data) in scaffold.parcel_files.into_iter() {
+    controller
+        .client
+        .create_invoice(scaffold.invoice.clone())
+        .await
+        .expect("Invoice creation should not error");
+
+    // Upload parcels for this bindle
+    for parcel in scaffold.parcel_files.values() {
         controller
             .client
-            .create_parcel(scaffold.labels.get(&k).unwrap().clone(), parcel_data)
+            .create_parcel(
+                &scaffold.invoice.bindle.id,
+                &parcel.sha,
+                parcel.data.clone(),
+            )
             .await
             .expect("Unable to create parcel");
     }
 
     // Make sure we can create an invoice where all parcels already exist
+    let mut other_inv = scaffold.invoice.clone();
+    other_inv.bindle.id = "another.com/bindle/1.0.0".try_into().unwrap();
     controller
         .client
-        .create_invoice(scaffold.invoice)
+        .create_invoice(other_inv)
         .await
         .expect("invoice creation should not error");
 }

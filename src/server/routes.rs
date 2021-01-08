@@ -17,8 +17,6 @@ where
             .or(v1::invoice::head(store.clone()))
             .or(v1::invoice::yank(store.clone()))
             .or(v1::parcel::create(store.clone()))
-            .or(v1::parcel::get(store.clone()))
-            .or(v1::parcel::head(store.clone()))
             .or(v1::relationships::get_missing_parcels(store)),
     )
 }
@@ -62,6 +60,7 @@ pub mod v1 {
                 .recover(filters::handle_deserialize_rejection)
         }
 
+        // The GET and HEAD endpoints handle both parcels and invoices through the request router function
         pub fn get<S>(
             store: S,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
@@ -73,7 +72,8 @@ pub mod v1 {
                 .and(warp::get())
                 .and(warp::query::<filters::InvoiceQuery>())
                 .and(with_store(store))
-                .and_then(get_invoice)
+                .and(warp::method())
+                .and_then(request_router)
         }
 
         pub fn head<S>(
@@ -87,7 +87,8 @@ pub mod v1 {
                 .and(warp::head())
                 .and(warp::query::<filters::InvoiceQuery>())
                 .and(with_store(store))
-                .and_then(head_invoice)
+                .and(warp::method())
+                .and_then(request_router)
         }
 
         pub fn yank<S>(
@@ -113,36 +114,12 @@ pub mod v1 {
         where
             S: Storage + Clone + Send + Sync,
         {
-            warp::path("_p")
-                .and(warp::path::end())
+            warp::path("_i")
+                .and(warp::path::tail())
                 .and(warp::post())
+                .and(warp::body::stream())
                 .and(with_store(store))
-                .and(warp::multipart::form())
                 .and_then(create_parcel)
-        }
-
-        pub fn get<S>(
-            store: S,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
-        where
-            S: Storage + Clone + Send + Sync,
-        {
-            warp::path!("_p" / String)
-                .and(warp::get())
-                .and(with_store(store))
-                .and_then(get_parcel)
-        }
-
-        pub fn head<S>(
-            store: S,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
-        where
-            S: Storage + Clone + Send + Sync,
-        {
-            warp::path!("_p" / String)
-                .and(warp::head())
-                .and(with_store(store))
-                .and_then(head_parcel)
         }
     }
 

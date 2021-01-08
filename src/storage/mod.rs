@@ -58,23 +58,27 @@ pub trait Storage {
         I: TryInto<Id> + Send,
         I::Error: Into<StorageError>;
 
-    /// Creates a parcel with the associated label data. The parcel can be anything that implements
+    /// Creates a parcel with the associated sha. The parcel can be anything that implements
     /// `Stream`
-    async fn create_parcel<R, B>(&self, label: &super::Label, data: &mut R) -> Result<()>
+    async fn create_parcel<R, B>(&self, parcel_id: &str, data: &mut R) -> Result<()>
     where
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
         B: bytes::Buf;
 
     /// Get a specific parcel using its SHA
-    async fn get_parcel(
+    async fn get_parcel<I>(
         &self,
+        bindle_id: I,
         parcel_id: &str,
-    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>;
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>;
 
-    /// Get the label for a parcel
+    /// Checks if the given parcel exists in storage.
     ///
-    /// This reads the label from storage and then parses it into a Label object.
-    async fn get_label(&self, parcel_id: &str) -> Result<crate::Label>;
+    /// This should not load the full parcel from storage but only indicate if the parcel exists
+    async fn parcel_exists(&self, parcel_id: &str) -> Result<bool>;
 }
 
 /// StorageError describes the possible error states when storing and retrieving bindles.

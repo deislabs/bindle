@@ -70,7 +70,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
         self.inner.yank_invoice(id).await
     }
 
-    async fn create_parcel<R, B>(&self, _: &crate::Label, _: &mut R) -> Result<()>
+    async fn create_parcel<R, B>(&self, _: &str, _: &mut R) -> Result<()>
     where
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
         B: bytes::Buf,
@@ -80,11 +80,17 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
         ))
     }
 
-    async fn get_parcel(
+    async fn get_parcel<I>(
         &self,
+        bindle_id: I,
         parcel_id: &str,
-    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>> {
-        let possible_entry = into_cache_result(self.inner.get_parcel(parcel_id).await)?;
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>,
+    {
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        let possible_entry = into_cache_result(self.inner.get_parcel(&parsed_id, parcel_id).await)?;
         match possible_entry {
             Some(parcel) => Ok(parcel),
             None => {
@@ -92,9 +98,6 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                     "Cache miss for parcel {}, attempting to fetch from server",
                     parcel_id
                 );
-                // TODO: I don't like faking the rest of the data outside of the SHA. We should
-                // figure out a nice way to return that metadata in the client (perhaps as a
-                // separate tuple than contains metadata and the stream)
                 let label = crate::Label {
                     sha256: parcel_id.to_owned(),
                     name: "".to_string(),
@@ -102,7 +105,7 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                 };
                 let mut stream = self
                     .client
-                    .get_parcel_stream(parcel_id)
+                    .get_parcel_stream(&parsed_id, parcel_id)
                     .await?
                     // This isn't my favorite. Right now we are mapping a client error to an io error, which will be mapped back to a storage error
                     .map(|res| {
@@ -113,11 +116,13 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
                 // Attempt to insert the parcel into the store, if it fails, warn the user and
                 // return the parcel anyway. Either way, we need to refetch the stream, since it has
                 // been read after we try to insert
-                let stream = match self.inner.create_parcel(&label, &mut stream).await {
-                    Ok(_) => return self.inner.get_parcel(parcel_id).await,
+                let stream = match self.inner.create_parcel(&label.sha256, &mut stream).await {
+                    Ok(_) => return self.inner.get_parcel(parsed_id.clone(), parcel_id).await,
                     Err(e) => {
                         warn!("Fetched parcel from server, but encountered error when trying to save to local store: {:?}", e);
-                        self.client.get_parcel_stream(parcel_id).await?
+                        self.client
+                            .get_parcel_stream(parsed_id.clone(), parcel_id)
+                            .await?
                     }
                 };
                 Ok(Box::new(stream.map(|res| res.map_err(StorageError::from))))
@@ -125,9 +130,8 @@ impl<S: Storage + Send + Sync + Clone> Storage for DumbCache<S> {
         }
     }
 
-    async fn get_label(&self, _: &str) -> Result<crate::Label> {
-        Err(StorageError::Other(
-            "This cache implementation does not allow for fetching labels".to_string(),
-        ))
+    // In a cache implementation, this just checks for if the inner store has it
+    async fn parcel_exists(&self, parcel_id: &str) -> Result<bool> {
+        self.inner.parcel_exists(parcel_id).await
     }
 }

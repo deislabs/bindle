@@ -19,6 +19,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let inv = bindle_client.create_invoice(inv).await?;
     println!("{:?}", inv);
 
+    // Upload a parcel by loading the file into memory
+    println!("Creating parcel 1");
+    let first_sha = inv.invoice.parcel.expect("Parcel list shouldn't be empty")[0]
+        .label
+        .sha256
+        .clone();
+    let data =
+        tokio::fs::read(root_path.join("tests/scaffolds/valid_v1/parcels/parcel.dat")).await?;
+    bindle_client
+        .create_parcel(&inv.invoice.bindle.id, &first_sha, data)
+        .await?;
+
     // Load an invoice from file and stream it to the API
     println!("Creating invoice 2");
     let inv = bindle_client
@@ -26,10 +38,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("{:?}", inv);
 
+    // Get the missing sha from the response
+    let second_sha = inv.missing.expect("Should have missing parcels")[0]
+        .sha256
+        .clone();
+
     // Get one of the created invoices
-    println!("Getting invoice 1");
+    println!("Getting invoice 2");
     let inv = bindle_client
-        .get_invoice("enterprise.com/warpcore/1.0.0")
+        .get_invoice("enterprise.com/warpcore/2.0.0")
         .await?;
     println!("{:?}", inv);
 
@@ -44,40 +61,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("{:?}", matches);
 
-    // Upload a parcel by loading the file into memory
-    println!("Creating parcel 1");
-    let label = toml::from_slice(
-        &tokio::fs::read(root_path.join("tests/scaffolds/valid_v1/parcels/parcel.toml")).await?,
-    )?;
-    let data =
-        tokio::fs::read(root_path.join("tests/scaffolds/valid_v1/parcels/parcel.dat")).await?;
-    let label = bindle_client.create_parcel(label, data).await?;
-    println!("{:?}", label);
-    let first_sha = label.sha256;
-
     // Upload a parcel using a stream instead of loading into memory
     println!("Creating parcel 2");
-    let label = toml::from_slice(
-        &tokio::fs::read(root_path.join("tests/scaffolds/valid_v2/parcels/parcel.toml")).await?,
-    )?;
-    let label = bindle_client
+    bindle_client
         .create_parcel_from_file(
-            label,
+            "enterprise.com/warpcore/2.0.0",
+            &second_sha,
             root_path.join("tests/scaffolds/valid_v2/parcels/parcel.dat"),
         )
         .await?;
-    println!("{:?}", label);
-    let second_sha = label.sha256;
 
     // Get a parcel and load its bytes into memory
     println!("Loading parcel 1");
-    let data = bindle_client.get_parcel(&first_sha).await?;
+    let data = bindle_client
+        .get_parcel("enterprise.com/warpcore/2.0.0", &first_sha)
+        .await?;
     println!("{}", data.len());
 
     // Get a parcel as a stream, and write it into a file somewhere
     println!("Loading parcel 2 as stream");
     let temp = tempdir()?;
-    let mut stream = bindle_client.get_parcel_stream(&second_sha).await?;
+    let mut stream = bindle_client
+        .get_parcel_stream("enterprise.com/warpcore/2.0.0", &second_sha)
+        .await?;
 
     let file_path = temp.path().join("foo");
     let mut file = tokio::fs::OpenOptions::new()

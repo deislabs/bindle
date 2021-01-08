@@ -11,11 +11,57 @@ use crate::storage::Storage;
 pub mod v1 {
     use super::*;
 
-    use std::io::Read;
-
     use crate::QueryOptions;
-    use bytes::buf::BufExt;
-    use tokio::stream::StreamExt;
+    use reqwest::Method;
+    use tokio::stream::{self, StreamExt};
+
+    const PARCEL_ID_SEPARATOR: char = '@';
+
+    /// Due to subpathed parcel support, we need to check what is in the tail of a GET request in order to route the request to the appropriate handler
+    pub async fn request_router<S: Storage + Sync>(
+        tail: warp::path::Tail,
+        query: InvoiceQuery,
+        store: S,
+        method: Method,
+    ) -> Result<Box<dyn warp::Reply>, Infallible> {
+        let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
+
+        match split.len() {
+            1 => {
+                trace!(
+                    "Matched only bindle ID {}, routing to get/head invoice handler",
+                    split[0]
+                );
+                match method {
+                    Method::HEAD => head_invoice(tail, query, store).await,
+                    Method::GET => get_invoice(tail, query, store).await,
+                    _ => Ok(Box::new(reply::reply_from_error(
+                        "Got invalid method",
+                        warp::http::StatusCode::METHOD_NOT_ALLOWED,
+                    ))),
+                }
+            }
+            2 => {
+                trace!(
+                    "Matched bindle ID {} and sha {}, routing to get parcel handler",
+                    split[0],
+                    split[1]
+                );
+                match method {
+                    Method::HEAD => head_parcel(split[0], split[1], store).await,
+                    Method::GET => get_parcel(split[0], split[1], store).await,
+                    _ => Ok(Box::new(reply::reply_from_error(
+                        "Got invalid method",
+                        warp::http::StatusCode::METHOD_NOT_ALLOWED,
+                    ))),
+                }
+            }
+            _ => Ok(Box::new(reply::reply_from_error(
+                "Invalid URL. Missing bindle ID and/or parcel SHA",
+                warp::http::StatusCode::BAD_REQUEST,
+            ))),
+        }
+    }
 
     //////////// Invoice Functions ////////////
     pub async fn query_invoices<S: Search>(
@@ -87,7 +133,7 @@ pub mod v1 {
         tail: warp::path::Tail,
         query: InvoiceQuery,
         store: S,
-    ) -> Result<impl warp::Reply, Infallible> {
+    ) -> Result<Box<dyn warp::Reply>, Infallible> {
         let id = tail.as_str();
         trace!(
             "Get invoice request for {} with yanked = {}",
@@ -103,13 +149,13 @@ pub mod v1 {
             Ok(i) => i,
             Err(e) => {
                 trace!("Got error during get invoice request: {:?}", e);
-                return Ok(reply::into_reply(e));
+                return Ok(Box::new(reply::into_reply(e)));
             }
         };
-        Ok(warp::reply::with_status(
+        Ok(Box::new(warp::reply::with_status(
             reply::toml(&inv),
             warp::http::StatusCode::OK,
-        ))
+        )))
     }
 
     pub async fn yank_invoice<S: Storage>(
@@ -135,74 +181,48 @@ pub mod v1 {
         tail: warp::path::Tail,
         query: InvoiceQuery,
         store: S,
-    ) -> Result<impl warp::Reply, Infallible> {
+    ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Head invoice request for {}", tail.as_str());
         let inv = get_invoice(tail, query, store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
 
-        Ok(super::HeadResponse {
+        Ok(Box::new(super::HeadResponse {
             headers: parts.headers,
-        })
+        }))
     }
 
     //////////// Parcel Functions ////////////
 
-    pub async fn create_parcel<S: Storage>(
+    pub async fn create_parcel<S: Storage + Sync>(
+        tail: warp::path::Tail,
+        body: impl stream::Stream<Item = Result<impl bytes::Buf, warp::Error>> + Send + Sync + Unpin,
         store: S,
-        mut data: warp::multipart::FormData,
     ) -> Result<impl warp::Reply, Infallible> {
-        trace!("Create parcel request, beginning parse of multipart data");
-        let label_part = match form_data_unwrapper(data.next().await) {
-            Ok(p) => p,
-            Err(e) => {
-                trace!("Got error while parsing label data from multipart: {:?}", e);
-                return Ok(reply::reply_from_error(
-                    e,
-                    warp::http::StatusCode::BAD_REQUEST,
-                ));
-            }
-        };
+        trace!("Create parcel request, beginning parse of path");
+        let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
 
-        let label = match parse_label(label_part).await {
-            Ok(l) => l,
-            Err(e) => {
-                trace!("Got error while parsing label data from multipart: {:?}", e);
-                return Ok(reply::reply_from_error(
-                    e,
-                    warp::http::StatusCode::BAD_REQUEST,
-                ));
-            }
-        };
-
-        trace!("Got SHA {} from label", label.sha256);
-
-        let file_part = match form_data_unwrapper(data.next().await) {
-            Ok(p) => p,
-            Err(e) => {
-                trace!(
-                    "Got error while parsing parcel data from multipart: {:?}",
-                    e
-                );
-                return Ok(reply::reply_from_error(
-                    e,
-                    warp::http::StatusCode::BAD_REQUEST,
-                ));
-            }
-        };
-
-        if data.next().await.is_some() {
+        if split.len() != 2 {
             return Ok(reply::reply_from_error(
-                "Found extra file data in stream. Only one parcel should be uploaded with its associated label",
+                format!("Unable to parse parcel SHA from request. The SHA should be separated from the bindle ID by a single '{}' character", PARCEL_ID_SEPARATOR),
                 warp::http::StatusCode::BAD_REQUEST,
             ));
+        }
+        let bindle_id = split[0];
+        let sha = split[1];
+
+        trace!("Got SHA {} and bindle id {}", sha, bindle_id);
+
+        // Validate that this sha belongs
+        if let Err(e) = parcel_in_bindle(&store, bindle_id, sha).await {
+            return Ok(e);
         }
 
         if let Err(e) = store
             .create_parcel(
-                &label,
-                &mut file_part.stream().map(|res| {
+                sha,
+                &mut body.map(|res| {
                     res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
                 }),
             )
@@ -211,27 +231,27 @@ pub mod v1 {
             return Ok(reply::into_reply(e));
         }
 
+        let mut resp = std::collections::HashMap::new();
+        resp.insert("message", "parcel created");
         Ok(warp::reply::with_status(
-            reply::toml(&label),
+            reply::toml(&resp),
             warp::http::StatusCode::OK,
         ))
     }
 
-    pub async fn get_parcel<S: Storage>(
-        id: String,
+    pub async fn get_parcel<S: Storage + Sync>(
+        bindle_id: &str,
+        id: &str,
         store: S,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Get parcel request for {}", id);
-        // Get parcel label to ascertain content type and length, then get the actual data
-        let label = match store.get_label(&id).await {
+        // Get parcel label to ascertain content type and length, and validate that it does exist
+        let label = match parcel_in_bindle(&store, bindle_id, id).await {
             Ok(l) => l,
-            Err(e) => {
-                trace!("Error while fetching label for {}", id);
-                return Ok(Box::new(reply::into_reply(e)));
-            }
+            Err(e) => return Ok(Box::new(e)),
         };
 
-        let data = match store.get_parcel(&id).await {
+        let data = match store.get_parcel(bindle_id, id).await {
             Ok(reader) => reader,
             Err(e) => {
                 return Ok(Box::new(reply::into_reply(e)));
@@ -254,19 +274,20 @@ pub mod v1 {
         )))
     }
 
-    pub async fn head_parcel<S: Storage>(
-        id: String,
+    pub async fn head_parcel<S: Storage + Sync>(
+        bindle_id: &str,
+        id: &str,
         store: S,
-    ) -> Result<impl warp::Reply, Infallible> {
+    ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Head parcel request for {}", id);
-        let inv = get_parcel(id, store).await?;
+        let inv = get_parcel(bindle_id, id, store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
 
-        Ok(super::HeadResponse {
+        Ok(Box::new(super::HeadResponse {
             headers: parts.headers,
-        })
+        }))
     }
 
     //////////// Relationship Functions ////////////
@@ -292,11 +313,16 @@ pub mod v1 {
             .map(|p| (p, store.clone()))
             .map(|(p, store)| async move {
                 // We can't use a filter_map with async, so we need to map first, then collect things with a filter
-                match store.get_label(&p.label.sha256).await {
-                    // If it exists, don't include it
-                    Ok(_) => Ok(None),
-                    Err(e) if matches!(e, crate::storage::StorageError::NotFound) => {
-                        Ok(Some(p.label))
+                match store.parcel_exists(&p.label.sha256).await {
+                    Ok(b) => {
+                        // For some reason, guard blocks on bools don't indicate to the compiler
+                        // that they are exhaustive, so hence the nested if block
+                        if b {
+                            // If it exists, don't include it
+                            Ok(None)
+                        } else {
+                            Ok(Some(p.label))
+                        }
                     }
                     Err(e) => Err(e),
                 }
@@ -321,37 +347,33 @@ pub mod v1 {
 
     //////////// Helper Functions ////////////
 
-    /// unwraps the option result from a form data stream to avoid double unwrapping littered all
-    /// over the code
-    fn form_data_unwrapper(
-        item: Option<Result<warp::multipart::Part, warp::Error>>,
-    ) -> anyhow::Result<warp::multipart::Part> {
-        let res = match item {
-            Some(r) => r,
-            None => return Err(anyhow::anyhow!("Unexpected end of data body")),
+    /// Fetches an invoice from the given store and checks that the given SHA exists within that
+    /// invoice. Returns a result where the Error variant is a warp reply containing the error
+    async fn parcel_in_bindle<S: Storage + Sync>(
+        store: &S,
+        bindle_id: &str,
+        sha: &str,
+    ) -> std::result::Result<crate::Label, warp::reply::WithStatus<crate::server::reply::Toml>>
+    {
+        let inv = match store.get_invoice(bindle_id).await {
+            Ok(i) => i,
+            Err(e) => return Err(reply::into_reply(e)),
         };
 
-        res.map_err(anyhow::Error::new)
-    }
+        // Make sure the sha exists in the list
+        let label = inv
+            .parcel
+            .map(|parcels| parcels.into_iter().find(|p| p.label.sha256 == sha))
+            .flatten()
+            .map(|p| p.label);
 
-    async fn parse_label(part: warp::multipart::Part) -> anyhow::Result<crate::Label> {
-        if part.content_type().unwrap_or_default() != crate::server::TOML_MIME_TYPE {
-            return Err(anyhow::anyhow!(
-                "Expected label of content type {}, found content type {}",
-                crate::server::TOML_MIME_TYPE,
-                part.content_type().unwrap_or_default()
-            ));
+        match label {
+            Some(l) => Ok(l),
+            None => Err(reply::reply_from_error(
+                format!("Parcel SHA {} does not exist in invoice {}", sha, bindle_id),
+                warp::http::StatusCode::BAD_REQUEST,
+            )),
         }
-        let mut raw = Vec::new();
-
-        // Read all the parts into a buffer
-        let mut stream = part.stream();
-        while let Some(buf) = stream.next().await {
-            buf?.reader().read_to_end(&mut raw)?;
-        }
-        let label = toml::from_slice(&raw)?;
-
-        Ok(label)
     }
 }
 

@@ -26,7 +26,6 @@ const INVOICE_DIRECTORY: &str = "invoices";
 const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
-const LABEL_TOML: &str = "label.toml";
 
 /// A file system backend for storing and retriving bindles and parcles.
 ///
@@ -135,10 +134,6 @@ impl<T: Search + Send + Sync> FileStorage<T> {
         let mut path = self.root.join(PARCEL_DIRECTORY);
         path.push(parcel_id);
         path
-    }
-    /// Return the path to a parcel.toml for a specific parcel.
-    fn label_toml_path(&self, parcel_id: &str) -> PathBuf {
-        self.parcel_path(parcel_id).join(LABEL_TOML)
     }
     /// Return the path to the parcel.dat file for the given box ID
     fn parcel_data_path(&self, parcel_id: &str) -> PathBuf {
@@ -290,16 +285,15 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         Ok(())
     }
 
-    async fn create_parcel<R, B>(&self, label: &crate::Label, data: &mut R) -> Result<()>
+    async fn create_parcel<R, B>(&self, parcel_id: &str, data: &mut R) -> Result<()>
     where
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
         B: bytes::Buf,
     {
-        let sha = label.sha256.as_str();
-        debug!("Creating parcel with SHA {}", sha);
+        debug!("Creating parcel with SHA {}", parcel_id);
 
         // Test if a dir with that SHA exists. If so, this is an error.
-        let par_path = self.parcel_path(sha);
+        let par_path = self.parcel_path(parcel_id);
         if par_path.is_dir() {
             return Err(StorageError::Exists);
         }
@@ -308,10 +302,10 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
 
         // Write data
         {
-            let data_file = self.parcel_data_path(sha);
+            let data_file = self.parcel_data_path(parcel_id);
             trace!(
                 "Writing parcel data for SHA {} at {}",
-                sha,
+                parcel_id,
                 data_file.display()
             );
             let mut out = OpenOptions::new()
@@ -329,31 +323,26 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
             // not be correct.
             out.flush();
             out.seek(std::io::SeekFrom::Start(0)).await?;
-            trace!("Validating data for SHA {}", sha);
-            validate_sha256(&mut out, label.sha256.as_str()).await?;
-            trace!("SHA {} data validated", sha);
+            trace!("Validating data for SHA {}", parcel_id);
+            validate_sha256(&mut out, parcel_id).await?;
+            trace!("SHA {} data validated", parcel_id);
+            // TODO: Should we also validate length? We use it for returning the proper content length
         }
 
-        // Write label
-        {
-            trace!("Writing label for parcel SHA {}", sha);
-            let dest = self.label_toml_path(sha);
-            let mut out = OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(dest)
-                .await?;
-
-            let data = toml::to_vec(label)?;
-            out.write_all(data.as_slice()).await?;
-        }
         Ok(())
     }
 
-    async fn get_parcel(
+    async fn get_parcel<I>(
         &self,
+        _bindle_id: I,
         parcel_id: &str,
-    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>> {
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<StorageError>,
+    {
+        // Because this is an "end node" implementation (i.e. we aren't forwarding it anywhere), the
+        // bindle ID doesn't matter in this case
         debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
         let reader = File::open(name).await.map_err(map_io_error)?;
@@ -363,16 +352,14 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         ))
     }
 
-    async fn get_label(&self, parcel_id: &str) -> Result<crate::Label> {
-        debug!("Getting label for parcel sha {}", parcel_id);
-        let label_path = self.label_toml_path(parcel_id);
-        let label_toml = tokio::fs::read_to_string(label_path)
-            .await
-            .map_err(map_io_error)?;
-        let label: crate::Label = toml::from_str(label_toml.as_str())?;
-
-        // Return object
-        Ok(label)
+    async fn parcel_exists(&self, parcel_id: &str) -> Result<bool> {
+        debug!("Checking if parcel sha {} exists", parcel_id);
+        let label_path = self.parcel_data_path(parcel_id);
+        match tokio::fs::metadata(label_path).await {
+            Ok(m) => Ok(m.is_file()),
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 
@@ -480,10 +467,6 @@ mod test {
         );
         assert_eq!(PathBuf::from("test/parcels/123"), f.parcel_path("123"));
         assert_eq!(
-            PathBuf::from("test/parcels/123/label.toml"),
-            f.label_toml_path("123")
-        );
-        assert_eq!(
             PathBuf::from("test/parcels/123/parcel.dat"),
             f.parcel_data_path("123")
         );
@@ -550,16 +533,23 @@ mod test {
         .await;
 
         store
-            .create_parcel(&label, &mut FramedRead::new(data, BytesCodec::new()))
+            .create_parcel(id, &mut FramedRead::new(data, BytesCodec::new()))
             .await
             .expect("create parcel");
 
-        // Now attempt to read just the label
+        // Now make sure the parcels reads as existing
+        assert!(
+            store
+                .parcel_exists(id)
+                .await
+                .expect("Shouldn't get an error while checking for parcel existence"),
+            "Parcel should be reported as existing"
+        );
 
-        let label2 = store.get_label(id).await.expect("fetch label after saving");
+        // Attempt to read the parcel from the store
         let mut data = String::new();
         let stream = store
-            .get_parcel(&label2.sha256)
+            .get_parcel("doesn't matter", id)
             .await
             .expect("load parcel data");
         let mut reader = crate::async_util::BodyReadBuffer(stream);
@@ -591,7 +581,7 @@ mod test {
         invoice.parcel = Some(vec![parcel]);
 
         store
-            .create_parcel(&label, &mut FramedRead::new(data, BytesCodec::new()))
+            .create_parcel(&label.sha256, &mut FramedRead::new(data, BytesCodec::new()))
             .await
             .expect("stored the parcel");
 
