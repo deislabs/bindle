@@ -4,7 +4,7 @@ use warp::reply::Response;
 use warp::Reply;
 
 use super::TOML_MIME_TYPE;
-use crate::storage::StorageError;
+use crate::provider::ProviderError;
 
 // Borrowed and modified from https://docs.rs/warp/0.2.5/src/warp/reply.rs.html#102
 pub fn toml<T>(val: &T) -> Toml
@@ -40,30 +40,30 @@ impl Reply for Toml {
     }
 }
 
-/// A helper function for converting a [`StorageError`](crate::storage::StorageError) into a Warp
+/// A helper function for converting a [`ProviderError`](crate::provider::ProviderError) into a Warp
 /// `Reply` with the proper status code. It will return a TOML body that looks like:
 /// ```toml
 /// error = "bindle is yanked"
 /// ```
-pub fn into_reply(error: StorageError) -> warp::reply::WithStatus<Toml> {
+pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<Toml> {
     let mut error = error;
     let status_code = match &error {
-        StorageError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
-        StorageError::NotFound => StatusCode::NOT_FOUND,
-        StorageError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        ProviderError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
+        ProviderError::NotFound => StatusCode::NOT_FOUND,
+        ProviderError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Remap the error in the case this is a not found error
-            error = StorageError::NotFound;
+            error = ProviderError::NotFound;
             StatusCode::NOT_FOUND
         }
-        StorageError::Exists => StatusCode::CONFLICT,
-        StorageError::Malformed(_)
-        | StorageError::Unserializable(_)
-        | StorageError::DigestMismatch
-        | StorageError::InvalidId => StatusCode::BAD_REQUEST,
-        StorageError::Yanked => StatusCode::FORBIDDEN,
+        ProviderError::Exists => StatusCode::CONFLICT,
+        ProviderError::Malformed(_)
+        | ProviderError::Unserializable(_)
+        | ProviderError::DigestMismatch
+        | ProviderError::InvalidId => StatusCode::BAD_REQUEST,
+        ProviderError::Yanked => StatusCode::FORBIDDEN,
         #[cfg(feature = "caching")]
-        StorageError::CacheError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        StorageError::Other(_) | StorageError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::CacheError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::Other(_) | ProviderError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
 
     reply_from_error(error, status_code)

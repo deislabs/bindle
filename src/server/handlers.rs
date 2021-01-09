@@ -5,8 +5,8 @@ use warp::Reply;
 
 use super::filters::InvoiceQuery;
 use super::reply;
+use crate::provider::Provider;
 use crate::search::Search;
-use crate::storage::Storage;
 
 pub mod v1 {
     use super::*;
@@ -18,10 +18,10 @@ pub mod v1 {
     const PARCEL_ID_SEPARATOR: char = '@';
 
     /// Due to subpathed parcel support, we need to check what is in the tail of a GET request in order to route the request to the appropriate handler
-    pub async fn request_router<S: Storage + Sync>(
+    pub async fn request_router<P: Provider + Sync>(
         tail: warp::path::Tail,
         query: InvoiceQuery,
-        store: S,
+        store: P,
         method: Method,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
@@ -88,8 +88,8 @@ pub mod v1 {
         ))
     }
 
-    pub async fn create_invoice<S: Storage>(
-        store: S,
+    pub async fn create_invoice<P: Provider>(
+        store: P,
         inv: crate::Invoice,
     ) -> Result<impl warp::Reply, Infallible> {
         trace!("Create invoice request with invoice: {:?}", inv);
@@ -129,10 +129,10 @@ pub mod v1 {
         }
     }
 
-    pub async fn get_invoice<S: Storage + Sync>(
+    pub async fn get_invoice<P: Provider + Sync>(
         tail: warp::path::Tail,
         query: InvoiceQuery,
-        store: S,
+        store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         let id = tail.as_str();
         trace!(
@@ -158,9 +158,9 @@ pub mod v1 {
         )))
     }
 
-    pub async fn yank_invoice<S: Storage>(
+    pub async fn yank_invoice<P: Provider>(
         tail: warp::path::Tail,
-        store: S,
+        store: P,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
         trace!("Yank invoice request for {}", id);
@@ -177,10 +177,10 @@ pub mod v1 {
         ))
     }
 
-    pub async fn head_invoice<S: Storage + Sync>(
+    pub async fn head_invoice<P: Provider + Sync>(
         tail: warp::path::Tail,
         query: InvoiceQuery,
-        store: S,
+        store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Head invoice request for {}", tail.as_str());
         let inv = get_invoice(tail, query, store).await?;
@@ -195,10 +195,10 @@ pub mod v1 {
 
     //////////// Parcel Functions ////////////
 
-    pub async fn create_parcel<S: Storage + Sync>(
+    pub async fn create_parcel<P: Provider + Sync>(
         tail: warp::path::Tail,
         body: impl stream::Stream<Item = Result<impl bytes::Buf, warp::Error>> + Send + Sync + Unpin,
-        store: S,
+        store: P,
     ) -> Result<impl warp::Reply, Infallible> {
         trace!("Create parcel request, beginning parse of path");
         let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
@@ -239,10 +239,10 @@ pub mod v1 {
         ))
     }
 
-    pub async fn get_parcel<S: Storage + Sync>(
+    pub async fn get_parcel<P: Provider + Sync>(
         bindle_id: &str,
         id: &str,
-        store: S,
+        store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Get parcel request for {}", id);
         // Get parcel label to ascertain content type and length, and validate that it does exist
@@ -274,10 +274,10 @@ pub mod v1 {
         )))
     }
 
-    pub async fn head_parcel<S: Storage + Sync>(
+    pub async fn head_parcel<P: Provider + Sync>(
         bindle_id: &str,
         id: &str,
-        store: S,
+        store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Head parcel request for {}", id);
         let inv = get_parcel(bindle_id, id, store).await?;
@@ -292,9 +292,9 @@ pub mod v1 {
 
     //////////// Relationship Functions ////////////
 
-    pub async fn get_missing<S: Storage + Sync + Clone>(
+    pub async fn get_missing<P: Provider + Sync + Clone>(
         tail: warp::path::Tail,
-        store: S,
+        store: P,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
 
@@ -310,10 +310,10 @@ pub mod v1 {
             .parcel
             .unwrap_or_default()
             .into_iter()
-            .map(|p| (p, store.clone()))
-            .map(|(p, store)| async move {
+            .map(|p| (p, id.to_owned(), store.clone()))
+            .map(|(p, bindle_id, store)| async move {
                 // We can't use a filter_map with async, so we need to map first, then collect things with a filter
-                match store.parcel_exists(&p.label.sha256).await {
+                match store.parcel_exists(bindle_id, &p.label.sha256).await {
                     Ok(b) => {
                         // For some reason, guard blocks on bools don't indicate to the compiler
                         // that they are exhaustive, so hence the nested if block
@@ -331,7 +331,7 @@ pub mod v1 {
         let missing = match futures::future::join_all(missing_futures)
             .await
             .into_iter()
-            .collect::<Result<Vec<Option<crate::Label>>, crate::storage::StorageError>>()
+            .collect::<Result<Vec<Option<crate::Label>>, crate::provider::ProviderError>>()
         {
             Ok(m) => m.into_iter().flatten().collect::<Vec<crate::Label>>(),
             Err(e) => {
@@ -349,8 +349,8 @@ pub mod v1 {
 
     /// Fetches an invoice from the given store and checks that the given SHA exists within that
     /// invoice. Returns a result where the Error variant is a warp reply containing the error
-    async fn parcel_in_bindle<S: Storage + Sync>(
-        store: &S,
+    async fn parcel_in_bindle<P: Provider + Sync>(
+        store: &P,
         bindle_id: &str,
         sha: &str,
     ) -> std::result::Result<crate::Label, warp::reply::WithStatus<crate::server::reply::Toml>>

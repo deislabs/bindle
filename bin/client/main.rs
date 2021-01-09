@@ -2,11 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
+use bindle::provider::ProviderError;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
-use bindle::storage::StorageError;
 use bindle::{
     cache::{Cache, DumbCache},
-    storage::Storage,
+    provider::Provider,
 };
 
 use clap::Clap;
@@ -30,9 +30,11 @@ async fn main() -> std::result::Result<(), ClientError> {
         .bindle_dir
         .unwrap_or_else(|| dirs::home_dir().unwrap().join(".bindle/bindles"));
     tokio::fs::create_dir_all(&bindle_dir).await?;
-    let store =
-        bindle::storage::file::FileStorage::new(bindle_dir, bindle::search::NoopEngine::default())
-            .await;
+    let store = bindle::provider::file::FileProvider::new(
+        bindle_dir,
+        bindle::search::NoopEngine::default(),
+    )
+    .await;
     let cache = DumbCache::new(bindle_client.clone(), store);
 
     match opts.subcmd {
@@ -201,15 +203,15 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
                 }
                 Err(e) => {
                     match e {
-                        StorageError::NotFound => warn!("Parcel {} does not exist", sha),
-                        StorageError::CacheError(err)
+                        ProviderError::NotFound => warn!("Parcel {} does not exist", sha),
+                        ProviderError::CacheError(err)
                             if matches!(err, ClientError::ParcelNotFound) =>
                         {
                             warn!("Parcel {} does not exist", sha)
                         }
                         // Only return an error if it isn't a not found error. By design, an invoice
                         // can contain parcels that don't yet exist
-                        StorageError::CacheError(inner) => return Err(inner),
+                        ProviderError::CacheError(inner) => return Err(inner),
                         _ => {
                             return Err(ClientError::Other(format!(
                                 "Unable to get parcel {}: {:?}",
@@ -243,10 +245,10 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
     Ok(())
 }
 
-fn map_storage_error(e: StorageError) -> ClientError {
+fn map_storage_error(e: ProviderError) -> ClientError {
     match e {
-        StorageError::Io(e) => ClientError::Io(e),
-        StorageError::CacheError(inner) => inner,
+        ProviderError::Io(e) => ClientError::Io(e),
+        ProviderError::CacheError(inner) => inner,
         _ => ClientError::Other(format!("{:?}", e)),
     }
 }

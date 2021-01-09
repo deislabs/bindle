@@ -11,7 +11,7 @@ mod routes;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use super::storage::Storage;
+use super::provider::Provider;
 use crate::search::Search;
 
 pub(crate) const TOML_MIME_TYPE: &str = "application/toml";
@@ -25,14 +25,14 @@ pub struct TlsConfig {
 /// Returns a future that runs a server until it receives a SIGINT to stop. If optional TLS
 /// configuration is given, the server will be configured to use TLS. Otherwise it will use plain
 /// HTTP
-pub async fn server<S, I>(
-    store: S,
+pub async fn server<P, I>(
+    store: P,
     index: I,
     addr: impl Into<SocketAddr> + 'static,
     tls: Option<TlsConfig>,
 ) -> anyhow::Result<()>
 where
-    S: Storage + Clone + Send + Sync + 'static,
+    P: Provider + Clone + Send + Sync + 'static,
     I: Search + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
@@ -70,7 +70,7 @@ async fn shutdown_signal() {
 mod test {
     use std::convert::TryInto;
 
-    use crate::storage::Storage;
+    use crate::provider::Provider;
     use crate::testing;
 
     use testing::Scaffold;

@@ -4,9 +4,8 @@ use std::path::PathBuf;
 use clap::Clap;
 
 use bindle::{
-    search,
+    provider, search,
     server::{server, TlsConfig},
-    storage,
 };
 
 const DESCRIPTION: &str = r#"
@@ -63,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
 
     let addr: SocketAddr = opts.address.parse()?;
     let index = search::StrictEngine::default();
-    let store = storage::file::FileStorage::new(&opts.bindle_directory, index.clone()).await;
+    let store = provider::file::FileProvider::new(&opts.bindle_directory, index.clone()).await;
 
     log::info!(
         "Starting server at {}, and serving bindles from {}",

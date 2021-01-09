@@ -16,7 +16,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::stream::{Stream, StreamExt};
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::storage::{Result, Storage, StorageError};
+use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
 use crate::{async_util, search::Search};
 
@@ -27,30 +27,30 @@ const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
 
-/// A file system backend for storing and retriving bindles and parcles.
+/// A file system backend for storing and retrieving bindles and parcles.
 ///
-/// Given a root directory, FileStorage brings its own storage layout for keeping track
+/// Given a root directory, FileProvider brings its own storage layout for keeping track
 /// of Bindles.
 ///
-/// A FileStorage needs a search engine implementation. When invoices are created or yanked,
+/// A FileProvider needs a search engine implementation. When invoices are created or yanked,
 /// the index will be updated.
-pub struct FileStorage<T> {
+pub struct FileProvider<T> {
     root: PathBuf,
     index: T,
 }
 
-impl<T: Clone> Clone for FileStorage<T> {
+impl<T: Clone> Clone for FileProvider<T> {
     fn clone(&self) -> Self {
-        FileStorage {
+        FileProvider {
             root: self.root.clone(),
             index: self.index.clone(),
         }
     }
 }
 
-impl<T: Search + Send + Sync> FileStorage<T> {
+impl<T: Search + Send + Sync> FileProvider<T> {
     pub async fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
-        let fs = FileStorage {
+        let fs = FileProvider {
             root: path.as_ref().to_owned(),
             index,
         };
@@ -142,11 +142,11 @@ impl<T: Search + Send + Sync> FileStorage<T> {
 }
 
 #[async_trait::async_trait]
-impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
+impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     async fn create_invoice(&self, inv: &crate::Invoice) -> Result<Vec<crate::Label>> {
         // It is illegal to create a yanked invoice.
         if inv.yanked.unwrap_or(false) {
-            return Err(StorageError::CreateYanked);
+            return Err(ProviderError::CreateYanked);
         }
 
         let invoice_id = inv.canonical_name();
@@ -156,7 +156,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         if !inv_path.is_dir() {
             // If it exists and is a regular file, we have a problem
             if inv_path.is_file() {
-                return Err(StorageError::Exists);
+                return Err(ProviderError::Exists);
             }
             create_dir_all(inv_path).await?;
         }
@@ -164,7 +164,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Open the destination or error out if it already exists.
         let dest = self.invoice_toml_path(&invoice_id);
         if dest.exists() {
-            return Err(StorageError::Exists);
+            return Err(ProviderError::Exists);
         }
         debug!(
             "Storing invoice with ID {:?} in {}",
@@ -226,7 +226,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
         let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
         trace!("Getting invoice {:?}", parsed_id);
@@ -256,7 +256,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
         let mut inv = self.get_yanked_invoice(id).await?;
         inv.yanked = Some(true);
@@ -295,7 +295,7 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(parcel_id);
         if par_path.is_dir() {
-            return Err(StorageError::Exists);
+            return Err(ProviderError::Exists);
         }
         // Create box dir
         create_dir_all(par_path).await?;
@@ -339,9 +339,9 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
-        // Because this is an "end node" implementation (i.e. we aren't forwarding it anywhere), the
+        // Because this is a "terminal provider" implementation (i.e. we aren't forwarding it anywhere), the
         // bindle ID doesn't matter in this case
         debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
@@ -352,7 +352,11 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
         ))
     }
 
-    async fn parcel_exists(&self, parcel_id: &str) -> Result<bool> {
+    async fn parcel_exists<I>(&self, _bindle_id: I, parcel_id: &str) -> Result<bool>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
         debug!("Checking if parcel sha {} exists", parcel_id);
         let label_path = self.parcel_data_path(parcel_id);
         match tokio::fs::metadata(label_path).await {
@@ -363,11 +367,11 @@ impl<T: crate::search::Search + Send + Sync> Storage for FileStorage<T> {
     }
 }
 
-fn map_io_error(e: std::io::Error) -> StorageError {
+fn map_io_error(e: std::io::Error) -> ProviderError {
     if matches!(e.kind(), std::io::ErrorKind::NotFound) {
-        return StorageError::NotFound;
+        return ProviderError::NotFound;
     }
-    StorageError::from(e)
+    ProviderError::from(e)
 }
 
 /// An internal wrapper to implement `AsyncWrite` on Sha256
@@ -435,7 +439,7 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
     let hasher = match hasher.into_inner() {
         Ok(h) => h,
         Err(_) => {
-            return Err(StorageError::Io(std::io::Error::new(
+            return Err(ProviderError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "data write corruption, mutex poisoned",
             )))
@@ -444,7 +448,7 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
     let result = hasher.finalize();
 
     if format!("{:x}", result) != sha {
-        return Err(StorageError::DigestMismatch);
+        return Err(ProviderError::DigestMismatch);
     }
 
     Ok(())
@@ -453,13 +457,13 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::storage::test_common::*;
+    use crate::provider::test_common::*;
     use tempfile::tempdir;
     use tokio::io::AsyncReadExt;
 
     #[tokio::test]
     async fn test_should_generate_paths() {
-        let f = FileStorage::new("test", crate::search::StrictEngine::default()).await;
+        let f = FileProvider::new("test", crate::search::StrictEngine::default()).await;
         assert_eq!(PathBuf::from("test/invoices/123"), f.invoice_path("123"));
         assert_eq!(
             PathBuf::from("test/invoices/123/invoice.toml"),
@@ -477,7 +481,7 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let inv = invoice_fixture();
-        let store = FileStorage::new(
+        let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )
@@ -510,7 +514,7 @@ mod test {
         let root = tempdir().unwrap();
         let mut inv = invoice_fixture();
         inv.yanked = Some(true);
-        let store = FileStorage::new(
+        let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )
@@ -526,7 +530,7 @@ mod test {
         let (label, data) = parcel_fixture(content).await;
         let id = label.sha256.as_str();
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(
+        let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )
@@ -540,7 +544,7 @@ mod test {
         // Now make sure the parcels reads as existing
         assert!(
             store
-                .parcel_exists(id)
+                .parcel_exists("doesn't matter", id)
                 .await
                 .expect("Shouldn't get an error while checking for parcel existence"),
             "Parcel should be reported as existing"
@@ -563,7 +567,7 @@ mod test {
     #[tokio::test]
     async fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let store = FileStorage::new(
+        let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )

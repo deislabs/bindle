@@ -1,4 +1,25 @@
-//! The `Storage` trait definition and various implementations
+//! The `Provider` trait definition and various implementations.
+//!
+//! A Bindle Provider can be anything that gives (e.g. "provides") access to Bindles. This could be
+//! anything from a cache, to a proxy, or a storage backend (such as a database). Thus, Bindles can
+//! be fetched from an arbitrarily complex chain of providers depending on the needs of your
+//! team/code/organization.
+//!
+//! In general, we don't recommend too many nested chains in code
+//! (`MyLocalCache<MyRemoteCache<SharedCache<CompanyCache<FileProvider>>>>` is not a happy thing in
+//! code) and suggest using chains of proxies between various providers. In practice, it could look
+//! like this (not real types): `LocalCache<Proxy> -> (Another server) Proxy -> (The server where
+//! bindles are stored) DatabaseProvider` This pattern can be particularly useful in larger teams as
+//! you could easily add another source of Bindles to your approved list of external sources at any
+//! point along the chain
+//!
+//! ## Terminal Providers
+//!
+//! One concept that is not actually code, but is important to understand, is the idea of "Terminal
+//! Providers." These are providers that mark the end of a chain and are generally the actual
+//! storage/database backend where the Bindles exist. In general, Providers that are _not_ terminal
+//! will generally contain another Provider implementation or an HTTP client to talk to another
+//! server upstream
 
 pub mod file;
 
@@ -13,19 +34,19 @@ use tokio::stream::Stream;
 use crate::id::ParseError;
 use crate::Id;
 
-/// A custom shorthand result type that always has an error type of [`StorageError`](StorageError)
-pub type Result<T> = core::result::Result<T, StorageError>;
+/// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
+pub type Result<T> = core::result::Result<T, ProviderError>;
 
-/// The basic functionality required for bindle to use something as a storage engine.
+/// The basic functionality required for a Bindle provider.
 ///
 /// Please note that due to this being an `async_trait`, the types might look complicated. Look at
 /// the code directly to see the simpler function signatures for implementation
 #[async_trait::async_trait]
-pub trait Storage {
+pub trait Provider {
     /// This takes an invoice and creates it in storage.
     ///
     /// It must verify that each referenced parcel is present in storage. Any parcel that is not
-    /// present must be returned in the list of IDs.
+    /// present must be returned in the list of labels.
     async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>>;
 
     /// Load an invoice and return it
@@ -36,12 +57,12 @@ pub trait Storage {
     async fn get_invoice<I>(&self, id: I) -> Result<super::Invoice>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>,
+        I::Error: Into<ProviderError>,
     {
         match self.get_yanked_invoice(id).await {
             Ok(inv) if !inv.yanked.unwrap_or(false) => Ok(inv),
             Err(e) => Err(e),
-            _ => Err(StorageError::Yanked),
+            _ => Err(ProviderError::Yanked),
         }
     }
 
@@ -50,13 +71,13 @@ pub trait Storage {
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<super::Invoice>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>;
+        I::Error: Into<ProviderError>;
 
     /// Remove an invoice by ID
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>;
+        I::Error: Into<ProviderError>;
 
     /// Creates a parcel with the associated sha. The parcel can be anything that implements
     /// `Stream`
@@ -65,7 +86,9 @@ pub trait Storage {
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
         B: bytes::Buf;
 
-    /// Get a specific parcel using its SHA
+    /// Get a specific parcel using its SHA.
+    ///
+    /// For some terminal providers, the bindle ID may not be necessary, but it is always required
     async fn get_parcel<I>(
         &self,
         bindle_id: I,
@@ -73,17 +96,21 @@ pub trait Storage {
     ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
     where
         I: TryInto<Id> + Send,
-        I::Error: Into<StorageError>;
+        I::Error: Into<ProviderError>;
 
     /// Checks if the given parcel exists in storage.
     ///
-    /// This should not load the full parcel from storage but only indicate if the parcel exists
-    async fn parcel_exists(&self, parcel_id: &str) -> Result<bool>;
+    /// This should not load the full parcel but only indicate if the parcel exists. For some
+    /// terminal providers, the bindle ID may not be necessary, but it is always required
+    async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> Result<bool>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>;
 }
 
-/// StorageError describes the possible error states when storing and retrieving bindles.
+/// ProviderError describes the possible error states when storing and retrieving bindles.
 #[derive(Error, Debug)]
-pub enum StorageError {
+pub enum ProviderError {
     /// The invoice being accessed has been yanked
     #[error("bindle is yanked")]
     Yanked,
@@ -124,17 +151,17 @@ pub enum StorageError {
     Other(String),
 }
 
-impl From<ParseError> for StorageError {
-    fn from(e: ParseError) -> StorageError {
+impl From<ParseError> for ProviderError {
+    fn from(e: ParseError) -> ProviderError {
         match e {
-            ParseError::InvalidId | ParseError::InvalidSemver => StorageError::InvalidId,
+            ParseError::InvalidId | ParseError::InvalidSemver => ProviderError::InvalidId,
         }
     }
 }
 
-impl From<std::convert::Infallible> for StorageError {
-    fn from(_: std::convert::Infallible) -> StorageError {
+impl From<std::convert::Infallible> for ProviderError {
+    fn from(_: std::convert::Infallible) -> ProviderError {
         // This can never happen (by definition of infallible), so it doesn't matter what we return
-        StorageError::Other("Shouldn't happen".to_string())
+        ProviderError::Other("Shouldn't happen".to_string())
     }
 }
