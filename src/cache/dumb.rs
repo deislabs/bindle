@@ -111,7 +111,7 @@ where
                     ..crate::Label::default()
                 };
                 let stream = self
-                    .local
+                    .remote
                     .get_parcel(parsed_id.clone(), parcel_id)
                     .await?
                     // This isn't my favorite. Right now we are mapping to an io error which will be mapped back to a storage error
