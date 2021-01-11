@@ -262,7 +262,7 @@ async fn test_yank() {
 fn assert_status(output: std::process::Output, message: &str) {
     assert!(
         output.status.success(),
-        "{}: Stdout:\n {}\nStderr:\n{}",
+        "{}:\nStdout:\n {}\nStderr:\n{}",
         message,
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)

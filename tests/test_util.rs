@@ -49,8 +49,22 @@ impl TestController {
             .spawn()
             .expect("unable to start bindle server");
 
-        // Give things some time to start up
-        tokio::time::delay_for(std::time::Duration::from_secs(2)).await;
+        // Wait until we can connect to the server so we know it is available
+        let mut wait_count = 1;
+        loop {
+            // Magic number: 10 + 1, since we are starting at 1 for humans
+            if wait_count >= 11 {
+                panic!("Ran out of retries waiting for server to start");
+            }
+            match tokio::net::TcpStream::connect(&address).await {
+                Ok(_) => break,
+                Err(e) => {
+                    eprintln!("Waiting for server to come up, attempt {}. Will retry in 1 second. Got error {:?}", wait_count, e);
+                    wait_count += 1;
+                    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
 
         let client = Client::new(&base_url).expect("unable to setup bindle client");
         TestController {
