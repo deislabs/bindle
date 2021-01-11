@@ -7,7 +7,7 @@ In the [Invoice](invoice-spec.md) and [Parcel](parcel-spec.md]) specifications, 
 ## Things NOT covered
 
 - Key management. Here, we talk about using asymmetric cryptography to sign parcels and lists of parcels, but we do not discuss how the public and private keys are to be managed.
-- Strengths and weaknesses of various signature algorithms. We supply here only a single Ed2551919 implementation.
+- Strengths and weaknesses of various signature algorithms. We supply here only a single Ed25519 implementation.
 
 ## The General Idea
 

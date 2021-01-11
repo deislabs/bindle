@@ -201,6 +201,7 @@ mod test {
                     .collect(),
             ),
             group: None,
+            signature: None,
         }
     }
 }

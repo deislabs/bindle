@@ -34,6 +34,7 @@ pub use search::Matches;
 
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use std::collections::BTreeMap;
 use std::hash::Hash;
@@ -66,6 +67,7 @@ pub struct Invoice {
     pub annotations: Option<BTreeMap<String, String>>,
     pub parcel: Option<Vec<Parcel>>,
     pub group: Option<Vec<Group>>,
+    pub signature: Option<Vec<Signature>>,
 }
 
 impl Invoice {
@@ -103,6 +105,18 @@ impl Invoice {
     /// And if it fails to satisfy the requirement, this returns false.
     fn version_in_range(&self, requirement: &str) -> bool {
         version_compare(self.bindle.id.version(), requirement)
+    }
+
+    /// Sign the parcels on the current package.
+    ///
+    /// Note that this signature will be invalidated if any parcels are
+    /// added after this signature.
+    fn sign(&mut self, key: String) -> Result<(), SignatureError> {
+        todo!()
+    }
+
+    fn verify(&self, keyring: String) -> Result<(), SignatureError> {
+        todo!()
     }
 }
 
@@ -207,6 +221,30 @@ pub struct Group {
     pub name: String,
     pub required: Option<bool>,
     pub satisfied_by: Option<String>,
+}
+
+/// A signature describes a cryptographic signature of the parcel list.
+///
+/// In the current implementation, a signature signs the list of parcels that belong on
+/// an invoice. The signature, in the current implementation, is an Ed25519 signature
+/// and is signed by the private counterpart of the given public key.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Signature {
+    // The cleartext name of the user who signed
+    pub by: String,
+    // The signature block, encoded as hex chars
+    pub signature: String,
+    // The public key, encoded as hex chars
+    pub key: String,
+}
+
+#[derive(Error, Debug)]
+pub enum SignatureError {
+    #[error("not all signatures can be verified")]
+    Unverified,
+    #[error("failed to sign the invoice with the given key")]
+    SigningFailed,
 }
 
 /// A custom type for responding to invoice creation requests. Because invoices can be created
@@ -317,15 +355,16 @@ mod test {
         let parcels = Some(vec![parcel]);
         let inv = Invoice {
             bindle_version: BINDLE_VERSION_1.to_owned(),
-            yanked: None,
-            annotations: None,
             bindle: BindleSpec {
                 id: "foo/1.2.3".parse().unwrap(),
                 description: Some("bar".to_owned()),
                 authors: Some(vec!["m butcher".to_owned()]),
             },
             parcel: parcels,
+            yanked: None,
+            annotations: None,
             group: None,
+            signature: None,
         };
 
         let res = toml::to_string(&inv).unwrap();
@@ -431,5 +470,35 @@ mod test {
 
         assert!(txt.is_global_group());
         assert!(!txt.member_of("telescopes"));
+    }
+
+    #[test]
+    fn signing_and_verifying() {
+        let invoice = r#"
+        bindleVersion = "1.0.0"
+
+        [bindle]
+        name = "aricebo"
+        version = "1.2.3"
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeefff"
+        name = "telescope.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        
+        [[parcel]]
+        [parcel.label]
+        sha256 = "111aaabbbcccdddeee"
+        name = "telescope.txt"
+        mediaType = "text/plain"
+        size = 123_456
+        "#;
+
+        let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
+        let parcels = invoice.parcel.expect("expected some parcels");
+
+        assert!(invoice.signature.is_none());
     }
 }
