@@ -15,6 +15,8 @@ pub mod cache;
 pub mod client;
 mod id;
 pub mod provider;
+#[cfg(feature = "client")]
+pub mod proxy;
 pub mod search;
 #[cfg(feature = "server")]
 pub mod server;

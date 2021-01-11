@@ -21,9 +21,9 @@ pub use error::ClientError;
 /// A shorthand `Result` type that always uses `ClientError` as its error variant
 pub type Result<T> = std::result::Result<T, ClientError>;
 
-const INVOICE_ENDPOINT: &str = "_i";
-const QUERY_ENDPOINT: &str = "_q";
-const RELATIONSHIP_ENDPOINT: &str = "_r";
+pub const INVOICE_ENDPOINT: &str = "_i";
+pub const QUERY_ENDPOINT: &str = "_q";
+pub const RELATIONSHIP_ENDPOINT: &str = "_r";
 const TOML_MIME_TYPE: &str = "application/toml";
 
 /// A client type for interacting with a Bindle server
@@ -60,6 +60,26 @@ impl Client {
             client,
             base_url: base_parsed,
         })
+    }
+
+    /// Performs a raw request using the underlying HTTP client and returns the raw response. The
+    /// path is just the path part of your URL. It will be joined with the configured base URL for
+    /// the client.
+    // TODO: Right now this is mainly used if you want to HEAD any of the endpoints, as a HEAD
+    // requests is used to get the headers and status code, which is pretty much a raw response
+    // anyway. But should we make those their own methods instead?
+    pub async fn raw(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<impl Into<reqwest::Body>>,
+    ) -> anyhow::Result<reqwest::Response> {
+        let req = self.client.request(method, self.base_url.join(path)?);
+        let req = match body {
+            Some(b) => req.body(b),
+            None => req,
+        };
+        req.send().await.map_err(|e| e.into())
     }
 
     //////////////// Create Invoice ////////////////
@@ -111,18 +131,37 @@ impl Client {
 
     /// Returns the requested invoice from the bindle server if it exists. This can take any form
     /// that can convert into the `Id` type, but generally speaking, this is the canonical name of
-    /// the bindle (e.g. `example.com/foo/1.0.0`)
+    /// the bindle (e.g. `example.com/foo/1.0.0`). If you want to fetch a yanked invoice, use the
+    /// [`get_yanked_invoice`](Client::get_yanked_invoice) function
     pub async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
     {
-        // Validate the id
         let parsed_id = id.try_into().map_err(|e| e.into())?;
-        let req = self.client.get(
+        self.get_invoice_request(
             self.base_url
                 .join(&format!("{}/{}", INVOICE_ENDPOINT, parsed_id))?,
-        );
+        )
+        .await
+    }
+
+    /// Same as `get_invoice` but allows you to fetch a yanked invoice
+    pub async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+    {
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
+        let mut url = self
+            .base_url
+            .join(&format!("{}/{}", INVOICE_ENDPOINT, parsed_id))?;
+        url.set_query(Some("yanked=true"));
+        self.get_invoice_request(url).await
+    }
+
+    async fn get_invoice_request(&self, url: Url) -> Result<crate::Invoice> {
+        let req = self.client.get(url);
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
@@ -211,6 +250,29 @@ impl Client {
         debug!("Successfully loaded parcel stream");
         let data_body = Body::wrap_stream(stream);
 
+        self.create_parcel_request(
+            self.create_parcel_builder(&parsed_id, parcel_sha)
+                .body(data_body),
+        )
+        .await
+    }
+
+    /// Same as [`create_parcel`](Client::create_parcel), but takes a stream of parcel data as bytes
+    pub async fn create_parcel_from_stream<I, S, B>(
+        &self,
+        bindle_id: I,
+        parcel_sha: &str,
+        stream: S,
+    ) -> Result<()>
+    where
+        I: TryInto<Id>,
+        I::Error: Into<ClientError>,
+        S: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
+        B: bytes::Buf,
+    {
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        let map = stream.map(|res| res.map(|mut b| b.to_bytes()));
+        let data_body = Body::wrap_stream(map);
         self.create_parcel_request(
             self.create_parcel_builder(&parsed_id, parcel_sha)
                 .body(data_body),

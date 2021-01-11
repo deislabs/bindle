@@ -204,14 +204,14 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
                 Err(e) => {
                     match e {
                         ProviderError::NotFound => warn!("Parcel {} does not exist", sha),
-                        ProviderError::CacheError(err)
+                        ProviderError::ProxyError(err)
                             if matches!(err, ClientError::ParcelNotFound) =>
                         {
                             warn!("Parcel {} does not exist", sha)
                         }
                         // Only return an error if it isn't a not found error. By design, an invoice
                         // can contain parcels that don't yet exist
-                        ProviderError::CacheError(inner) => return Err(inner),
+                        ProviderError::ProxyError(inner) => return Err(inner),
                         _ => {
                             return Err(ClientError::Other(format!(
                                 "Unable to get parcel {}: {:?}",
@@ -248,7 +248,7 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
 fn map_storage_error(e: ProviderError) -> ClientError {
     match e {
         ProviderError::Io(e) => ClientError::Io(e),
-        ProviderError::CacheError(inner) => inner,
+        ProviderError::ProxyError(inner) => inner,
         _ => ClientError::Other(format!("{:?}", e)),
     }
 }

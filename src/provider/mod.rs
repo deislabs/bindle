@@ -81,14 +81,20 @@ pub trait Provider {
 
     /// Creates a parcel with the associated sha. The parcel can be anything that implements
     /// `Stream`
-    async fn create_parcel<R, B>(&self, parcel_id: &str, data: &mut R) -> Result<()>
+    ///
+    /// For some terminal providers, the bindle ID may not be necessary, but it is always required
+    /// for an implementation
+    async fn create_parcel<I, R, B>(&self, bindle_id: I, parcel_id: &str, data: R) -> Result<()>
     where
-        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
         B: bytes::Buf;
 
     /// Get a specific parcel using its SHA.
     ///
     /// For some terminal providers, the bindle ID may not be necessary, but it is always required
+    /// for an implementation
     async fn get_parcel<I>(
         &self,
         bindle_id: I,
@@ -132,11 +138,11 @@ pub enum ProviderError {
     /// An uploaded parcel does not match the SHA-256 sum provided with its label
     #[error("digest does not match")]
     DigestMismatch,
-    /// An error that occurs when the storage implementation uses a cache and filling that cache
-    /// from another source encounters an error. Only available with the `caching` feature enabled
-    #[cfg(feature = "caching")]
-    #[error("cache fill error: {0:?}")]
-    CacheError(#[from] crate::client::ClientError),
+    /// An error that occurs when the provider implementation uses a proxy and that proxy request
+    /// encounters an error. Only available with the `client` feature enabled
+    #[cfg(feature = "client")]
+    #[error("proxy error: {0:?}")]
+    ProxyError(#[from] crate::client::ClientError),
 
     /// The data cannot be properly deserialized from TOML
     #[error("resource is malformed: {0:?}")]
