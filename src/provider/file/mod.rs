@@ -285,9 +285,11 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         Ok(())
     }
 
-    async fn create_parcel<R, B>(&self, parcel_id: &str, data: &mut R) -> Result<()>
+    async fn create_parcel<I, R, B>(&self, _bindle_id: I, parcel_id: &str, data: R) -> Result<()>
     where
-        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
         B: bytes::Buf,
     {
         debug!("Creating parcel with SHA {}", parcel_id);
@@ -537,7 +539,7 @@ mod test {
         .await;
 
         store
-            .create_parcel(id, &mut FramedRead::new(data, BytesCodec::new()))
+            .create_parcel("not_needed", id, FramedRead::new(data, BytesCodec::new()))
             .await
             .expect("create parcel");
 
@@ -585,7 +587,11 @@ mod test {
         invoice.parcel = Some(vec![parcel]);
 
         store
-            .create_parcel(&label.sha256, &mut FramedRead::new(data, BytesCodec::new()))
+            .create_parcel(
+                "not_needed",
+                &label.sha256,
+                FramedRead::new(data, BytesCodec::new()),
+            )
             .await
             .expect("stored the parcel");
 

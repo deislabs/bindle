@@ -332,8 +332,9 @@ mod test {
             .expect("Unable to insert invoice into store");
         store
             .create_parcel(
+                &scaffold.invoice.bindle.id,
                 &parcel.sha,
-                &mut FramedRead::new(data, BytesCodec::default()),
+                FramedRead::new(data, BytesCodec::default()),
             )
             .await
             .expect("Unable to create parcel");
@@ -500,8 +501,9 @@ mod test {
         let parcel_data = std::io::Cursor::new(parcel.data.clone());
         store
             .create_parcel(
+                &scaffold.invoice.bindle.id,
                 &parcel.sha,
-                &mut FramedRead::new(parcel_data, BytesCodec::default()),
+                FramedRead::new(parcel_data, BytesCodec::default()),
             )
             .await
             .expect("Unable to create parcel");

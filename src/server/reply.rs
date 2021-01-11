@@ -62,7 +62,7 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<Toml> {
         | ProviderError::InvalidId => StatusCode::BAD_REQUEST,
         ProviderError::Yanked => StatusCode::FORBIDDEN,
         #[cfg(feature = "caching")]
-        ProviderError::CacheError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::ProxyError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         ProviderError::Other(_) | ProviderError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
 

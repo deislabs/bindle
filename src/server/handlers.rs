@@ -195,11 +195,16 @@ pub mod v1 {
 
     //////////// Parcel Functions ////////////
 
-    pub async fn create_parcel<P: Provider + Sync>(
+    pub async fn create_parcel<P, B, D>(
         tail: warp::path::Tail,
-        body: impl stream::Stream<Item = Result<impl bytes::Buf, warp::Error>> + Send + Sync + Unpin,
+        body: B,
         store: P,
-    ) -> Result<impl warp::Reply, Infallible> {
+    ) -> Result<impl warp::Reply, Infallible>
+    where
+        P: Provider + Sync,
+        B: stream::Stream<Item = Result<D, warp::Error>> + Send + Sync + Unpin + 'static,
+        D: bytes::Buf,
+    {
         trace!("Create parcel request, beginning parse of path");
         let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
 
@@ -221,8 +226,9 @@ pub mod v1 {
 
         if let Err(e) = store
             .create_parcel(
+                bindle_id,
                 sha,
-                &mut body.map(|res| {
+                body.map(|res| {
                     res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
                 }),
             )

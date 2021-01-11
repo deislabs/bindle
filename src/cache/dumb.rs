@@ -70,8 +70,10 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
         self.inner.yank_invoice(id).await
     }
 
-    async fn create_parcel<R, B>(&self, _: &str, _: &mut R) -> Result<()>
+    async fn create_parcel<I, R, B>(&self, _: I, _: &str, _: R) -> Result<()>
     where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
         B: bytes::Buf,
     {
@@ -103,9 +105,9 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
                     name: "".to_string(),
                     ..crate::Label::default()
                 };
-                let mut stream = self
+                let stream = self
                     .client
-                    .get_parcel_stream(&parsed_id, parcel_id)
+                    .get_parcel_stream(parsed_id.clone(), parcel_id)
                     .await?
                     // This isn't my favorite. Right now we are mapping a client error to an io error, which will be mapped back to a storage error
                     .map(|res| {
@@ -116,7 +118,11 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
                 // Attempt to insert the parcel into the store, if it fails, warn the user and
                 // return the parcel anyway. Either way, we need to refetch the stream, since it has
                 // been read after we try to insert
-                let stream = match self.inner.create_parcel(&label.sha256, &mut stream).await {
+                let stream = match self
+                    .inner
+                    .create_parcel(&parsed_id, &label.sha256, stream)
+                    .await
+                {
                     Ok(_) => return self.inner.get_parcel(parsed_id.clone(), parcel_id).await,
                     Err(e) => {
                         warn!("Fetched parcel from server, but encountered error when trying to save to local store: {:?}", e);
