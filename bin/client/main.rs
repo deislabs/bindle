@@ -30,12 +30,13 @@ async fn main() -> std::result::Result<(), ClientError> {
         .bindle_dir
         .unwrap_or_else(|| dirs::home_dir().unwrap().join(".bindle/bindles"));
     tokio::fs::create_dir_all(&bindle_dir).await?;
-    let store = bindle::provider::file::FileProvider::new(
+    let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
         bindle::search::NoopEngine::default(),
     )
     .await;
-    let cache = DumbCache::new(bindle_client.clone(), store);
+    let proxy = bindle::proxy::Proxy::new(bindle_client.clone());
+    let cache = DumbCache::new(proxy, local);
 
     match opts.subcmd {
         SubCommand::Info(info_opts) => {

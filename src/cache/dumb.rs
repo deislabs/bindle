@@ -5,31 +5,36 @@ use log::{info, warn};
 use tokio::stream::{Stream, StreamExt};
 
 use super::{into_cache_result, Cache};
-use crate::client::Client;
 use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
 
 /// A cache that doesn't ever expire entries. It fills the cache by requesting bindles from a bindle
 /// server using the configured client and stores them in the given storage implementation
 #[derive(Clone)]
-pub struct DumbCache<P: Provider + Clone> {
-    client: Client,
-    inner: P,
+pub struct DumbCache<Local: Provider + Clone, Remote: Provider + Clone> {
+    remote: Remote,
+    local: Local,
 }
 
-impl<P: Provider + Clone> DumbCache<P> {
-    pub fn new(client: Client, provider: P) -> DumbCache<P> {
-        DumbCache {
-            client,
-            inner: provider,
-        }
+impl<Local: Provider + Clone, Remote: Provider + Clone> DumbCache<Local, Remote> {
+    pub fn new(remote: Remote, local: Local) -> DumbCache<Local, Remote> {
+        DumbCache { remote, local }
     }
 }
 
-impl<P: Provider + Send + Sync + Clone> Cache for DumbCache<P> {}
+impl<Local, Remote> Cache for DumbCache<Local, Remote>
+where
+    Local: Provider + Send + Sync + Clone,
+    Remote: Provider + Send + Sync + Clone,
+{
+}
 
 #[async_trait::async_trait]
-impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
+impl<Local, Remote> Provider for DumbCache<Local, Remote>
+where
+    Local: Provider + Send + Sync + Clone,
+    Remote: Provider + Send + Sync + Clone,
+{
     async fn create_invoice(&self, _: &crate::Invoice) -> Result<Vec<crate::Label>> {
         Err(ProviderError::Other(
             "This cache implementation does not allow for creation of invoices".to_string(),
@@ -43,7 +48,7 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
         I::Error: Into<ProviderError>,
     {
         let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
-        let possible_entry = into_cache_result(self.inner.get_yanked_invoice(&parsed_id).await)?;
+        let possible_entry = into_cache_result(self.local.get_yanked_invoice(&parsed_id).await)?;
         match possible_entry {
             Some(inv) => Ok(inv),
             None => {
@@ -51,9 +56,9 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
                     "Cache miss for invoice {}, attempting to fetch from server",
                     parsed_id
                 );
-                let inv = self.client.get_invoice(parsed_id).await?;
+                let inv = self.remote.get_yanked_invoice(parsed_id).await?;
                 // Attempt to insert the invoice into the store, if it fails, warn the user and return the invoice anyway
-                if let Err(e) = self.inner.create_invoice(&inv).await {
+                if let Err(e) = self.local.create_invoice(&inv).await {
                     warn!("Fetched invoice from server, but encountered error when trying to save to local store: {:?}", e);
                 }
                 Ok(inv)
@@ -67,7 +72,7 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
         I::Error: Into<ProviderError>,
     {
         // This is just an update of the local cache
-        self.inner.yank_invoice(id).await
+        self.local.yank_invoice(id).await
     }
 
     async fn create_parcel<I, R, B>(&self, _: I, _: &str, _: R) -> Result<()>
@@ -92,7 +97,7 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
         I::Error: Into<ProviderError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
-        let possible_entry = into_cache_result(self.inner.get_parcel(&parsed_id, parcel_id).await)?;
+        let possible_entry = into_cache_result(self.local.get_parcel(&parsed_id, parcel_id).await)?;
         match possible_entry {
             Some(parcel) => Ok(parcel),
             None => {
@@ -106,10 +111,10 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
                     ..crate::Label::default()
                 };
                 let stream = self
-                    .client
-                    .get_parcel_stream(parsed_id.clone(), parcel_id)
+                    .remote
+                    .get_parcel(parsed_id.clone(), parcel_id)
                     .await?
-                    // This isn't my favorite. Right now we are mapping a client error to an io error, which will be mapped back to a storage error
+                    // This isn't my favorite. Right now we are mapping to an io error which will be mapped back to a storage error
                     .map(|res| {
                         res.map_err(|e| {
                             std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
@@ -119,16 +124,14 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
                 // return the parcel anyway. Either way, we need to refetch the stream, since it has
                 // been read after we try to insert
                 let stream = match self
-                    .inner
+                    .local
                     .create_parcel(&parsed_id, &label.sha256, stream)
                     .await
                 {
-                    Ok(_) => return self.inner.get_parcel(parsed_id.clone(), parcel_id).await,
+                    Ok(_) => return self.local.get_parcel(parsed_id.clone(), parcel_id).await,
                     Err(e) => {
                         warn!("Fetched parcel from server, but encountered error when trying to save to local store: {:?}", e);
-                        self.client
-                            .get_parcel_stream(parsed_id.clone(), parcel_id)
-                            .await?
+                        self.remote.get_parcel(parsed_id.clone(), parcel_id).await?
                     }
                 };
                 Ok(Box::new(stream.map(|res| res.map_err(ProviderError::from))))
@@ -136,12 +139,12 @@ impl<P: Provider + Send + Sync + Clone> Provider for DumbCache<P> {
         }
     }
 
-    // In a cache implementation, this just checks for if the inner store has it
+    // In a cache implementation, this just checks for if the local provider has it
     async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> Result<bool>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
-        self.inner.parcel_exists(bindle_id, parcel_id).await
+        self.local.parcel_exists(bindle_id, parcel_id).await
     }
 }
