@@ -135,11 +135,14 @@ The signature is computed by concatenating the following pieces of data together
 Matt Butcher <matt.butcher@example.com>
 mybindle
 0.1.0
+~
 e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
 098fa798779ac88094b6d54a3f5cdba41fe5a901
 5b992e90b71d5fadab3cd3777230ef370df75f5b
 ```
 
+Note that the sequence `\n~\n` is used as a separator to prevent an attempt to conflate a 
+SemVer with the SHA list.
 
 ## Questions
 
