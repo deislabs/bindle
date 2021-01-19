@@ -101,6 +101,7 @@ async fn test_push_invoice_and_file() {
 async fn test_get() {
     let controller = TestController::new().await;
     setup_data(&controller.client).await;
+    let cachedir = tempfile::tempdir().expect("unable to set up tempdir");
     let output = std::process::Command::new("cargo")
         .args(&[
             "run",
@@ -109,6 +110,8 @@ async fn test_get() {
             "--bin",
             "bindle",
             "--",
+            "-d",
+            cachedir.path().to_str().unwrap(),
             "get",
             "enterprise.com/warpcore/1.0.0",
         ])
@@ -127,6 +130,8 @@ async fn test_get() {
             "--bin",
             "bindle",
             "--",
+            "-d",
+            cachedir.path().to_str().unwrap(),
             "get",
             "enterprise.com/warpcore/1.0.0",
         ])
@@ -146,6 +151,8 @@ async fn test_get() {
             "--bin",
             "bindle",
             "--",
+            "-d",
+            cachedir.path().to_str().unwrap(),
             "get",
             "-e",
             tempdir.path().to_str().unwrap(),
@@ -175,6 +182,7 @@ async fn test_get_invoice() {
     setup_data(&controller.client).await;
 
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
+    let cachedir = tempfile::tempdir().expect("Unable to set up tempdir");
     let output = std::process::Command::new("cargo")
         .args(&[
             "run",
@@ -183,6 +191,8 @@ async fn test_get_invoice() {
             "--bin",
             "bindle",
             "--",
+            "-d",
+            cachedir.path().to_str().unwrap(),
             "get-invoice",
             "-o",
             tempdir.path().join("invoice.toml").to_str().unwrap(),
@@ -208,6 +218,7 @@ async fn test_get_parcel() {
     setup_data(&controller.client).await;
 
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
+    let cachedir = tempfile::tempdir().expect("Unable to set up tempdir");
     let output = std::process::Command::new("cargo")
         .args(&[
             "run",
@@ -216,6 +227,8 @@ async fn test_get_parcel() {
             "--bin",
             "bindle",
             "--",
+            "-d",
+            cachedir.path().to_str().unwrap(),
             "get-parcel",
             "-o",
             tempdir.path().join("parcel.dat").to_str().unwrap(),
