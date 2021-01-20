@@ -13,7 +13,7 @@ pub mod v1 {
 
     use crate::QueryOptions;
     use reqwest::Method;
-    use tokio::stream::{self, StreamExt};
+    use tokio_stream::{self as stream, StreamExt};
 
     const PARCEL_ID_SEPARATOR: char = '@';
 
@@ -203,7 +203,7 @@ pub mod v1 {
     where
         P: Provider + Sync,
         B: stream::Stream<Item = Result<D, warp::Error>> + Send + Sync + Unpin + 'static,
-        D: bytes::Buf,
+        D: bytes::Buf + Send,
     {
         trace!("Create parcel request, beginning parse of path");
         let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();

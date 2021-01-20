@@ -14,6 +14,8 @@ use log::{info, warn};
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
+use tokio_stream::StreamExt;
+use tokio_util::io::StreamReader;
 
 mod opts;
 
@@ -153,7 +155,14 @@ async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -
         .create_new(true) // Make sure we aren't overwriting
         .open(&opts.output)
         .await?;
-    tokio::io::copy(&mut bindle::async_util::BodyReadBuffer(parcel), &mut file).await?;
+
+    tokio::io::copy(
+        &mut StreamReader::new(
+            parcel.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+        ),
+        &mut file,
+    )
+    .await?;
     println!("Wrote parcel {} to {}", opts.sha, opts.output.display());
     Ok(())
 }
@@ -196,10 +205,12 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
                 Ok(p) => {
                     println!("Fetched parcel {}", sha);
                     if is_export {
-                        parcels
-                            .lock()
-                            .await
-                            .insert(sha, bindle::async_util::BodyReadBuffer(p));
+                        parcels.lock().await.insert(
+                            sha,
+                            StreamReader::new(p.map(|res| {
+                                res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                            })),
+                        );
                     }
                 }
                 Err(e) => {

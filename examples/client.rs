@@ -1,7 +1,7 @@
 use bindle::client;
 use tempfile::tempdir;
 use tokio::io::AsyncWriteExt;
-use tokio::stream::StreamExt;
+use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

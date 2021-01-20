@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::client::Result;
 
 use tokio::fs::File;
-use tokio::stream::Stream;
+use tokio_stream::Stream;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 /// Loads a file as an async `Stream`, returning the stream, and the SHA256 sum of the file. Used

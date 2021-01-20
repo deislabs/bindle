@@ -12,13 +12,14 @@ use std::task::{Context, Poll};
 use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
-use tokio::io::AsyncWriteExt;
-use tokio::stream::{Stream, StreamExt};
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio_stream::{Stream, StreamExt};
 use tokio_util::codec::{BytesCodec, FramedRead};
+use tokio_util::io::StreamReader;
 
 use crate::provider::{Provider, ProviderError, Result};
+use crate::search::Search;
 use crate::Id;
-use crate::{async_util, search::Search};
 
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
@@ -81,14 +82,8 @@ impl<T: Search + Send + Sync> FileProvider<T> {
             Err(e) => return Err(e.into()),
         };
         let mut readdir = tokio::fs::read_dir(invoice_path).await?;
-        while let Some(e) = readdir.next().await {
-            let p = match e {
-                Ok(path) => path.path(),
-                Err(e) => {
-                    error!("Error while reading directory entry: {:?}", e);
-                    continue;
-                }
-            };
+        while let Some(e) = readdir.next_entry().await? {
+            let p = e.path();
             let sha = match p.file_name().map(|f| f.to_string_lossy()) {
                 Some(sha_opt) => sha_opt,
                 None => continue,
@@ -111,7 +106,7 @@ impl<T: Search + Send + Sync> FileProvider<T> {
             }
 
             if let Err(e) = self.index.index(&invoice).await {
-                log::error!("Error indexing {}: {}", sha, e);
+                error!("Error indexing {}: {}", sha, e);
             }
             total_indexed += 1;
         }
@@ -290,7 +285,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
-        B: bytes::Buf,
+        B: bytes::Buf + Send,
     {
         debug!("Creating parcel with SHA {}", parcel_id);
 
@@ -319,11 +314,19 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
                 .open(data_file.clone())
                 .await?;
 
-            tokio::io::copy(&mut async_util::BodyReadBuffer(data), &mut out).await?;
+            tokio::io::copy(
+                &mut StreamReader::new(
+                    data.map(|res| {
+                        res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                    }),
+                ),
+                &mut out,
+            )
+            .await?;
             // Verify parcel by rewinding the parcel and then hashing it.
             // This MUST be after the last write to out, otherwise the results will
             // not be correct.
-            out.flush();
+            out.flush().await?;
             out.seek(std::io::SeekFrom::Start(0)).await?;
             trace!("Validating data for SHA {}", parcel_id);
             validate_sha256(&mut out, parcel_id).await?;
@@ -558,7 +561,9 @@ mod test {
             .get_parcel("doesn't matter", id)
             .await
             .expect("load parcel data");
-        let mut reader = crate::async_util::BodyReadBuffer(stream);
+        let mut reader = StreamReader::new(
+            stream.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+        );
         reader
             .read_to_string(&mut data)
             .await

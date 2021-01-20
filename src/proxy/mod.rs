@@ -4,7 +4,7 @@
 use std::convert::TryInto;
 
 use reqwest::StatusCode;
-use tokio::stream::{Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt};
 
 use crate::client::{Client, ClientError};
 use crate::provider::{Provider, ProviderError, Result};

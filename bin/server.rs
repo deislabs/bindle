@@ -55,7 +55,7 @@ struct Opts {
     key_path: Option<PathBuf>,
 }
 
-#[tokio::main(threaded_scheduler)]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     env_logger::init();

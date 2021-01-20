@@ -2,7 +2,7 @@ use std::io::SeekFrom;
 
 use sha2::{Digest, Sha256};
 use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 /// Creates a fake parcel in memory using the given content for use in testing
 pub async fn parcel_fixture(content: &str) -> (crate::Label, tokio::fs::File) {

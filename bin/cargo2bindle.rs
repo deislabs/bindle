@@ -1,12 +1,12 @@
 use clap::{App, Arg};
 use sha2::Digest;
 use tokio::fs;
-use tokio::stream::StreamExt;
+use tokio::io::AsyncSeekExt;
 use tokio::sync::Mutex;
 
 use std::collections::HashMap;
 use std::io::SeekFrom;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -61,20 +61,23 @@ async fn main() {
     }
 
     let parcel_map = Arc::new(Mutex::new(HashMap::new()));
-    let stream = fs::read_dir(wasm_release_dir)
+    let mut stream = fs::read_dir(wasm_release_dir)
         .await
         .expect("unable to read wasm release directory");
 
     // Create label and parcel
-    let paths: Vec<PathBuf> = stream
-        .filter(|entry| {
-            // We only want non-directory items with the extension '.wasm'
-            let path = entry.as_ref().unwrap().path();
-            !path.is_dir() && path.extension().unwrap_or_else(|| std::ffi::OsStr::new("")) == "wasm"
-        })
-        .map(|entry| entry.unwrap().path())
-        .collect()
-        .await;
+    let mut paths = Vec::new();
+    while let Some(entry) = stream.next_entry().await.expect("Unable to read directory") {
+        let path = entry.path();
+        let metadata = fs::metadata(&path)
+            .await
+            .expect("unable to check for file metadata");
+        if !metadata.is_dir()
+            && path.extension().unwrap_or_else(|| std::ffi::OsStr::new("")) == "wasm"
+        {
+            paths.push(path)
+        }
+    }
 
     let parcel_futures =
         paths

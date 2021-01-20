@@ -2,7 +2,7 @@
 use std::convert::TryInto;
 
 use log::{info, warn};
-use tokio::stream::{Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt};
 
 use super::{into_cache_result, Cache};
 use crate::provider::{Provider, ProviderError, Result};
@@ -80,7 +80,7 @@ where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync,
-        B: bytes::Buf,
+        B: bytes::Buf + Send,
     {
         Err(ProviderError::Other(
             "This cache implementation does not allow for creation of parcels".to_string(),

@@ -16,7 +16,6 @@ use crate::search::StrictEngine;
 
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
-use tokio::stream::StreamExt;
 
 const SCAFFOLD_DIR: &str = "tests/scaffolds";
 const INVOICE_FILE: &str = "invoice.toml";
@@ -68,18 +67,17 @@ impl RawScaffold {
             .await
             .expect("unable to read invoice file");
 
-        let mut parcel_files = HashMap::new();
-
-        let mut files = match filter_files(&dir).await {
+        let files = match filter_files(&dir).await {
             Some(s) => s,
             None => {
                 return RawScaffold {
                     invoice,
-                    parcel_files,
+                    parcel_files: HashMap::new(),
                 }
             }
         };
-        while let Some(file) = files.next().await {
+
+        let file_futures = files.into_iter().map(|file| async move {
             let file_name = file
                 .file_stem()
                 .expect("got unrecognized file, this is likely a programmer error")
@@ -89,7 +87,7 @@ impl RawScaffold {
                 .await
                 .expect("Unable to read parcel file");
             match file.extension().unwrap_or_default().to_str().unwrap() {
-                PARCEL_EXTENSION => parcel_files.insert(
+                PARCEL_EXTENSION => (
                     file_name,
                     ParcelInfo {
                         sha: format!("{:x}", Sha256::digest(&file_data)),
@@ -97,12 +95,15 @@ impl RawScaffold {
                     },
                 ),
                 _ => panic!("Found unknown extension, this is likely a programmer error"),
-            };
-        }
+            }
+        });
 
         RawScaffold {
             invoice,
-            parcel_files,
+            parcel_files: futures::future::join_all(file_futures)
+                .await
+                .into_iter()
+                .collect(),
         }
     }
 }
@@ -163,44 +164,63 @@ pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine) {
 /// scaffolds as a `Scaffold` object, because some of them may be invalid on will not deserialize
 /// properly
 pub async fn load_all_files() -> HashMap<String, RawScaffold> {
-    let mut all = HashMap::new();
-    let mut dirs = bindle_dirs().await;
-    while let Some(dir) = dirs.next().await {
+    let dirs = bindle_dirs().await;
+    let dir_futures = dirs.into_iter().map(|dir| async move {
         let dir_name = dir
             .file_name()
             .expect("got unrecognized directory, this is likely a programmer error")
             .to_string_lossy()
             .to_string();
         let raw = RawScaffold::load(&dir_name).await;
-        all.insert(dir_name, raw);
-    }
-    all
+        (dir_name, raw)
+    });
+    futures::future::join_all(dir_futures)
+        .await
+        .into_iter()
+        .collect()
 }
 
 /// Filters all items in a parcel directory that do not match the proper extensions. Returns None if
 /// there isn't a parcel directory
-async fn filter_files<P: AsRef<Path>>(
-    root_path: P,
-) -> Option<impl tokio::stream::Stream<Item = PathBuf>> {
-    let readdir = match tokio::fs::read_dir(root_path.as_ref().join(PARCEL_DIR)).await {
+async fn filter_files<P: AsRef<Path>>(root_path: P) -> Option<Vec<PathBuf>> {
+    let mut readdir = match tokio::fs::read_dir(root_path.as_ref().join(PARCEL_DIR)).await {
         Ok(r) => r,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => panic!("unable to read parcel directory: {:?}", e),
     };
-    Some(
-        readdir
-            .map(|entry| entry.expect("Error while reading parcel directory").path())
-            .filter(|p| p.extension().unwrap_or_default() == PARCEL_EXTENSION),
-    )
+    let mut files = Vec::new();
+    while let Some(entry) = readdir
+        .next_entry()
+        .await
+        .expect("unable to read parcel directory")
+    {
+        let path = entry.path();
+        if path.extension().unwrap_or_default() == PARCEL_EXTENSION {
+            files.push(path);
+        }
+    }
+    Some(files)
 }
 
-/// Returns a stream of PathBufs pointing to all directories that are bindles. It does a simple
-/// check to see if an item in the scaffolds directory is a directory and if that directory contains
-/// an `invoice.toml` file
-async fn bindle_dirs() -> impl tokio::stream::Stream<Item = PathBuf> {
-    tokio::fs::read_dir(scaffold_dir())
+/// Returns a Vec of PathBufs pointing to all directories that are bindles. It does a simple check
+/// to see if an item in the scaffolds directory is a directory and if that directory contains an
+/// `invoice.toml` file
+async fn bindle_dirs() -> Vec<PathBuf> {
+    let mut readdir = tokio::fs::read_dir(scaffold_dir())
         .await
-        .expect("unable to read scaffolds directory")
-        .map(|entry| entry.expect("Error while reading parcel directory").path())
-        .filter(|p| p.is_dir() && p.join("invoice.toml").is_file())
+        .expect("unable to read scaffolds directory");
+
+    let mut directories = Vec::new();
+    while let Some(entry) = readdir
+        .next_entry()
+        .await
+        .expect("unable to read scaffold directory")
+    {
+        let path = entry.path();
+        if path.is_dir() && path.join("invoice.toml").is_file() {
+            directories.push(path);
+        }
+    }
+
+    directories
 }
