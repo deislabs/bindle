@@ -118,12 +118,18 @@ impl Invoice {
     /// a cryptographic signature on those fields. The result is then stored in
     /// a `[[siganture]]` block on the invoice. Multiple signatures can be attached
     /// to any invoice.
-    fn sign(&mut self, signer_name: String, key: Keypair) -> Result<(), SignatureError> {
+    fn sign(
+        &mut self,
+        signer_name: String,
+        signer_role: SignatureRole,
+        key: Keypair,
+    ) -> Result<(), SignatureError> {
         let id = self.bindle.id.clone();
         let mut buf = vec![
             signer_name.clone(),
             id.name().to_owned(),
             id.version_string(),
+            format!("{:?}", signer_role).to_lowercase(),
             '~'.to_string(),
         ];
 
@@ -141,6 +147,7 @@ impl Invoice {
             by: signer_name,
             key: base64::encode(key.public.to_bytes()),
             signature: base64::encode(signature.to_bytes()),
+            role: signer_role,
         };
 
         match self.signature.as_mut() {
@@ -279,6 +286,7 @@ pub struct Signature {
     pub signature: String,
     // The public key, encoded as hex chars
     pub key: String,
+    pub role: SignatureRole,
 }
 
 #[derive(Error, Debug)]
@@ -287,6 +295,20 @@ pub enum SignatureError {
     Unverified,
     #[error("failed to sign the invoice with the given key")]
     SigningFailed,
+}
+
+/// The role of a signer in a signature block.
+///
+/// Signatories on a signature must have an associated role, as defined in the
+/// specification.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SignatureRole {
+    #[serde(rename = "creator")]
+    Creator,
+    #[serde(rename = "proxy")]
+    Proxy,
+    #[serde(rename = "host")]
+    Host,
 }
 
 /// A custom type for responding to invoice creation requests. Because invoices can be created
@@ -546,13 +568,13 @@ mod test {
         let keypair1 = Keypair::generate(&mut rng);
         let signer_name1 = "Matt Butcher <matt@example.com>".to_owned();
         invoice
-            .sign(signer_name1, keypair1)
+            .sign(signer_name1, SignatureRole::Creator, keypair1)
             .expect("sign the parcela");
 
         let keypair2 = Keypair::generate(&mut rng);
         let signer_name2 = "Not Matt Butcher <not.matt@example.com>".to_owned();
         invoice
-            .sign(signer_name2, keypair2)
+            .sign(signer_name2, SignatureRole::Proxy, keypair2)
             .expect("sign the parcela");
 
         assert_eq!(2, invoice.signature.unwrap().len())
