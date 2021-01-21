@@ -2,6 +2,7 @@ use clap::{App, Arg};
 use serde::Deserialize;
 use sha2::Digest;
 use tokio::fs;
+use tokio::io::AsyncSeekExt;
 
 use std::collections::HashMap;
 use std::io::SeekFrom;

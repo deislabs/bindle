@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use log::{debug, info};
 use tokio::io::{AsyncRead, AsyncWriteExt};
-use tokio::stream::{Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt};
 
 use crate::client::{Client, ClientError, Result};
 use crate::Id;
@@ -48,11 +48,11 @@ impl StandaloneRead {
             .join(bindle_id.try_into().map_err(|e| e.into())?.sha());
         let invoice_file = base.join(INVOICE_FILE);
         let parcel_dir = base.join(PARCEL_DIR);
-        let stream = tokio::fs::read_dir(&parcel_dir).await?;
-        let parcels = stream
-            .map(|res| res.map(|entry| entry.path()))
-            .collect::<std::io::Result<Vec<_>>>()
-            .await?;
+        let mut stream = tokio::fs::read_dir(&parcel_dir).await?;
+        let mut parcels = Vec::new();
+        while let Some(entry) = stream.next_entry().await? {
+            parcels.push(entry.path());
+        }
         Ok(StandaloneRead {
             invoice_file,
             parcel_dir,

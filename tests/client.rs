@@ -8,7 +8,7 @@ use std::convert::TryInto;
 
 use bindle::testing;
 
-use tokio::stream::StreamExt;
+use tokio_stream::StreamExt;
 
 #[tokio::test]
 async fn test_successful() {

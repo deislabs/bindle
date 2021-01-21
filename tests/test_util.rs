@@ -61,7 +61,7 @@ impl TestController {
                 Err(e) => {
                     eprintln!("Waiting for server to come up, attempt {}. Will retry in 1 second. Got error {:?}", wait_count, e);
                     wait_count += 1;
-                    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 }
             }
         }

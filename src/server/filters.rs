@@ -2,7 +2,6 @@ use std::error::Error;
 use std::fmt;
 use std::io::Read;
 
-use bytes::buf::BufExt;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use warp::reject::{custom, Reject, Rejection};

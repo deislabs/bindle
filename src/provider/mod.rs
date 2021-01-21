@@ -29,7 +29,7 @@ pub(crate) mod test_common;
 use std::convert::TryInto;
 
 use thiserror::Error;
-use tokio::stream::Stream;
+use tokio_stream::Stream;
 
 use crate::id::ParseError;
 use crate::Id;
@@ -89,7 +89,7 @@ pub trait Provider {
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
-        B: bytes::Buf;
+        B: bytes::Buf + Send;
 
     /// Get a specific parcel using its SHA.
     ///

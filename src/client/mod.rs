@@ -11,7 +11,7 @@ use log::{debug, info};
 use reqwest::header;
 use reqwest::Client as HttpClient;
 use reqwest::{Body, RequestBuilder, StatusCode};
-use tokio::stream::{Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt};
 use url::Url;
 
 use crate::Id;
@@ -271,7 +271,7 @@ impl Client {
         B: bytes::Buf,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
-        let map = stream.map(|res| res.map(|mut b| b.to_bytes()));
+        let map = stream.map(|res| res.map(|mut b| b.copy_to_bytes(b.remaining())));
         let data_body = Body::wrap_stream(map);
         self.create_parcel_request(
             self.create_parcel_builder(&parsed_id, parcel_sha)

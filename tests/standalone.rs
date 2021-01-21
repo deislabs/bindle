@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use bindle::standalone::{StandaloneRead, StandaloneWrite, INVOICE_FILE, PARCEL_DIR};
 
-use tokio::stream::StreamExt;
+use tokio_stream::StreamExt;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 #[tokio::test]
@@ -81,7 +81,11 @@ async fn validate_write(id: bindle::Id, tempdir: std::path::PathBuf, expected_fi
     let mut stream = tokio::fs::read_dir(base_path.join(PARCEL_DIR))
         .await
         .expect("unable to read parcel directory");
-    while let Some(Ok(entry)) = stream.next().await {
+    while let Some(entry) = stream
+        .next_entry()
+        .await
+        .expect("unable to read parcel directory")
+    {
         count += 1;
         assert!(
             entry
@@ -159,6 +163,7 @@ async fn test_push() {
         String::from_utf8(build_result.stderr).unwrap()
     );
 
+    let address = "127.0.0.1:8080";
     let mut handle = std::process::Command::new("cargo")
         .args(&[
             "run",
@@ -167,14 +172,31 @@ async fn test_push() {
             "--bin",
             "bindle-server",
             "--",
+            "-i",
+            address,
             "-d",
             tempdir.path().to_string_lossy().to_string().as_str(),
         ])
         .spawn()
         .expect("unable to start bindle server");
 
-    // Give things some time to start up
-    tokio::time::delay_for(std::time::Duration::from_secs(2)).await;
+    // Wait until we can connect to the server so we know it is available
+    let mut wait_count = 1;
+    let parsed: std::net::SocketAddrV4 = address.parse().unwrap();
+    loop {
+        // Magic number: 10 + 1, since we are starting at 1 for humans
+        if wait_count >= 11 {
+            panic!("Ran out of retries waiting for server to start");
+        }
+        match tokio::net::TcpStream::connect(&parsed).await {
+            Ok(_) => break,
+            Err(e) => {
+                eprintln!("Waiting for server to come up, attempt {}. Will retry in 1 second. Got error {:?}", wait_count, e);
+                wait_count += 1;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+    }
 
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
