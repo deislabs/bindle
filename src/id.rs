@@ -46,7 +46,7 @@ const PATH_SEPARATOR: char = '/';
 ///     .try_into().expect("should parse");
 /// println!("{}", id);
 /// ```
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Hash, PartialEq, Eq)]
 pub struct Id {
     name: String,
     version: semver::Version,
