@@ -178,6 +178,24 @@ SemVer with the SHA list.
 > Cons: They are easy to forge.
 > Pros: It gives a linear record for when signatures happened
 
+## Verifying
+
+To verify, it is assumed that the client has access to a _keyring_ that contains one or more public keys.
+
+Verification of an invoice includes the following steps:
+
+1. Load the invoice
+2. Extract the signature block from the invoice
+3. Reconstruct the cleartext block following the signing rules
+4. For each signature block
+    a. Extract the public key
+    b. Verify the signature using the public key and the cleartext
+        - If verification fails for ANY signature block, fail
+    c. Locate the key in the keyring
+        - If the key is not located, this is not an error
+5. Verify that at least one signature block used a key that was present in the keyring (4.c)
+    - If none of the signatures were done with a key we know, fail
+
 ## Reading Signatures as Provenance
 
 ```toml
