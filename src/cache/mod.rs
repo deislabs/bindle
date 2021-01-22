@@ -8,7 +8,7 @@ pub use dumb::DumbCache;
 
 // Once implemented, we can export this
 mod lru;
-// pub use lru::LruCache;
+pub use self::lru::LruCache;
 
 /// A marker trait that indicates this is a caching implementation (as opposed to just a provider)
 pub trait Cache: Provider {}
