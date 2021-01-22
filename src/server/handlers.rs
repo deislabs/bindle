@@ -12,8 +12,8 @@ pub mod v1 {
     use super::*;
 
     use crate::QueryOptions;
-    use reqwest::Method;
     use tokio_stream::{self as stream, StreamExt};
+    use warp::http::Method;
 
     const PARCEL_ID_SEPARATOR: char = '@';
 
