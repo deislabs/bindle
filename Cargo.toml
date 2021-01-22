@@ -27,7 +27,7 @@ maintenance = { status = "actively-developed" }
 
 [features]
 default = ["server", "client", "caching", "test-tools"]
-server = ["warp"]
+server = ["warp", "lru"]
 client = ["reqwest", "mime_guess", "dirs"]
 caching = ["lru"]
 test-tools = []
