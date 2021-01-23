@@ -62,7 +62,7 @@ Moreover, Bindle supports conditional groups, which means a single package could
 
 Bindle can express that on some systems, one `parcel` will do the trick, while on another system, a different `parcel` should be chosen. Furthermore, it can enable one system to request of another system that it needs the other system to run a very specific workload on its behalf.
 
-If that doesn't make sense, you haven't seen Stargazer Tian-yan yet.
+If that doesn't make sense, you haven't seen Stargazer Tianyan yet.
 
 ## Top-level Generalizations
 
@@ -74,6 +74,7 @@ If that doesn't make sense, you haven't seen Stargazer Tian-yan yet.
 ## The Specifications
 
 - Start with the [Invoice Specification](invoice-spec.md) to learn about the top-level description of a Bindle
+- The [Reference and Naming Specification](reference-spec.md) describes how Bindles are named and referenced
 - The [Parcel Specification](parcel-spec.md) describes the parts of a parcel
 - The [Label Specification](label-spec.md) descries a parcel's label TOML file
 - The [Protocol Specification](protocol-spec.md) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.

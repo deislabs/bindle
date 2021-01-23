@@ -46,8 +46,8 @@ The above bindle declares its `bindle` description, and then declares a manifest
 
 ## `bindle` Fields
 
-- `name`: Alpha-numeric name of the bindle, designed for humans (REQUIRED)
-- `version`: [SemVer](https://semver.org) version (REQUIRED)
+- `name`: Alpha-numeric name of the bindle, designed for humans (REQUIRED). The [reference specification](reference-spec.md) describes the allowable characters.
+- `version`: [SemVer](https://semver.org) version (REQUIRED). The SemVer specification describes the allowable characters.
 - `authors`: Optional list of authors, where each field is a string conventionally containing a name and email address (OPTIONAL)
 - `description`: A one-line description intended to be viewed by end users (OPTIONAL)
 
