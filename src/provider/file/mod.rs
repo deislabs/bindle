@@ -6,13 +6,16 @@ use std::convert::TryInto;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
 
+use ::lru::LruCache;
 use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::sync::Mutex as TokioMutex;
 use tokio_stream::{Stream, StreamExt};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
@@ -27,6 +30,7 @@ const INVOICE_DIRECTORY: &str = "invoices";
 const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
+const CACHE_SIZE: usize = 50;
 
 /// A file system backend for storing and retrieving bindles and parcles.
 ///
@@ -38,6 +42,7 @@ const PARCEL_DAT: &str = "parcel.dat";
 pub struct FileProvider<T> {
     root: PathBuf,
     index: T,
+    invoice_cache: Arc<TokioMutex<LruCache<Id, crate::Invoice>>>,
 }
 
 impl<T: Clone> Clone for FileProvider<T> {
@@ -45,6 +50,7 @@ impl<T: Clone> Clone for FileProvider<T> {
         FileProvider {
             root: self.root.clone(),
             index: self.index.clone(),
+            invoice_cache: Arc::clone(&self.invoice_cache),
         }
     }
 }
@@ -54,6 +60,7 @@ impl<T: Search + Send + Sync> FileProvider<T> {
         let fs = FileProvider {
             root: path.as_ref().to_owned(),
             index,
+            invoice_cache: Arc::new(TokioMutex::new(LruCache::new(CACHE_SIZE))),
         };
         if let Err(e) = fs.warm_index().await {
             log::error!("Error warming index: {}", e);
@@ -224,7 +231,12 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         I::Error: Into<ProviderError>,
     {
         let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
-        trace!("Getting invoice {:?}", parsed_id);
+
+        if let Some(inv) = self.invoice_cache.lock().await.get(&parsed_id) {
+            trace!("Found invoice {} in cache, returning", parsed_id);
+            return Ok(inv.clone());
+        }
+        trace!("Getting invoice {} from file system", parsed_id);
 
         let invoice_id = parsed_id.sha();
 
@@ -244,6 +256,12 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         // Parse
         let invoice: crate::Invoice = toml::from_str(&inv_toml)?;
 
+        // Put it into the cache
+        self.invoice_cache
+            .lock()
+            .await
+            .put(parsed_id, invoice.clone());
+
         // Return object
         Ok(invoice)
     }
@@ -253,20 +271,20 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
-        let mut inv = self.get_yanked_invoice(id).await?;
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
+        let mut inv = self.get_yanked_invoice(&parsed_id).await?;
         inv.yanked = Some(true);
 
-        let invoice_id = inv.canonical_name();
-        trace!("Yanking invoice {:?}", invoice_id);
+        trace!("Yanking invoice {:?}", parsed_id);
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
         if let Err(e) = self.index.index(&inv).await {
-            log::error!("Error indexing {}: {}", invoice_id, e);
+            log::error!("Error indexing {}: {}", parsed_id, e);
         }
 
         // Open the destination or error out if it already exists.
-        let dest = self.invoice_toml_path(&invoice_id);
+        let dest = self.invoice_toml_path(&inv.canonical_name());
 
         // Encode the invoice into a TOML object
         let data = toml::to_vec(&inv)?;
@@ -277,6 +295,10 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         // this behavior with OpenOptions.
 
         tokio::fs::write(dest, data).await?;
+
+        // Drop the invoice from the cache (as it is unlikely that someone will want to fetch it
+        // right after yanking it)
+        self.invoice_cache.lock().await.pop(&parsed_id);
         Ok(())
     }
 
@@ -288,6 +310,12 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         B: bytes::Buf + Send,
     {
         debug!("Creating parcel with SHA {}", parcel_id);
+
+        // TODO: Should we check the bindle ID here or stick with the assumption that most terminal
+        // providers don't need to worry about it? I think the former as then the API doesn't have
+        // to validate that the parcel is in the bindle and that is always done by the providers. We
+        // could even add a method with a default implementation to the trait so people get it for
+        // free
 
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(parcel_id);
