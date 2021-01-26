@@ -23,9 +23,6 @@
 
 pub mod file;
 
-#[cfg(test)]
-pub(crate) mod test_common;
-
 use std::convert::TryInto;
 
 use thiserror::Error;
@@ -78,6 +75,28 @@ pub trait Provider {
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>;
+
+    // Checks if the given parcel ID exists within an invoice. The default implementation will fetch
+    // the parcel and check if the given parcel ID exists. Most providers should implement some sort
+    // of caching for `get_yanked_invoice` to avoid fetching the invoice every single time a parcel
+    // is requested. Provider implementations may also implement this function to include other
+    // validation logic if desired.
+    async fn validate_parcel<I>(&self, bindle_id: I, parcel_id: &str) -> Result<()>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
+        let inv = self.get_yanked_invoice(bindle_id).await?;
+        if !inv
+            .parcel
+            .unwrap_or_default()
+            .into_iter()
+            .any(|p| p.label.sha256 == parcel_id)
+        {
+            return Err(ProviderError::NotFound);
+        }
+        Ok(())
+    }
 
     /// Creates a parcel with the associated sha. The parcel can be anything that implements
     /// `Stream`

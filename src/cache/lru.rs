@@ -98,7 +98,9 @@ where
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
         B: bytes::Buf + Send,
     {
-        self.remote.create_parcel(bindle_id, parcel_id, data).await
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        self.validate_parcel(&parsed_id, parcel_id).await?;
+        self.remote.create_parcel(parsed_id, parcel_id, data).await
     }
 
     async fn get_parcel<I>(
@@ -120,15 +122,7 @@ where
             parcel_id,
             parsed_id
         );
-        let inv = self.get_yanked_invoice(&parsed_id).await?;
-        if !inv
-            .parcel
-            .unwrap_or_default()
-            .iter()
-            .any(|p| p.label.sha256 == parcel_id)
-        {
-            return Err(ProviderError::NotFound);
-        }
+        self.validate_parcel(&parsed_id, parcel_id).await?;
 
         let mut parcels = self.parcels.lock().await;
         let parcel_id_owned = parcel_id.to_owned();
@@ -174,14 +168,15 @@ where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
-        // TODO: Check bindle ID here too?
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        self.validate_parcel(&parsed_id, parcel_id).await?;
         let parcels = self.parcels.lock().await;
         // For some reason we can't just used the borrowed string here because I think it is
         // expecting an &String vs an &str
         if parcels.contains(&parcel_id.to_owned()) {
             Ok(true)
         } else {
-            self.remote.parcel_exists(bindle_id, parcel_id).await
+            self.remote.parcel_exists(parsed_id, parcel_id).await
         }
     }
 }
