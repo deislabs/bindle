@@ -302,7 +302,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         Ok(())
     }
 
-    async fn create_parcel<I, R, B>(&self, _bindle_id: I, parcel_id: &str, data: R) -> Result<()>
+    async fn create_parcel<I, R, B>(&self, bindle_id: I, parcel_id: &str, data: R) -> Result<()>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
@@ -311,11 +311,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     {
         debug!("Creating parcel with SHA {}", parcel_id);
 
-        // TODO: Should we check the bindle ID here or stick with the assumption that most terminal
-        // providers don't need to worry about it? I think the former as then the API doesn't have
-        // to validate that the parcel is in the bindle and that is always done by the providers. We
-        // could even add a method with a default implementation to the trait so people get it for
-        // free
+        self.validate_parcel(bindle_id, parcel_id).await?;
 
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(parcel_id);
@@ -367,15 +363,15 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
 
     async fn get_parcel<I>(
         &self,
-        _bindle_id: I,
+        bindle_id: I,
         parcel_id: &str,
     ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
-        // Because this is a "terminal provider" implementation (i.e. we aren't forwarding it anywhere), the
-        // bindle ID doesn't matter in this case
+        self.validate_parcel(bindle_id, parcel_id).await?;
+
         debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
         let reader = File::open(name).await.map_err(map_io_error)?;
@@ -385,11 +381,12 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         ))
     }
 
-    async fn parcel_exists<I>(&self, _bindle_id: I, parcel_id: &str) -> Result<bool>
+    async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> Result<bool>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
+        self.validate_parcel(bindle_id, parcel_id).await?;
         debug!("Checking if parcel sha {} exists", parcel_id);
         let label_path = self.parcel_data_path(parcel_id);
         match tokio::fs::metadata(label_path).await {
@@ -490,7 +487,7 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::provider::test_common::*;
+    use crate::testing;
     use tempfile::tempdir;
     use tokio::io::AsyncReadExt;
 
@@ -513,55 +510,56 @@ mod test {
     async fn test_should_create_yank_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
-        let inv = invoice_fixture();
+        let scaffold = testing::Scaffold::load("valid_v1").await;
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )
         .await;
-        let inv_name = inv.canonical_name();
+        let inv_name = scaffold.invoice.canonical_name();
         // Create an file
-        let missing = store.create_invoice(&inv).await.unwrap();
-        assert_eq!(3, missing.len());
+        let missing = store.create_invoice(&scaffold.invoice).await.unwrap();
+        assert_eq!(1, missing.len());
 
         // Out-of-band read the invoice
         assert!(store.invoice_toml_path(&inv_name).exists());
 
         // Yank the invoice
-        store.yank_invoice(&inv.bindle.id).await.unwrap();
+        store
+            .yank_invoice(&scaffold.invoice.bindle.id)
+            .await
+            .unwrap();
 
         // Make sure the invoice is yanked
-        let inv2 = store.get_yanked_invoice(inv.name()).await.unwrap();
+        let inv2 = store
+            .get_yanked_invoice(&scaffold.invoice.bindle.id)
+            .await
+            .unwrap();
         assert!(inv2.yanked.unwrap_or(false));
 
         // Sanity check that this produces an error
-        assert!(store.get_invoice(inv.bindle.id).await.is_err());
-
-        // Drop the temporary directory
-        assert!(root.close().is_ok());
+        assert!(store.get_invoice(scaffold.invoice.bindle.id).await.is_err());
     }
 
     #[tokio::test]
     async fn test_should_reject_yanked_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
-        let mut inv = invoice_fixture();
-        inv.yanked = Some(true);
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
+        scaffold.invoice.yanked = Some(true);
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )
         .await;
-        // Create an file
-        assert!(store.create_invoice(&inv).await.is_err());
-        assert!(root.close().is_ok());
+
+        assert!(store.create_invoice(&scaffold.invoice).await.is_err());
     }
 
     #[tokio::test]
     async fn test_should_write_read_parcel() {
-        let content = "abcdef1234567890987654321";
-        let (label, data) = parcel_fixture(content).await;
-        let id = label.sha256.as_str();
+        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let parcel = scaffold.parcel_files.get("parcel").unwrap();
         let root = tempdir().expect("create tempdir");
         let store = FileProvider::new(
             root.path().to_owned(),
@@ -569,34 +567,44 @@ mod test {
         )
         .await;
 
+        // Create the invoice so we can create a parcel
         store
-            .create_parcel("not_needed", id, FramedRead::new(data, BytesCodec::new()))
+            .create_invoice(&scaffold.invoice)
+            .await
+            .expect("should be able to create invoice");
+
+        store
+            .create_parcel(
+                &scaffold.invoice.bindle.id,
+                &parcel.sha,
+                FramedRead::new(std::io::Cursor::new(parcel.data.clone()), BytesCodec::new()),
+            )
             .await
             .expect("create parcel");
 
         // Now make sure the parcels reads as existing
         assert!(
             store
-                .parcel_exists("doesn't matter", id)
+                .parcel_exists(&scaffold.invoice.bindle.id, &parcel.sha)
                 .await
                 .expect("Shouldn't get an error while checking for parcel existence"),
             "Parcel should be reported as existing"
         );
 
         // Attempt to read the parcel from the store
-        let mut data = String::new();
+        let mut data = Vec::new();
         let stream = store
-            .get_parcel("doesn't matter", id)
+            .get_parcel(&scaffold.invoice.bindle.id, &parcel.sha)
             .await
             .expect("load parcel data");
         let mut reader = StreamReader::new(
             stream.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
         );
         reader
-            .read_to_string(&mut data)
+            .read_to_end(&mut data)
             .await
             .expect("read file into string");
-        assert_eq!(data, content);
+        assert_eq!(data, parcel.data);
     }
 
     #[tokio::test]
@@ -608,33 +616,28 @@ mod test {
         )
         .await;
 
-        // Store a parcel
-        let content = "abcdef1234567890987654321";
-        let (label, data) = parcel_fixture(content).await;
-        let mut invoice = invoice_fixture();
+        let scaffold = testing::Scaffold::load("valid_v1").await;
 
-        let parcel = crate::Parcel {
-            label: label.clone(),
-            conditions: None,
-        };
-        invoice.parcel = Some(vec![parcel]);
+        // Store an invoice first and then create the parcel for it
+        store
+            .create_invoice(&scaffold.invoice)
+            .await
+            .expect("should be able to create an invoice");
+
+        let parcel = scaffold.parcel_files.get("parcel").unwrap();
 
         store
             .create_parcel(
-                "not_needed",
-                &label.sha256,
-                FramedRead::new(data, BytesCodec::new()),
+                &scaffold.invoice.bindle.id,
+                &parcel.sha,
+                FramedRead::new(std::io::Cursor::new(parcel.data.clone()), BytesCodec::new()),
             )
             .await
-            .expect("stored the parcel");
-
-        // Store an invoice that points to that parcel
-
-        store.create_invoice(&invoice).await.expect("create parcel");
+            .expect("unable to store the parcel");
 
         // Get the bindle
         let inv = store
-            .get_invoice(invoice.bindle.id)
+            .get_invoice(&scaffold.invoice.bindle.id)
             .await
             .expect("get the invoice we just stored");
 
@@ -643,6 +646,6 @@ mod test {
             .expect("parsel vector")
             .pop()
             .expect("got a parcel");
-        assert_eq!(first_parcel.label.name, "foo.toml".to_owned())
+        assert_eq!(first_parcel.label.sha256, parcel.sha)
     }
 }
