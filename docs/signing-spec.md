@@ -47,6 +47,24 @@ Examples of proxy signers:
 - Users who transfer bindles from one Bindle server to another
 - Import/export tools
 
+## Signing and Timestamps
+
+The date and time of a signature can be an important piece of information for auditing.
+
+Both invoice and parcel signatures require an `at` field with a UNIX timestamp expressed as an unsigned 64-bit integer with no leading zeros.
+
+> Time stamps MUST be greater than 0. It is nonsensical to have a signature older than the the specification. For the sake of consistency, though, a 0 value is allowed in the formatting. However, implementations MAY reject any entries whose timestamps predate Sept. 1, 2020.
+
+Since signature blocks are not primarily designed for human consumption, an implementation should prioritize simplicity and consistency over readability.
+The UNIX timestamp offers this:
+
+- It is well defined
+- It is adopted broadly
+- It is an unambiguous format that can easily be represented, serialized, and parsed
+- It is accurate enough for the problem at hand
+
+Longer textual formats are subject to parsing and serialization ambiguities, as well in quirks of implementation across languages.
+
 ## Signing Parcels
 
 The main piece of information we want to sign in a parcel is the data-bearing `parcel.dat` data. More specifically, all we really need to sign is the SHA for that bundle.
@@ -58,6 +76,7 @@ To sign a parcel, we need the following bits of information:
 - The parcel data's SHA
 - A public/private key pair
 - A name for the key pair (`by`) to be used as a heuristic for the user
+- A UNIX timestamp (`at`)
 
 Assume for a moment that we can generate a signature of the parcel data. Given this, we can insert a signature into the label as follows.
 
@@ -70,6 +89,8 @@ size = 248098
 [[signature]]
 by = "Matt Butcher <matt.butcher@example.com>"
 signature = "baa237895ac..."
+role = "creator"
+at = 1611960337
 ```
 
 In fact, the public key can be distributed inline provided that the client takes steps to determine whether that key is known and trusted.
@@ -84,6 +105,8 @@ size = 248098
 by = "Matt Butcher <matt.butcher@example.com>"
 signature = "baa237895ac..."
 key = "95ac..."
+role = "creator"
+at = 1611960337
 ```
 
 Note that the `signature` is a list, not a table. This is so that multiple attestations can be made about the same object:
@@ -98,17 +121,24 @@ size = 248098
 by = "Matt Butcher <matt.butcher@example.com>"
 signature = "baa237895ac..."
 key = "95ac..."
+role = "creator"
+at = 1611960337
 
 [[signature]]
 by = "Radu Matei <radu.matei@example.com>"
 signature = "aba237895ac..."
 key = "ac95..."
+role = "creator"
+at = 1611960338
 ```
 
-To compose the signature, the following data should be combined into a `\n`-separated UTF-8 encoded string and hashed: `by` and the `sha256`
+To compose the signature, the following data should be combined into a `\n`-separated UTF-8 encoded string and hashed: `by`, `role`, `at` and the `sha256`
 
 ```
 Radu Matei <radu.matei@example.com>
+creator
+1611960338
+~
 5b992e90b71d5fadab3cd3777230ef370df75f5b...
 ```
 
@@ -138,6 +168,7 @@ by = "Matt Butcher <matt.butcher@example.com>"
 signature = "ddd237895ac..."
 key = "1c44..."
 role = "creator"
+at = 1611960337
 
 [[parcel]]
 label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
@@ -158,13 +189,14 @@ label.size = 248098
 
 This format does not change with groups or conditions.
 
-The signature is computed by concatenating the following pieces of data together in a line-separated (`\n`) UTF-8 string: `by`, `name`, `version`, `role`, and the `label.sha256` of each parcel:
+The signature is computed by concatenating the following pieces of data together in a line-separated (`\n`) UTF-8 string: `by`, `name`, `version`, `role`, `at` and the `label.sha256` of each parcel:
 
 ```
 Matt Butcher <matt.butcher@example.com>
 mybindle
 0.1.0
 creator
+1611960337
 ~
 e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
 098fa798779ac88094b6d54a3f5cdba41fe5a901
@@ -173,10 +205,6 @@ e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
 
 Note that the sequence `\n~\n` is used as a separator to prevent an attempt to conflate a 
 SemVer with the SHA list.
-
-> TODO: Do we need/want a timestamp on the signature?
-> Cons: They are easy to forge.
-> Pros: It gives a linear record for when signatures happened
 
 ## Verifying
 
@@ -205,6 +233,7 @@ by = "Matt Butcher <matt.butcher@example.com>"
 signature = "ddd237895ac..."
 key = "1c44..."
 role = "creator"
+at = 1611960337
 
 # This identity asserts that it has somehow proxied the bindle.
 # In this case, it is a CI action that pushed the bindle to a host
