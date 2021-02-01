@@ -131,6 +131,7 @@ async fn main() {
         parcel: None,
         annotations: None,
         group: None,
+        signature: None,
     };
 
     if !parcels.is_empty() {

@@ -101,6 +101,7 @@ async fn main() {
         }]),
         annotations: None,
         group: None,
+        signature: None,
     };
 
     if let Some(auth) = package.author {
