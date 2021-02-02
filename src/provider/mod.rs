@@ -37,7 +37,14 @@ pub type Result<T> = core::result::Result<T, ProviderError>;
 /// The basic functionality required for a Bindle provider.
 ///
 /// Please note that due to this being an `async_trait`, the types might look complicated. Look at
-/// the code directly to see the simpler function signatures for implementation
+/// the code directly to see the simpler function signatures for implementation.
+///
+/// IMPORTANT: If you are implementing a terminal provider, you must internally handle atomic
+/// operations/locking to avoid race conditions in the back end. If you are writing one for a
+/// database, this is likely handled for you by the database. However, in cases such as the built in
+/// [`FileProvider`](crate::provider::file::FileProvider), you must ensure that two create
+/// operations do not conflict and that a read operation of something being created also does not
+/// conflict.
 #[async_trait::async_trait]
 pub trait Provider {
     /// This takes an invoice and creates it in storage.
@@ -157,6 +164,10 @@ pub enum ProviderError {
     /// An uploaded parcel does not match the SHA-256 sum provided with its label
     #[error("digest does not match")]
     DigestMismatch,
+    #[error(
+        "a write operation is currently in progress for this resource and it cannot be accessed"
+    )]
+    WriteInProgress,
     /// An error that occurs when the provider implementation uses a proxy and that proxy request
     /// encounters an error. Only available with the `client` feature enabled
     #[cfg(feature = "client")]
