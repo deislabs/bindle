@@ -2,13 +2,13 @@
 //! [documented](https://github.com/deislabs/bindle/blob/master/docs/file-layout.md) in the main
 //! Bindle repo.
 
-use std::convert::TryInto;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
+use std::{convert::TryInto, ffi::OsString};
 
 use ::lru::LruCache;
 use log::{debug, error, trace};
@@ -31,6 +31,7 @@ const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 const PARCEL_DAT: &str = "parcel.dat";
 const CACHE_SIZE: usize = 50;
+const PART_EXTENSION: &str = "part";
 
 /// A file system backend for storing and retrieving bindles and parcles.
 ///
@@ -155,9 +156,17 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
 
         // Create the base path if necessary
         let inv_path = self.invoice_path(&invoice_id);
-        if !inv_path.is_dir() {
+        if !tokio::fs::metadata(&inv_path)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+        {
             // If it exists and is a regular file, we have a problem
-            if inv_path.is_file() {
+            if tokio::fs::metadata(&inv_path)
+                .await
+                .map(|m| m.is_file())
+                .unwrap_or(false)
+            {
                 return Err(ProviderError::Exists);
             }
             create_dir_all(inv_path).await?;
@@ -168,21 +177,39 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         if dest.exists() {
             return Err(ProviderError::Exists);
         }
+        // Create the part file to indicate that we are currently writing
+        let part = part_path(&dest).await?;
+        // Make sure we aren't already writing
+        if tokio::fs::metadata(&part)
+            .await
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            return Err(ProviderError::WriteInProgress);
+        }
         debug!(
-            "Storing invoice with ID {:?} in {}",
+            "Storing invoice with ID {} in part file {}",
             inv.bindle.id,
-            dest.display()
+            part.display()
         );
         let mut out = OpenOptions::new()
             .create_new(true)
             .write(true)
             .read(true)
-            .open(dest)
+            .open(&part)
             .await?;
 
         // Encode the invoice into a TOML object
         let data = toml::to_vec(inv)?;
         out.write_all(data.as_slice()).await?;
+
+        // Now that it is written, move the part file to the actual file name
+        debug!(
+            "Renaming part file to {} for invoice with ID {}",
+            dest.display(),
+            inv.bindle.id
+        );
+        tokio::fs::rename(part, dest).await?;
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
@@ -315,19 +342,25 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
 
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(parcel_id);
-        if par_path.is_dir() {
+        if tokio::fs::metadata(&par_path)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+        {
             return Err(ProviderError::Exists);
         }
         // Create box dir
         create_dir_all(par_path).await?;
 
         // Write data
+        let data_file = self.parcel_data_path(parcel_id);
+        let part = part_path(&data_file).await?;
         {
-            let data_file = self.parcel_data_path(parcel_id);
+            // Create the part file to indicate that we are currently writing
             trace!(
-                "Writing parcel data for SHA {} at {}",
+                "Writing parcel data part for SHA {} at {}",
                 parcel_id,
-                data_file.display()
+                part.display()
             );
             let mut out = OpenOptions::new()
                 // TODO: Right now, if we write the file and then sha validation fails, the user
@@ -335,7 +368,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
                 .create_new(true)
                 .write(true)
                 .read(true)
-                .open(data_file.clone())
+                .open(&part)
                 .await?;
 
             tokio::io::copy(
@@ -357,6 +390,13 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             trace!("SHA {} data validated", parcel_id);
             // TODO: Should we also validate length? We use it for returning the proper content length
         }
+
+        debug!(
+            "Renaming part file to {} for SHA {}",
+            data_file.display(),
+            parcel_id
+        );
+        tokio::fs::rename(part, data_file).await?;
 
         Ok(())
     }
@@ -402,6 +442,30 @@ fn map_io_error(e: std::io::Error) -> ProviderError {
         return ProviderError::NotFound;
     }
     ProviderError::from(e)
+}
+
+/// Given the path, generates a new part path for it, returning a `WriteInProgress` error if it
+/// already exists
+async fn part_path(dest: &PathBuf) -> Result<PathBuf> {
+    let extension = match dest.extension() {
+        Some(s) => {
+            let mut ext = s.to_owned();
+            ext.push(".");
+            ext.push(PART_EXTENSION);
+            ext
+        }
+        None => OsString::from(PART_EXTENSION),
+    };
+    let part = dest.with_extension(extension);
+    // Make sure we aren't already writing
+    if tokio::fs::metadata(&part)
+        .await
+        .map(|m| m.is_file())
+        .unwrap_or(false)
+    {
+        return Err(ProviderError::WriteInProgress);
+    }
+    Ok(part)
 }
 
 /// An internal wrapper to implement `AsyncWrite` on Sha256

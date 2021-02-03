@@ -55,7 +55,7 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<Toml> {
             error = ProviderError::NotFound;
             StatusCode::NOT_FOUND
         }
-        ProviderError::Exists => StatusCode::CONFLICT,
+        ProviderError::Exists | ProviderError::WriteInProgress => StatusCode::CONFLICT,
         ProviderError::Malformed(_)
         | ProviderError::Unserializable(_)
         | ProviderError::DigestMismatch
