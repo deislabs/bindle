@@ -74,8 +74,8 @@ async fn shutdown_signal() {
 mod test {
     use std::convert::TryInto;
 
-    use crate::authn::noop::NoopAuthenticator;
-    use crate::authz::noop::NoopAuthorizer;
+    use crate::authn::always::AlwaysAuthenticate;
+    use crate::authz::always::AlwaysAuthorize;
     use crate::provider::Provider;
     use crate::testing;
 
@@ -87,7 +87,7 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store, index, NoopAuthenticator, NoopAuthorizer);
+        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize);
 
         // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
 
@@ -242,7 +242,7 @@ mod test {
     async fn test_yank() {
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, NoopAuthenticator, NoopAuthorizer);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         // Insert an invoice
         let scaffold = testing::Scaffold::load("incomplete").await;
         store
@@ -297,7 +297,7 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, NoopAuthenticator, NoopAuthorizer);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
         let valid = testing::Scaffold::from(valid_raw.clone());
         store
@@ -327,7 +327,7 @@ mod test {
     async fn test_parcel_validation() {
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, NoopAuthenticator, NoopAuthorizer);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         // Insert a parcel
         let scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
@@ -399,7 +399,7 @@ mod test {
         // Insert data into store
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, NoopAuthenticator, NoopAuthorizer);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
         for b in bindles_to_insert.into_iter() {
@@ -493,7 +493,7 @@ mod test {
     async fn test_missing() {
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, NoopAuthenticator, NoopAuthorizer);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
         store

@@ -1,7 +1,7 @@
 //! Types and traits for use in authorization. This module is only available if the `server` feature
 //! is enabled
 
-pub mod noop;
+pub mod always;
 
 /// A trait that can be implemented on any type (such as a custom `User` or `Token` type) so that it
 /// can be authorized by an [`Authorizer`](Authorizer)

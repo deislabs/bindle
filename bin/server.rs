@@ -83,8 +83,8 @@ async fn main() -> anyhow::Result<()> {
     server(
         store,
         index,
-        bindle::authn::noop::NoopAuthenticator,
-        bindle::authz::noop::NoopAuthorizer,
+        bindle::authn::always::AlwaysAuthenticate,
+        bindle::authz::always::AlwaysAuthorize,
         addr,
         tls,
     )

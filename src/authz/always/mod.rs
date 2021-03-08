@@ -18,9 +18,9 @@ impl Authorizable for Anonymous {
 
 /// An authorizer that always returns success
 #[derive(Debug, Clone)]
-pub struct NoopAuthorizer;
+pub struct AlwaysAuthorize;
 
-impl Authorizer for NoopAuthorizer {
+impl Authorizer for AlwaysAuthorize {
     fn authorize<A: Authorizable>(
         &self,
         _: A,

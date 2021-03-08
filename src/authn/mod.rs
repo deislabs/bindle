@@ -1,7 +1,7 @@
 //! Types and traits for use in authentication. This module is only available if the `server`
 //! feature is enabled
 
-pub mod noop;
+pub mod always;
 
 use crate::authz::Authorizable;
 
