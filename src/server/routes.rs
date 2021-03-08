@@ -1,24 +1,38 @@
 use warp::Filter;
 
+use crate::server::filters;
+
 /// A helper function that aggregates all routes into a complete API filter. If you only wish to
 /// serve specific endpoints or versions, you can assemble them with the individual submodules
-pub fn api<P, I>(
+pub fn api<P, I, Authn, Authz>(
     store: P,
     index: I,
+    authn: Authn,
+    authz: Authz,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
 where
     P: crate::provider::Provider + Clone + Send + Sync + 'static,
     I: crate::search::Search + Clone + Send + Sync + 'static,
+    Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
+    Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
-    warp::path("v1").and(
-        v1::invoice::query(index)
-            .or(v1::invoice::create(store.clone()))
-            .or(v1::invoice::get(store.clone()))
-            .or(v1::invoice::head(store.clone()))
-            .or(v1::invoice::yank(store.clone()))
-            .or(v1::parcel::create(store.clone()))
-            .or(v1::relationships::get_missing_parcels(store)),
-    )
+    warp::path("v1")
+        .and(filters::authenticate_and_authorize(authn, authz))
+        .untuple_one()
+        .and(
+            v1::invoice::query(index)
+                .or(v1::invoice::create(store.clone()))
+                .or(v1::invoice::get(store.clone()))
+                .or(v1::invoice::head(store.clone()))
+                .or(v1::invoice::yank(store.clone()))
+                .or(v1::parcel::create(store.clone()))
+                .or(v1::parcel::get(store.clone()))
+                .or(v1::parcel::head(store.clone()))
+                .or(v1::relationships::get_missing_parcels(store)),
+        )
+        .recover(filters::handle_invalid_request_path)
+        .recover(filters::handle_authn_rejection)
+        .recover(filters::handle_authz_rejection)
 }
 
 pub mod v1 {
@@ -67,13 +81,11 @@ pub mod v1 {
         where
             P: Provider + Clone + Send + Sync,
         {
-            warp::path("_i")
-                .and(warp::path::tail())
+            filters::invoice()
                 .and(warp::get())
                 .and(warp::query::<filters::InvoiceQuery>())
                 .and(with_store(store))
-                .and(warp::method())
-                .and_then(request_router)
+                .and_then(get_invoice)
         }
 
         pub fn head<P>(
@@ -82,13 +94,11 @@ pub mod v1 {
         where
             P: Provider + Clone + Send + Sync,
         {
-            warp::path("_i")
-                .and(warp::path::tail())
+            filters::invoice()
                 .and(warp::head())
                 .and(warp::query::<filters::InvoiceQuery>())
                 .and(with_store(store))
-                .and(warp::method())
-                .and_then(request_router)
+                .and_then(head_invoice)
         }
 
         pub fn yank<P>(
@@ -114,12 +124,35 @@ pub mod v1 {
         where
             P: Provider + Clone + Send + Sync,
         {
-            warp::path("_i")
-                .and(warp::path::tail())
+            filters::parcel()
                 .and(warp::post())
                 .and(warp::body::stream())
                 .and(with_store(store))
                 .and_then(create_parcel)
+        }
+
+        pub fn get<P>(
+            store: P,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        where
+            P: Provider + Clone + Send + Sync,
+        {
+            filters::parcel()
+                .and(warp::get())
+                .and(with_store(store))
+                .and_then(get_parcel)
+        }
+
+        pub fn head<P>(
+            store: P,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        where
+            P: Provider + Clone + Send + Sync,
+        {
+            filters::parcel()
+                .and(warp::head())
+                .and(with_store(store))
+                .and_then(head_parcel)
         }
     }
 

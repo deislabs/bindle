@@ -13,55 +13,6 @@ pub mod v1 {
 
     use crate::QueryOptions;
     use tokio_stream::{self as stream, StreamExt};
-    use warp::http::Method;
-
-    const PARCEL_ID_SEPARATOR: char = '@';
-
-    /// Due to subpathed parcel support, we need to check what is in the tail of a GET request in order to route the request to the appropriate handler
-    pub async fn request_router<P: Provider + Sync>(
-        tail: warp::path::Tail,
-        query: InvoiceQuery,
-        store: P,
-        method: Method,
-    ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
-
-        match split.len() {
-            1 => {
-                trace!(
-                    "Matched only bindle ID {}, routing to get/head invoice handler",
-                    split[0]
-                );
-                match method {
-                    Method::HEAD => head_invoice(tail, query, store).await,
-                    Method::GET => get_invoice(tail, query, store).await,
-                    _ => Ok(Box::new(reply::reply_from_error(
-                        "Got invalid method",
-                        warp::http::StatusCode::METHOD_NOT_ALLOWED,
-                    ))),
-                }
-            }
-            2 => {
-                trace!(
-                    "Matched bindle ID {} and sha {}, routing to get parcel handler",
-                    split[0],
-                    split[1]
-                );
-                match method {
-                    Method::HEAD => head_parcel(split[0], split[1], store).await,
-                    Method::GET => get_parcel(split[0], split[1], store).await,
-                    _ => Ok(Box::new(reply::reply_from_error(
-                        "Got invalid method",
-                        warp::http::StatusCode::METHOD_NOT_ALLOWED,
-                    ))),
-                }
-            }
-            _ => Ok(Box::new(reply::reply_from_error(
-                "Invalid URL. Missing bindle ID and/or parcel SHA",
-                warp::http::StatusCode::BAD_REQUEST,
-            ))),
-        }
-    }
 
     //////////// Invoice Functions ////////////
     pub async fn query_invoices<S: Search>(
@@ -130,11 +81,10 @@ pub mod v1 {
     }
 
     pub async fn get_invoice<P: Provider + Sync>(
-        tail: warp::path::Tail,
+        id: String,
         query: InvoiceQuery,
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        let id = tail.as_str();
         trace!(
             "Get invoice request for {} with yanked = {}",
             id,
@@ -178,12 +128,12 @@ pub mod v1 {
     }
 
     pub async fn head_invoice<P: Provider + Sync>(
-        tail: warp::path::Tail,
+        id: String,
         query: InvoiceQuery,
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        trace!("Head invoice request for {}", tail.as_str());
-        let inv = get_invoice(tail, query, store).await?;
+        trace!("Head invoice request for {}", id);
+        let inv = get_invoice(id, query, store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
@@ -196,7 +146,7 @@ pub mod v1 {
     //////////// Parcel Functions ////////////
 
     pub async fn create_parcel<P, B, D>(
-        tail: warp::path::Tail,
+        (bindle_id, sha): (String, String),
         body: B,
         store: P,
     ) -> Result<impl warp::Reply, Infallible>
@@ -205,29 +155,17 @@ pub mod v1 {
         B: stream::Stream<Item = Result<D, warp::Error>> + Send + Sync + Unpin + 'static,
         D: bytes::Buf + Send,
     {
-        trace!("Create parcel request, beginning parse of path");
-        let split: Vec<&str> = tail.as_str().split(PARCEL_ID_SEPARATOR).collect();
-
-        if split.len() != 2 {
-            return Ok(reply::reply_from_error(
-                format!("Unable to parse parcel SHA from request. The SHA should be separated from the bindle ID by a single '{}' character", PARCEL_ID_SEPARATOR),
-                warp::http::StatusCode::BAD_REQUEST,
-            ));
-        }
-        let bindle_id = split[0];
-        let sha = split[1];
-
-        trace!("Got SHA {} and bindle id {}", sha, bindle_id);
+        trace!("Create parcel request, checking if parcel exists in bindle");
 
         // Validate that this sha belongs
-        if let Err(e) = parcel_in_bindle(&store, bindle_id, sha).await {
+        if let Err(e) = parcel_in_bindle(&store, &bindle_id, &sha).await {
             return Ok(e);
         }
 
         if let Err(e) = store
             .create_parcel(
                 bindle_id,
-                sha,
+                &sha,
                 body.map(|res| {
                     res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
                 }),
@@ -246,18 +184,17 @@ pub mod v1 {
     }
 
     pub async fn get_parcel<P: Provider + Sync>(
-        bindle_id: &str,
-        id: &str,
+        (bindle_id, id): (String, String),
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Get parcel request for {}", id);
         // Get parcel label to ascertain content type and length, and validate that it does exist
-        let label = match parcel_in_bindle(&store, bindle_id, id).await {
+        let label = match parcel_in_bindle(&store, &bindle_id, &id).await {
             Ok(l) => l,
             Err(e) => return Ok(Box::new(e)),
         };
 
-        let data = match store.get_parcel(bindle_id, id).await {
+        let data = match store.get_parcel(bindle_id, &id).await {
             Ok(reader) => reader,
             Err(e) => {
                 return Ok(Box::new(reply::into_reply(e)));
@@ -281,12 +218,11 @@ pub mod v1 {
     }
 
     pub async fn head_parcel<P: Provider + Sync>(
-        bindle_id: &str,
-        id: &str,
+        (bindle_id, id): (String, String),
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Head parcel request for {}", id);
-        let inv = get_parcel(bindle_id, id, store).await?;
+        let inv = get_parcel((bindle_id, id), store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();

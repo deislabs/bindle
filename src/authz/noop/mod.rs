@@ -1,13 +1,14 @@
 //! A simple noop authorizer that does nothing for use when authorization is not desired or for
 //! development environments
-use super::{Authorizable, Authorizer, Result};
+use super::{Authorizable, Authorizer};
 
 /// An anonymous user
+#[derive(Debug, Clone)]
 pub struct Anonymous;
 
 impl Authorizable for Anonymous {
     fn principal(&self) -> String {
-        String::from("NOOP")
+        String::from("anonymous")
     }
 
     fn groups(&self) -> Vec<String> {
@@ -16,10 +17,16 @@ impl Authorizable for Anonymous {
 }
 
 /// An authorizer that always returns success
+#[derive(Debug, Clone)]
 pub struct NoopAuthorizer;
 
 impl Authorizer for NoopAuthorizer {
-    fn authorize<A: Authorizable>(_: A, _: super::Verb, _: super::Object) -> Result<()> {
+    fn authorize<A: Authorizable>(
+        &self,
+        _: A,
+        _: &str,
+        _: warp::http::Method,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 }

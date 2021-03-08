@@ -8,11 +8,159 @@ use warp::reject::{custom, Reject, Rejection};
 use warp::Filter;
 
 use super::TOML_MIME_TYPE;
+use crate::authn::Authenticator;
+use crate::authz::Authorizer;
+
+pub(crate) const PARCEL_ID_SEPARATOR: char = '@';
 
 /// Query string options for the invoice endpoint
 #[derive(Debug, Deserialize)]
 pub struct InvoiceQuery {
     pub yanked: Option<bool>,
+}
+
+/// A warp filter that returns the invoice ID if the path is for an invoice and rejects it otherwise
+pub fn invoice() -> impl Filter<Extract = (String,), Error = Rejection> + Copy {
+    warp::path("_i")
+        .and(warp::path::tail())
+        .and_then(|tail: warp::path::Tail| async move {
+            let (inv, parcel) = match handle_tail(tail.as_str()) {
+                Ok(i) => i,
+                // The try operator doesn't work because I can't implement `From` for the sealed
+                // CombinedRejection type
+                Err(e) => return Err(e),
+            };
+            if parcel.is_some() {
+                return Err(custom(InvalidRequestPath));
+            }
+            Ok(inv)
+        })
+}
+
+/// A warp filter that returns the invoice ID and parcel ID as a tuple if the path is for a parcel
+/// and rejects it otherwise
+pub fn parcel() -> impl Filter<Extract = ((String, String),), Error = Rejection> + Copy {
+    warp::path("_i")
+        .and(warp::path::tail())
+        .and_then(|tail: warp::path::Tail| async move {
+            let (inv, parcel) = match handle_tail(tail.as_str()) {
+                Ok(i) => i,
+                // The try operator doesn't work because I can't implement `From` for the sealed
+                // CombinedRejection type
+                Err(e) => return Err(e),
+            };
+            let parcel = match parcel {
+                None => return Err(custom(InvalidRequestPath)),
+                Some(p) => p,
+            };
+            Ok((inv, parcel))
+        })
+}
+
+fn handle_tail(tail: &str) -> Result<(String, Option<String>), Rejection> {
+    let mut split: Vec<String> = tail
+        .split(PARCEL_ID_SEPARATOR)
+        .map(|s| s.to_owned())
+        .collect();
+
+    // The unwraps here are safe because we are checking length
+    match split.len() {
+        1 => {
+            log::trace!("Matched only bindle ID {}", split[0]);
+            Ok((split.pop().unwrap(), None))
+        }
+        2 => {
+            log::trace!("Matched bindle ID {} and sha {}", split[0], split[1]);
+            let parcel = split.pop().unwrap();
+            let inv = split.pop().unwrap();
+            Ok((inv, Some(parcel)))
+        }
+        _ => Err(custom(InvalidRequestPath)),
+    }
+}
+
+/// A warp filter for adding an authenticator
+fn authenticate<Authn: Authenticator + Clone + Send + Sync>(
+    authn: Authn,
+) -> impl Filter<Extract = (Authn::Item,), Error = Rejection> + Clone {
+    // We get the header optionally as anonymous auth could be enabled
+    warp::any()
+        .map(move || authn.clone())
+        .and(warp::header::optional::<String>("Authorization"))
+        .and_then(_authenticate)
+}
+
+async fn _authenticate<A: Authenticator + Clone + Send>(
+    authn: A,
+    auth_data: Option<String>,
+) -> Result<A::Item, Rejection> {
+    // If there was no auth available, that means anonymous auth, so we can safely unwrap to an empty string
+    match authn.authenticate(&auth_data.unwrap_or_default()).await {
+        Ok(a) => Ok(a),
+        Err(e) => {
+            log::debug!("Authentication error: {}", e);
+            Err(warp::reject::custom(AuthnFail))
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AuthnFail;
+
+impl warp::reject::Reject for AuthnFail {}
+
+pub(crate) async fn handle_authn_rejection(
+    err: warp::Rejection,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    if err.find::<AuthnFail>().is_some() {
+        Ok(crate::server::reply::reply_from_error(
+            "unauthorized",
+            warp::http::StatusCode::UNAUTHORIZED,
+        ))
+    } else {
+        Err(err)
+    }
+}
+
+/// A warp filter for adding an authorizer
+pub(crate) fn authenticate_and_authorize<
+    Authn: Authenticator + Clone + Send + Sync,
+    Authz: Authorizer + Clone + Send + Sync,
+>(
+    authn: Authn,
+    authz: Authz,
+) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
+    authenticate(authn)
+        .and(warp::path::full())
+        .and(warp::method())
+        .and(warp::any().map(move || authz.clone()))
+        .and_then(
+            |item: Authn::Item, path: warp::path::FullPath, method, authz: Authz| async move {
+                if let Err(e) = authz.authorize(item, path.as_str(), method) {
+                    log::debug!("Authorization error: {}", e);
+                    return Err(warp::reject::custom(AuthzFail));
+                }
+                Ok(())
+            },
+        )
+}
+
+#[derive(Debug)]
+struct AuthzFail;
+
+impl warp::reject::Reject for AuthzFail {}
+
+pub(crate) async fn handle_authz_rejection(
+    err: warp::Rejection,
+) -> std::result::Result<impl warp::Reply, warp::Rejection> {
+    if err.find::<AuthzFail>().is_some() {
+        Ok(crate::server::reply::reply_from_error(
+            "access denied",
+            warp::http::StatusCode::FORBIDDEN,
+        ))
+    } else {
+        Err(err)
+    }
 }
 
 /// A warp filter that parses the body of a request from TOML to the specified type
@@ -64,3 +212,21 @@ impl Error for BodyDeserializeError {
 }
 
 impl Reject for BodyDeserializeError {}
+
+pub(crate) async fn handle_invalid_request_path(
+    err: warp::Rejection,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    if err.find::<InvalidRequestPath>().is_some() {
+        Ok(crate::server::reply::reply_from_error(
+            "Invalid URL. Missing Bindle ID and/or parcel SHA",
+            warp::http::StatusCode::BAD_REQUEST,
+        ))
+    } else {
+        Err(err)
+    }
+}
+
+#[derive(Debug)]
+struct InvalidRequestPath;
+
+impl Reject for InvalidRequestPath {}
