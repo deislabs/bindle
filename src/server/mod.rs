@@ -2,9 +2,9 @@
 //! Spec](https://github.com/deislabs/bindle/blob/master/docs/protocol-spec.md), with associated
 //! HTTP handlers and functions
 
-mod filters;
+pub(crate) mod filters;
 mod handlers;
-mod reply;
+pub(crate) mod reply;
 
 mod routes;
 
@@ -25,18 +25,22 @@ pub struct TlsConfig {
 /// Returns a future that runs a server until it receives a SIGINT to stop. If optional TLS
 /// configuration is given, the server will be configured to use TLS. Otherwise it will use plain
 /// HTTP
-pub async fn server<P, I>(
+pub async fn server<P, I, Authn, Authz>(
     store: P,
     index: I,
+    authn: Authn,
+    authz: Authz,
     addr: impl Into<SocketAddr> + 'static,
     tls: Option<TlsConfig>,
 ) -> anyhow::Result<()>
 where
     P: Provider + Clone + Send + Sync + 'static,
     I: Search + Clone + Send + Sync + 'static,
+    Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
+    Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
-    let api = routes::api(store, index);
+    let api = routes::api(store, index, authn, authz);
 
     let server = warp::serve(api);
     match tls {
@@ -70,6 +74,8 @@ async fn shutdown_signal() {
 mod test {
     use std::convert::TryInto;
 
+    use crate::authn::always::AlwaysAuthenticate;
+    use crate::authz::always::AlwaysAuthorize;
     use crate::provider::Provider;
     use crate::testing;
 
@@ -81,7 +87,7 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store, index);
+        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize);
 
         // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
 
@@ -236,7 +242,7 @@ mod test {
     async fn test_yank() {
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         // Insert an invoice
         let scaffold = testing::Scaffold::load("incomplete").await;
         store
@@ -291,7 +297,7 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
         let valid = testing::Scaffold::from(valid_raw.clone());
         store
@@ -321,7 +327,7 @@ mod test {
     async fn test_parcel_validation() {
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         // Insert a parcel
         let scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
@@ -393,7 +399,7 @@ mod test {
         // Insert data into store
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
         for b in bindles_to_insert.into_iter() {
@@ -487,7 +493,7 @@ mod test {
     async fn test_missing() {
         let (store, index) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index);
+        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
         store

@@ -27,6 +27,10 @@ pub mod standalone;
 #[cfg(feature = "test-tools")]
 pub mod testing;
 
+#[cfg(feature = "server")]
+pub mod authn;
+#[cfg(feature = "server")]
+pub mod authz;
 pub mod filters;
 
 #[doc(inline)]

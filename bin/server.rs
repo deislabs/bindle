@@ -80,5 +80,13 @@ async fn main() -> anyhow::Result<()> {
                 .expect("--key-path should be set if --cert-path was set"),
         }),
     };
-    server(store, index, addr, tls).await
+    server(
+        store,
+        index,
+        bindle::authn::always::AlwaysAuthenticate,
+        bindle::authz::always::AlwaysAuthorize,
+        addr,
+        tls,
+    )
+    .await
 }
