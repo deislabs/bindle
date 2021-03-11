@@ -11,7 +11,12 @@ In the [Invoice](invoice-spec.md) and [Parcel](parcel-spec.md]) specifications, 
 
 ## The General Idea
 
-The basic idea of signing significant items is that by attaching a signature, we can provide tooling the ability to verify that certain facts about a bindle remain unchanged over time.
+The basic idea of signing significant items is that by attaching a signature, we can support tooling that has the ability to verify that certain facts about a bindle remain unchanged over time.
+
+Specifically, we want assurances of two things:
+
+1. That an invoice at a particular version has _exactly_ a particular set of parcels.
+2. That each parcel has _exactly_ the content that the signer intended.
 
 For example, by signing a parcel's hash, we can in effect certify that _an entity in possession of the signing key testifies that the parcel had this hash at the time in which the parcel was signed_. That is an important attestation when combined with a few other things (like key trust), because it provides a foundation for making assertions like this:
 
@@ -22,22 +27,50 @@ Asymmetric cryptography is nice for this because a signer can distribute a publi
 ## Signing and Roles
 
 Signers of an invoice MUST have a role. The following roles are defined by this specification.
-Agents SHOULD initiate a warning and MAY initiate a failure if another role is encountered.
+Agents SHOULD initiate a warning and MAY initiate a failure if a user's expected role does not match the given roll.
 
 - `creator`: Signer asserts that they are the ones who made this bindle
-- `proxy`: Signer asserts that they are a consumer or waypoint for this bindle, and have no reason to distrust
+- `verifier`: Signer asserts that they have verified the contents of the bindle
+- `proxy`: Signer asserts that they are a consumer or waypoint for this bindle, and have no reason to distrust the bindle
 - `host`: Signer asserts that it has served as a Bindle host for this content
+
+### The Creator Role
 
 The `creator` signature MUST be on any invoice that is compliant with this system.
 There MAY be multiple creators on an invoice.
 A creator MUST NOT sign the same invoice with the same key multiple times.
 A Bindle server MUST reject an invoice that is not signed by a creator.
 A Bindle server MUST reject an invoice that is signed by a creator's key for which the server does not have an entry in its keyring.
-A client SHOULD reject an invoice signed by a creator whose public key is not in the client's keyring
+In other words, the server MUST have the keys for every creator whose Bindle it accepts.
+A bindle server MUST NOT sign a bindle with its host key if it does not have the key of the creator in its keyring.
+This does not necessarily preclude a "caching proxy", where the proxy is repeating a Bindle that has been signed by another set of creator and host keys.
 
-Bindle servers MUST add a `host` entry to a bindle upon receiving the bindle from a client.
+> A _caching proxy_ is a Bindle server that takes a user's request for a bindle, finds that bindle remotely, and then caches that bindle's content locally so that it may re-serve that content at a later date. Such servers MAY sign with a proxy key.
+
+A client SHOULD reject an invoice signed by a creator whose public key is not in the client's keyring. A non-normative recommendation would be that a client ought to reject any bindle where neither a creator's nor a verifier's signature could be verified.
+
+### The Verifier Role
+
+The `verifier` role describes a signer who asserts that the signer has employed a method of assessing whether the bindle is correct.
+
+Examples of verifiers might include:
+
+- A developer who reviews the code and build tools for the bindle's parcels
+- A security scanner that runs an audit of the bindle and parcels
+- A security researcher who performs a security audit and deems the bindle and parcels safe.
+
+The term `verifier` role is specific to the security context. This signer is not deciding whether text content is editorially correct or that an image looks good. The signer is asserting that the security profile of the bindle is deemed proper. That is, a vulnerability scanner is asserting, upon signature, that it detected no vulnerabilities in the bindle.
+
+An underlying assumption of the present model is that keys with the `verifier` role will be vetted more carefully before inclusion in the keyring.
+End users in particular should be careful to only include well-known entities in their `verifier` keyring.
+
+### The Host role
+
+Bindle servers MUST add a `host` entry to a bindle upon receiving the bindle from a client and verifying the creator key.
 A bindle server MUST NOT sign the same invoice more than once with the same key.
-Clients MAY reject invoices that are signed by unknown hosts, but they also MAY allow them.
+Clients MAY reject invoices that are signed by unknown hosts.
+
+### The Proxy Role
 
 Proxy signatures are designed for provenance more than security. When a non-creator pushes
 a bindle to a Bindle server, the non-creator SHOULD sign the invoice with a proxy signature.
@@ -224,6 +257,42 @@ Verification of an invoice includes the following steps:
 5. Verify that at least one signature block used a key that was present in the keyring (4.c)
     - If none of the signatures were done with a key we know, fail
 
+
+## Keyrings
+
+A keyring is an annotated list of (public) keys that can be used for verifying signatures in a bindle.
+
+> A private key MUST NOT be stored in a keyring. Keyring data is considered non-secret (and thus a keyring could be checked into a VCS system or published on the Internet in some cases, and not as a result have integrity compromised).
+
+The keyring format is expressed as TOML here:
+
+```toml
+
+[[key]]
+label = "Matt Butcher <technosophos@example.com>"
+roles = ["creator", "verifier"]
+key = "aa453q4..."
+label_signature = "dsaff678..."
+
+[[key]]
+label = "Brigade pipeline at builder.example.com"
+roles = ["proxy"]
+key = "bb453q4..."
+label_signature = "dsaff678..."
+
+[[key]]
+label = "https://bindle.example.com"
+roles = ["host"]
+key = "cc453q4..."
+label_signature = "dsaff678..."
+```
+
+Fields on the `[[key]]` object:
+
+- `label`: A human-readable label that hints what this key is for
+- `roles`: A list of rolls that the user has granted to the key
+- `key`: The base64-encoded public key for this label
+- `label_signature`: A signature block for the label, to assert that the label is the same one that was intended by the key creator (optional, may be removed)
 ## Reading Signatures as Provenance
 
 ```toml
@@ -251,6 +320,84 @@ key = "2c44..."
 role = "host"
 ```
 
+## Strategies of Verification
+
+This section is non-normative, describing how implementations MAY choose to behave.
+
+A Bindle may be signed by any number of keys in any number of roles.
+During verification, which of these keys must be verified?
+
+According to the text above, a creator key MUST be exist in the keyring, and the content must be verified according to this key.
+
+> This condition could be eased if we can figure out another way to assert authority of a package. For example we might say "if either the `creator` key is verified or a `verifier` key is verified, then the package can be trusted." This model may better reflect systems like NPM, Cargo, or Homebrew.
+
+But the behavior for all others is that they MAY be verified.
+
+The intention of this is to allows implementations to determine how aggressively to pursue security.
+
+For example, here are three strategy of security. This is not an exhaustive set, but it illustrates the possibilities.
+
+### Strategy 1: Creative Integrity
+
+In this model, the `creator` signature is the only one we care about in verification. It is as if we are saying, "If the creator says the package I have is the right one, that is all the evidence I need."
+
+It is likely that in the vast majority of cases, this is sufficient.
+
+### Strategy 2: Authoritative Integrity
+
+This case might be considered weaker than the above, but it illustrates a different way to delegate according to which entity is considered the stronger authority.
+In this case, we say that if the _creator or a verifier_ assert that this package is correct, then we accept it.
+
+This setup is useful for a few configurations:
+
+*Public package repositories:* In this case, there may be tens of thousands of creators. But say that a designated entity could analyze the packages and determine their safety. In that case, a user agent might say "I will accept any package that has been signed by this trusted analyzer."
+
+*Internal package repository:* In this case, an enterprise may make a stronger claim: "Whether you can use this package does not depend on whether the creator is trusted, but whether the package is marked as trusted by our internal verifier."
+
+### Strategy 3: Multiple Attestation
+
+In this strategy, _at least two roles must be verified_.
+The object of this configuration is double-checking for a compromise.
+
+Here are a few scenarios for multiple attestation:
+
+*Creator and CI Pipeline:* Ostensibly, a CI system will build the same package using the same tooling that the creator used.
+Assuming the CI signs its artifacts with the `proxy` role,
+one could require that both `creator` and `proxy` signatures must be present and be verified. This way, if the creator's system is compromised or misconfigured, this would show up in the form of a clash with the proxy signature. While it doesn't identify whether the proxy or the creator was compromised, it shows up as a clash between two distinct keys--and therefore serves as a signpost for where the problem may be.
+
+*Creator and Host:* A similar pairing can be done between the creator role and the host role. In this case, comparing between the host and creator rolls identifies any case where the package was compromised during or after upload to the server.
+
+*Creator and Verifier:* This pairing is a step beyond the "Authoritative Integrity" section above, as it requires that both a creator and a verifier can be verified. In other words, for a bindle to be verified, the creator has to certify that they created it, and the verifier has to certify that the bindle has been audited.
+
+From here, we could extrapolate to various other combinatorics (e.g. signer, host, and verifier must all have verified signatures). But the core idea remains: a conjunction of verifications provides more security than a disjunction.
+
+## Strategy 4: Greedy Verification
+
+This model is the best default model. In it, there is an obligation to verify the `creator` signature, but verification every other signature in the invoice SHOULD be attempted.
+
+In this model:
+- If the `creator` signature fails verification, the verification process should end with an error
+- For each signature, its public key should be used to verify the signature. If this fails, the verification should end with an error.
+- For each signature, its public key should be checked against the keyring. If the signature is missing, a warning should be emitted
+
+The result is that every signature is partially tested, at least one must be fully tested, and any that cannot be fully tested are reported to the user.
+
+(Bindle currently implements this strategy, but in the future, strategy will be configurable)
+
+## Strategy 5: Complete Verification
+
+In this strategy, _every signature on the invoice_ must be verified.
+
+Therefore, if an invoice has ten signatures spread across all four roles, every single signature must be verified. Any unknown keys or mismatched signatures will cause failure.
+
+This is a strong assertion that will lead to fragile process (virtuously, in some cases).
+It is designed for cases where _every single step_ must be secured.
+It will surface not just tampered packages, but also tampered process.
+While not infallible, it can give an early and decisive warning if a package crossed the wrong security boundary.
+For example, if a package is signed by an unknown host key, then this package has been hosted on a server outside the chain of trust.
+While this level of scrutiny is not desirable on, say, a public Bindle registry, it may be invaluable to closed and air-gapped networks where the presence of an unknown signature may warn of a misconfiguration.
+
+
 ## Questions
 
 ### Why Don't You Just Hash The Document?
@@ -258,4 +405,5 @@ role = "host"
 A: Because TOML (and most on-disk formats) can be expressed in ways that are subtly different. Whitespace, quotation marks, and other formatting changes can render the signature ineffective.
 
 Instead of inventing another format or using something like Canonical JSON (with all its quirks), we took a semantic approach: What are the pieces of data that we actually need to protect, and can we handle just those?
+
 
