@@ -1,12 +1,15 @@
 # Signing Parcels and Parcel Lists
 
-This portion of the specification discusses the mechanics of signing parcel lists and individual parcels.
+This portion of the specification discusses the mechanics of signing parcel lists on invoices.
 
-In the [Invoice](invoice-spec.md) and [Parcel](parcel-spec.md]) specifications, there are fields for attaching cryptographic signatures. In this specification, we cover the internal mechanics for how that works.
+In the [Invoice](invoice-spec.md) specification, there are fields for attaching cryptographic signatures.
+This specification describes the form and function of those fields.
+
+> The term `Bindle` (uppercase) refers to the package storage system. The term `bindle` (lowercase) means a package in the Bindle system.
 
 ## Things NOT covered
 
-- Key management. Here, we talk about using asymmetric cryptography to sign parcels and lists of parcels, but we do not discuss how the public and private keys are to be managed.
+- Key management. Here, we talk about using asymmetric cryptography to sign lists of parcels, but we do not discuss how the public and private keys are to be managed.
 - Strengths and weaknesses of various signature algorithms. We supply here only a single Ed25519 implementation.
 
 ## The General Idea
@@ -34,20 +37,25 @@ Agents SHOULD initiate a warning and MAY initiate a failure if a user's expected
 - `proxy`: Signer asserts that they are a consumer or waypoint for this bindle, and have no reason to distrust the bindle
 - `host`: Signer asserts that it has served as a Bindle host for this content
 
+No invoice can be signed twice by the same key.
+For example, a key cannot be used to sign both as `creator` and as `host`.
+Nor are there any cases where a key is permitted to sign twice with the same role.
+
 ### The Creator Role
 
 The `creator` signature MUST be on any invoice that is compliant with this system.
 There MAY be multiple creators on an invoice.
 A creator MUST NOT sign the same invoice with the same key multiple times.
-A Bindle server MUST reject an invoice that is not signed by a creator.
-A Bindle server MUST reject an invoice that is signed by a creator's key for which the server does not have an entry in its keyring.
-In other words, the server MUST have the keys for every creator whose Bindle it accepts.
+The Bindle server MUST reject an invoice that is not signed by a creator.
+(In other words, all bindles MUST be signed by a `creator` key before they can be hosted.)
+When a new bindle is submitted, a Bindle server MUST reject an invoice that is signed by a creator's key for which the server does not have an entry in its keyring.
+In other words, the server MUST have the keys for every creator whose Bindle it accepts to host.
 A bindle server MUST NOT sign a bindle with its host key if it does not have the key of the creator in its keyring.
 This does not necessarily preclude a "caching proxy", where the proxy is repeating a Bindle that has been signed by another set of creator and host keys.
 
 > A _caching proxy_ is a Bindle server that takes a user's request for a bindle, finds that bindle remotely, and then caches that bindle's content locally so that it may re-serve that content at a later date. Such servers MAY sign with a proxy key.
 
-A client SHOULD reject an invoice signed by a creator whose public key is not in the client's keyring. A non-normative recommendation would be that a client ought to reject any bindle where neither a creator's nor a verifier's signature could be verified.
+A client SHOULD reject an invoice that is not signed by a known key with the `creator` or `verifier` role. A non-normative recommendation would be that a client ought to reject any bindle where neither a creator's nor a verifier's signature could be verified.
 
 ### The Verifier Role
 
@@ -59,12 +67,16 @@ Examples of verifiers might include:
 - A security scanner that runs an audit of the bindle and parcels
 - A security researcher who performs a security audit and deems the bindle and parcels safe.
 
-The term `verifier` role is specific to the security context. This signer is not deciding whether text content is editorially correct or that an image looks good. The signer is asserting that the security profile of the bindle is deemed proper. That is, a vulnerability scanner is asserting, upon signature, that it detected no vulnerabilities in the bindle.
+The `verifier` role is specific to the security context. This signer is not deciding whether text content is editorially correct or that an image looks good. The signer is asserting that the security profile of the bindle is deemed trustworthy. That is, a vulnerability scanner is asserting, upon signature, that it detected no vulnerabilities in the bindle.
 
 An underlying assumption of the present model is that keys with the `verifier` role will be vetted more carefully before inclusion in the keyring.
 End users in particular should be careful to only include well-known entities in their `verifier` keyring.
 
+Verification may form a trust proxy. That is, a client may decide that if the `creator` is unknown, the bindle can still be trusted if one or more of the `verifier` keys is known.
+
 ### The Host role
+
+The `host` role denotes that the signer is the Bindle server that accepted the invoice from the `creator`.
 
 Bindle servers MUST add a `host` entry to a bindle upon receiving the bindle from a client and verifying the creator key.
 A bindle server MUST NOT sign the same invoice more than once with the same key.
@@ -79,7 +91,10 @@ Examples of proxy signers:
 - CI systems
 - Users who transfer bindles from one Bindle server to another
 - Import/export tools
+- Proxy servers
 
+While this is implicit in the definitions, we should make it _explicit_ that a Bindle server can use the same key to sign as a host (for bindles it hosts) and as a proxy (for pass-through and cache features).
+But in each case, the key must be marked for the appropriate role.
 ## Signing and Timestamps
 
 The date and time of a signature can be an important piece of information for auditing.
@@ -98,92 +113,18 @@ The UNIX timestamp offers this:
 
 Longer textual formats are subject to parsing and serialization ambiguities, as well in quirks of implementation across languages.
 
-## Signing Parcels
+## Signing on the Invoice
 
-The main piece of information we want to sign in a parcel is the data-bearing `parcel.dat` data. More specifically, all we really need to sign is the SHA for that bundle.
+Signatures are included in the `invoice.toml` for a Bindle.
 
-Since the signature cannot be forged without either key compromise or failure of the underlying encryption, we can assert that the signature data can be placed inside of the parcel's `label` without jeopardizing the integrity of the data.
+The signature does not need to sign the entire content of the invoice.
+Rather, it needs to sign particular relationships.
+For example, the list of parcels that belong to a bindle is both definitive and immutable.
+As such, the list of parcel hashes should be signed to bind an exact parcel to a bindle.
+Other pieces of information should also be signed, such as the name and version of a bindle.
+The exhaustive list (and the format) are discussed below.
 
-To sign a parcel, we need the following bits of information:
-
-- The parcel data's SHA
-- A public/private key pair
-- A name for the key pair (`by`) to be used as a heuristic for the user
-- A UNIX timestamp (`at`)
-
-Assume for a moment that we can generate a signature of the parcel data. Given this, we can insert a signature into the label as follows.
-
-```toml
-sha256 = 5b992e90b71d5fadab3cd3777230ef370df75f5b...
-mediaType = "application/x-javascript"
-name = "foo.js"
-size = 248098
-
-[[signature]]
-by = "Matt Butcher <matt.butcher@example.com>"
-signature = "baa237895ac..."
-role = "creator"
-at = 1611960337
-```
-
-In fact, the public key can be distributed inline provided that the client takes steps to determine whether that key is known and trusted.
-
-```toml
-sha256 = 5b992e90b71d5fadab3cd3777230ef370df75f5b...
-mediaType = "application/x-javascript"
-name = "foo.js"
-size = 248098
-
-[[signature]]
-by = "Matt Butcher <matt.butcher@example.com>"
-signature = "baa237895ac..."
-key = "95ac..."
-role = "creator"
-at = 1611960337
-```
-
-Note that the `signature` is a list, not a table. This is so that multiple attestations can be made about the same object:
-
-```toml
-sha256 = 5b992e90b71d5fadab3cd3777230ef370df75f5b...
-mediaType = "application/x-javascript"
-name = "foo.js"
-size = 248098
-
-[[signature]]
-by = "Matt Butcher <matt.butcher@example.com>"
-signature = "baa237895ac..."
-key = "95ac..."
-role = "creator"
-at = 1611960337
-
-[[signature]]
-by = "Radu Matei <radu.matei@example.com>"
-signature = "aba237895ac..."
-key = "ac95..."
-role = "creator"
-at = 1611960338
-```
-
-To compose the signature, the following data should be combined into a `\n`-separated UTF-8 encoded string and hashed: `by`, `role`, `at` and the `sha256`
-
-```
-Radu Matei <radu.matei@example.com>
-creator
-1611960338
-~
-5b992e90b71d5fadab3cd3777230ef370df75f5b...
-```
-
-The `by` field is included to prevent a trivial (and probably not critical) deception in which an attacker changes the `by` line to something that sounds authoritative in hopes that a user blindly accepts. But this is a very minor edge case.
-
-The above can then be signed with something like `base64(sign($key, $data))`
-
-## Signing the Invoice
-
-In an invoice, what we want to sign is the list of parcels attached to the invoice. In other words, what we really care about is ensuring that the invoice's parcel list has not been changed since it was last signed.
-
-This strategy hinges on the assumption that no malevolent alterations can be made to a bindle outside of its parcels.
+> To ensure that no other parts of an invoice have been modified, a host MAY take steps to verify the continued integrity of the `invoice.toml` and SHOULD encrypt all traffic between itself and clients.
 
 Signatures on an `invoice` look like this:
 
@@ -236,8 +177,7 @@ e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
 5b992e90b71d5fadab3cd3777230ef370df75f5b
 ```
 
-Note that the sequence `\n~\n` is used as a separator to prevent an attempt to conflate a 
-SemVer with the SHA list.
+Note that the sequence `\n~\n` is used as a separator to prevent an attempt to forge a hash using another field.
 
 ## Verifying
 
@@ -250,12 +190,14 @@ Verification of an invoice includes the following steps:
 3. Reconstruct the cleartext block following the signing rules
 4. For each signature block
     a. Extract the public key
-    b. Verify the signature using the public key and the cleartext
+    b. Verify that the key has not already been used in another signature block
+        - If a key is used to sign the same invoice multiple times, the implementation SHOULD fail
+    c. Verify the signature using the public key and the cleartext d
         - If verification fails for ANY signature block, fail
-    c. Locate the key in the keyring
+    d. Locate the key in the keyring
         - If the key is not located, this is not an error
-5. Verify that at least one signature block used a key that was present in the keyring (4.c)
-    - If none of the signatures were done with a key we know, fail
+5. Apply a key trust strategy (See "Strategies of Key Trust" below)
+    - At minimum, the strategy should be that the `creator` signature is done with a known key.
 
 
 ## Keyrings
@@ -311,6 +253,7 @@ by = "GitHub Action [https://github.com/exammple.com/hello_repo]"
 signature = "3dd237895ac..."
 key = "3c44..."
 role = "proxy"
+at = 1611960347
 
 # This identity asserts that it has hosted the bindle
 [[signature]]
@@ -318,9 +261,12 @@ by = "Bindle Server [https://bindle.example.com]"
 signature = "2dd237895ac..."
 key = "2c44..."
 role = "host"
+at = 1611960357
 ```
+ Because of the timestamps, we can reconstruct the timeline and see that the key was
+ first signed by the creator, then signed by the proxy, and finally signed by the host.
 
-## Strategies of Verification
+## Strategies of Key Trust
 
 This section is non-normative, describing how implementations MAY choose to behave.
 
