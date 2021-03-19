@@ -33,7 +33,7 @@ Signers of an invoice MUST have a role. The following roles are defined by this 
 Agents SHOULD initiate a warning and MAY initiate a failure if a user's expected role does not match the given roll.
 
 - `creator`: Signer asserts that they are the ones who made this bindle
-- `verifier`: Signer asserts that they have verified the contents of the bindle
+- `approver`: Signer asserts that they have verified the contents of the bindle
 - `proxy`: Signer asserts that they are a consumer or waypoint for this bindle, and have no reason to distrust the bindle
 - `host`: Signer asserts that it has served as a Bindle host for this content
 
@@ -55,24 +55,24 @@ This does not necessarily preclude a "caching proxy", where the proxy is repeati
 
 > A _caching proxy_ is a Bindle server that takes a user's request for a bindle, finds that bindle remotely, and then caches that bindle's content locally so that it may re-serve that content at a later date. Such servers MAY sign with a proxy key.
 
-A client SHOULD reject an invoice that is not signed by a known key with the `creator` or `verifier` role. A non-normative recommendation would be that a client ought to reject any bindle where neither a creator's nor a verifier's signature could be verified.
+A client SHOULD reject an invoice that is not signed by a known key with the `creator` or `approver` role. A non-normative recommendation would be that a client ought to reject any bindle where neither a creator's nor a approver's signature could be verified.
 
-### The Verifier Role
+### The Approver Role
 
-The `verifier` role describes a signer who asserts that the signer has employed a method of assessing whether the bindle is correct.
+The `approver` role describes a signer who asserts that the signer has employed a method of assessing whether the bindle is correct.
 
-Examples of verifiers might include:
+Examples of approvers might include:
 
 - A developer who reviews the code and build tools for the bindle's parcels
 - A security scanner that runs an audit of the bindle and parcels
 - A security researcher who performs a security audit and deems the bindle and parcels safe.
 
-The `verifier` role is specific to the security context. This signer is not deciding whether text content is editorially correct or that an image looks good. The signer is asserting that the security profile of the bindle is deemed trustworthy. That is, a vulnerability scanner is asserting, upon signature, that it detected no vulnerabilities in the bindle.
+The `approver` role is specific to the security context. This signer is not deciding whether text content is editorially correct or that an image looks good. The signer is asserting that the security profile of the bindle is deemed trustworthy. That is, a vulnerability scanner is asserting, upon signature, that it detected no vulnerabilities in the bindle.
 
-An underlying assumption of the present model is that keys with the `verifier` role will be vetted more carefully before inclusion in the keyring.
-End users in particular should be careful to only include well-known entities in their `verifier` keyring.
+An underlying assumption of the present model is that keys with the `approver` role will be vetted more carefully before inclusion in the keyring.
+End users in particular should be careful to only include well-known entities in their `approver` keyring.
 
-Verification may form a trust proxy. That is, a client may decide that if the `creator` is unknown, the bindle can still be trusted if one or more of the `verifier` keys is known.
+Verification may form a trust proxy. That is, a client may decide that if the `creator` is unknown, the bindle can still be trusted if one or more of the `approver` keys is known.
 
 ### The Host role
 
@@ -212,7 +212,7 @@ The keyring format is expressed as TOML here:
 
 [[key]]
 label = "Matt Butcher <technosophos@example.com>"
-roles = ["creator", "verifier"]
+roles = ["creator", "approver"]
 key = "aa453q4..."
 label_signature = "dsaff678..."
 
@@ -275,7 +275,7 @@ During verification, which of these keys must be verified?
 
 According to the text above, a creator key MUST be exist in the keyring, and the content must be verified according to this key.
 
-> This condition could be eased if we can figure out another way to assert authority of a package. For example we might say "if either the `creator` key is verified or a `verifier` key is verified, then the package can be trusted." This model may better reflect systems like NPM, Cargo, or Homebrew.
+> This condition could be eased if we can figure out another way to assert authority of a package. For example we might say "if either the `creator` key is verified or a `approver` key is verified, then the package can be trusted." This model may better reflect systems like NPM, Cargo, or Homebrew.
 
 But the behavior for all others is that they MAY be verified.
 
@@ -292,13 +292,13 @@ It is likely that in the vast majority of cases, this is sufficient.
 ### Strategy 2: Authoritative Integrity
 
 This case might be considered weaker than the above, but it illustrates a different way to delegate according to which entity is considered the stronger authority.
-In this case, we say that if the _creator or a verifier_ assert that this package is correct, then we accept it.
+In this case, we say that if the _creator or a approver_ assert that this package is correct, then we accept it.
 
 This setup is useful for a few configurations:
 
 *Public package repositories:* In this case, there may be tens of thousands of creators. But say that a designated entity could analyze the packages and determine their safety. In that case, a user agent might say "I will accept any package that has been signed by this trusted analyzer."
 
-*Internal package repository:* In this case, an enterprise may make a stronger claim: "Whether you can use this package does not depend on whether the creator is trusted, but whether the package is marked as trusted by our internal verifier."
+*Internal package repository:* In this case, an enterprise may make a stronger claim: "Whether you can use this package does not depend on whether the creator is trusted, but whether the package is marked as trusted by our internal approver."
 
 ### Strategy 3: Multiple Attestation
 
@@ -313,9 +313,9 @@ one could require that both `creator` and `proxy` signatures must be present and
 
 *Creator and Host:* A similar pairing can be done between the creator role and the host role. In this case, comparing between the host and creator rolls identifies any case where the package was compromised during or after upload to the server.
 
-*Creator and Verifier:* This pairing is a step beyond the "Authoritative Integrity" section above, as it requires that both a creator and a verifier can be verified. In other words, for a bindle to be verified, the creator has to certify that they created it, and the verifier has to certify that the bindle has been audited.
+*Creator and approver:* This pairing is a step beyond the "Authoritative Integrity" section above, as it requires that both a creator and a approver can be verified. In other words, for a bindle to be verified, the creator has to certify that they created it, and the approver has to certify that the bindle has been audited.
 
-From here, we could extrapolate to various other combinatorics (e.g. signer, host, and verifier must all have verified signatures). But the core idea remains: a conjunction of verifications provides more security than a disjunction.
+From here, we could extrapolate to various other combinatorics (e.g. signer, host, and approver must all have verified signatures). But the core idea remains: a conjunction of verifications provides more security than a disjunction.
 
 ## Strategy 4: Greedy Verification
 
