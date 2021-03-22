@@ -30,7 +30,7 @@ Asymmetric cryptography is nice for this because a signer can distribute a publi
 ## Signing and Roles
 
 Signers of an invoice MUST have a role. The following roles are defined by this specification.
-Agents SHOULD initiate a warning and MAY initiate a failure if a user's expected role does not match the given roll.
+Agents SHOULD initiate a warning and MAY initiate a failure if a user's expected role does not match the given role.
 
 - `creator`: Signer asserts that they are the ones who made this bindle
 - `approver`: Signer asserts that they have verified the contents of the bindle
@@ -93,8 +93,10 @@ Examples of proxy signers:
 - Import/export tools
 - Proxy servers
 
-While this is implicit in the definitions, we should make it _explicit_ that a Bindle server can use the same key to sign as a host (for bindles it hosts) and as a proxy (for pass-through and cache features).
-But in each case, the key must be marked for the appropriate role.
+While this is implicit in the definitions, we should make it _explicit_ that a Bindle server can use the same key to sign some invoices as a host (for bindles it hosts) and sign others as a proxy (for pass-through and cache features).
+However, it cannot sign the same invoice with the same key acting as both a host and proxy.
+In each case, the key must be marked for the appropriate role.
+
 ## Signing and Timestamps
 
 The date and time of a signature can be an important piece of information for auditing.
@@ -192,12 +194,13 @@ Verification of an invoice includes the following steps:
     a. Extract the public key
     b. Verify that the key has not already been used in another signature block
         - If a key is used to sign the same invoice multiple times, the implementation SHOULD fail
-    c. Verify the signature using the public key and the cleartext d
+    c. Verify the signature using the public key and the cleartext
         - If verification fails for ANY signature block, fail
     d. Locate the key in the keyring
         - If the key is not located, this is not an error
 5. Apply a key trust strategy (See "Strategies of Key Trust" below)
-    - At minimum, the strategy should be that the `creator` signature is done with a known key.
+    - At minimum, the strategy should be that the `creator` signature is signed with a known key (Strategy 1).
+    - For use on public bindle servers, allowing the `creator or approver` strategy (Strategy 2) is preferred.
 
 
 ## Keyrings
@@ -232,9 +235,10 @@ label_signature = "dsaff678..."
 Fields on the `[[key]]` object:
 
 - `label`: A human-readable label that hints what this key is for
-- `roles`: A list of rolls that the user has granted to the key
+- `roles`: A list of roles that the user has granted to the key
 - `key`: The base64-encoded public key for this label
 - `label_signature`: A signature block for the label, to assert that the label is the same one that was intended by the key creator (optional, may be removed)
+
 ## Reading Signatures as Provenance
 
 ```toml
@@ -273,21 +277,15 @@ This section is non-normative, describing how implementations MAY choose to beha
 A Bindle may be signed by any number of keys in any number of roles.
 During verification, which of these keys must be verified?
 
-According to the text above, a creator key MUST be exist in the keyring, and the content must be verified according to this key.
+The simplest configuration of Bindle would require that the `creator` key be present in the keyring, and the content is then verified against this key's signature. All other keys MAY be verified.
 
-> This condition could be eased if we can figure out another way to assert authority of a package. For example we might say "if either the `creator` key is verified or a `approver` key is verified, then the package can be trusted." This model may better reflect systems like NPM, Cargo, or Homebrew.
+This section provides alternative trust strategies that allow different degrees of verification. Implementations may match their validation practices to the security needs of their environment.
 
-But the behavior for all others is that they MAY be verified.
-
-The intention of this is to allows implementations to determine how aggressively to pursue security.
-
-For example, here are three strategy of security. This is not an exhaustive set, but it illustrates the possibilities.
+Five strategies are discussed here. This is not an exhaustive set, but it illustrates the possibilities.
 
 ### Strategy 1: Creative Integrity
 
 In this model, the `creator` signature is the only one we care about in verification. It is as if we are saying, "If the creator says the package I have is the right one, that is all the evidence I need."
-
-It is likely that in the vast majority of cases, this is sufficient.
 
 ### Strategy 2: Authoritative Integrity
 
@@ -311,7 +309,7 @@ Here are a few scenarios for multiple attestation:
 Assuming the CI signs its artifacts with the `proxy` role,
 one could require that both `creator` and `proxy` signatures must be present and be verified. This way, if the creator's system is compromised or misconfigured, this would show up in the form of a clash with the proxy signature. While it doesn't identify whether the proxy or the creator was compromised, it shows up as a clash between two distinct keys--and therefore serves as a signpost for where the problem may be.
 
-*Creator and Host:* A similar pairing can be done between the creator role and the host role. In this case, comparing between the host and creator rolls identifies any case where the package was compromised during or after upload to the server.
+*Creator and Host:* A similar pairing can be done between the creator role and the host role. In this case, comparing between the host and creator roles identifies any case where the package was compromised during or after upload to the server.
 
 *Creator and approver:* This pairing is a step beyond the "Authoritative Integrity" section above, as it requires that both a creator and a approver can be verified. In other words, for a bindle to be verified, the creator has to certify that they created it, and the approver has to certify that the bindle has been audited.
 
@@ -319,7 +317,7 @@ From here, we could extrapolate to various other combinatorics (e.g. signer, hos
 
 ## Strategy 4: Greedy Verification
 
-This model is the best default model. In it, there is an obligation to verify the `creator` signature, but verification every other signature in the invoice SHOULD be attempted.
+This model is the best default model. In it, there is an obligation to verify the `creator` signature, but verifying every other signature in the invoice SHOULD be attempted.
 
 In this model:
 - If the `creator` signature fails verification, the verification process should end with an error
