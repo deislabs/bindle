@@ -290,7 +290,7 @@ In this model, the `creator` signature is the only one we care about in verifica
 ### Strategy 2: Authoritative Integrity
 
 This case might be considered weaker than the above, but it illustrates a different way to delegate according to which entity is considered the stronger authority.
-In this case, we say that if the _creator or a approver_ assert that this package is correct, then we accept it.
+In this case, we say that if the _creator or an approver_ assert that this package is correct, then we accept it.
 
 This setup is useful for a few configurations:
 
