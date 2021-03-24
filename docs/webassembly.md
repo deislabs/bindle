@@ -49,7 +49,7 @@ In this example, a single module runs as a simple program that prints the plain 
 Here is an example Bindle invoice:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/hello-world"
@@ -101,7 +101,7 @@ This example is the simplest case for an aggregate. In a moment, we will start t
 In this case, we can take the same Bindle invoice as before and make a slight alteration:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/hello-world-2"
@@ -157,7 +157,7 @@ High: 72F Low: 52F
 The Bindle invoice for this program looks like this:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather"
@@ -212,7 +212,7 @@ The most important detail of this example is that the Bindle invoice provided su
 Say we are running `sg1` on a device that is constrained in the amount of memory it can allocate. Here is the application definition from Example 3, which we will re-use here:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather"
@@ -279,7 +279,7 @@ The lite version is much smaller, but also has a lower probability of returning 
 Here's the invoice:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/better-weather"
@@ -368,7 +368,7 @@ Of course, this introduces some difficulties: A runtime now needs to be able to 
 Here is an example of the weather app whose entry point requires the sgu bindings:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather-ui"
@@ -413,7 +413,7 @@ Building on the previous example, the runtime might need extra data that is not 
 This is accomplished by adding the file as a parcel.
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather-ui"
@@ -462,7 +462,7 @@ Again, the sg1 client would merely fail when confronted with one or more parcels
 The last two examples showed cases where sgu could execute an aggregated app, but sg1 could not. But we could re-organize our app a bit, and do something akin to what the Web browser world calls "progressive enhancement." We can write a bindle that allows the runtime to select an entry point that provides the best user experience.
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather-progressive"
@@ -522,7 +522,7 @@ In this scenario, let's imagine that the `electron+sgu` version requires several
 Here is the invoice that expresses these conditional dependencies by making richer use of groups.
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather-progressive"
@@ -629,7 +629,7 @@ What do we do if we want to make it possible for a selection algorithm to mock o
 For that case, we can use a shim parcel pattern.
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/weather-ui-shim"
@@ -749,7 +749,7 @@ But when generating Bindles, the dependency tree MUST NOT be flattened in the pa
 So the appropriate way to express the initial dependency tree is something like this:
 
 ```toml=
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "example/dep-tree"

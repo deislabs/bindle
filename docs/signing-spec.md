@@ -131,7 +131,7 @@ The exhaustive list (and the format) are discussed below.
 Signatures on an `invoice` look like this:
 
 ```toml
-bindleVersion = "v1.0.0"
+bindle_version = "v1.0.0"
 
 [bindle]
 name = "mybindle"

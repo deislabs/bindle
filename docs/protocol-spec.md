@@ -150,7 +150,7 @@ more = false
 yanked = false
 
 [[invoices]]
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [invoices.bindle]
 name = "mybindle"
@@ -181,7 +181,7 @@ name = "foo.js"
 size = 248098
 
 [[invoices]]
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [invoices.bindle]
 name = "example.com/mybindle"

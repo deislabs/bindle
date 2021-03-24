@@ -5,7 +5,7 @@ This specification describes the invoice (`invoice.toml`).
 An invoice is the top-level descriptor of a bindle. Every bindle has exactly one invoice.
 
 ```toml
-bindleVersion = "v1.0.0"
+bindle_version = "v1.0.0"
 
 [bindle]
 name = "mybindle"
@@ -41,7 +41,7 @@ The above bindle declares its `bindle` description, and then declares a manifest
 
 ## Top-level Fields
 
-- `bindleVersion` is required, and should be `1.0.0` for this version of the specification.
+- `bindle_version` is required, and should be `1.0.0` for this version of the specification.
 - `yanked` is a boolean field that indicates whether a Bindle has been yanked. This field appears outside of the `bindle` because it is mutable, though it can only be toggled on. Once set to true, a Bindle MUST NOT be un-yanked. A yanked bundle should never be served in an index or search, but MAY be accessed directly.
 - `yanked_reason` (OPTIONAL) is a string field in which a human-readable reason can be given for yanking the invoice.
 
@@ -92,7 +92,7 @@ For any explicitly created group, it is empty by default. Parcels must be placed
 The `[[group]]` list is used to create a group. In the following example, three groups are defined: `server`, `cli`, and `utility`.
 
 ```toml
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "mybindle"
@@ -147,7 +147,7 @@ By default, if no condition is provided, an item is a member of the "global" gro
 Example:
 
 ```toml
-bindleVersion = "1.0.0"
+bindle_version = "1.0.0"
 
 [bindle]
 name = "mybindle"
