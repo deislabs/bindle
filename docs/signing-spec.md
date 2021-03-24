@@ -30,7 +30,7 @@ Asymmetric cryptography is nice for this because a signer can distribute a publi
 ## Signing and Roles
 
 Signers of an invoice MUST have a role. The following roles are defined by this specification.
-Agents SHOULD initiate a warning and MAY initiate a failure if a user's expected role does not match the given role.
+Agents SHOULD initiate a warning and SHOULD initiate a failure if a user's expected role does not match the given role.
 
 - `creator`: Signer asserts that they are the ones who made this bindle
 - `approver`: Signer asserts that they have verified the contents of the bindle
@@ -274,7 +274,7 @@ at = 1611960357
 
 This section is non-normative, describing how implementations MAY choose to behave.
 
-A Bindle may be signed by any number of keys in any number of roles.
+A bindle may be signed by any number of keys in any number of roles.
 During verification, which of these keys must be verified?
 
 The simplest configuration of Bindle would require that the `creator` key be present in the keyring, and the content is then verified against this key's signature. All other keys MAY be verified.
@@ -290,7 +290,7 @@ In this model, the `creator` signature is the only one we care about in verifica
 ### Strategy 2: Authoritative Integrity
 
 This case might be considered weaker than the above, but it illustrates a different way to delegate according to which entity is considered the stronger authority.
-In this case, we say that if the _creator or an approver_ assert that this package is correct, then we accept it.
+In this case, we say that if the _creator or an approver_ asserts that this package is correct, then we accept it.
 
 This setup is useful for a few configurations:
 
