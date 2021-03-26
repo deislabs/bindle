@@ -56,7 +56,7 @@ Here's a compact version of the above:
 ```console
 $ edit invoice.toml
 $ cat invoice.toml
-bindle_version = "1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"
@@ -76,7 +76,7 @@ You can verify that this is working by fetching the invoice:
 ```console
 $ bindle info mybindle/0.1.0
 # request for mybindle/0.1.0
-bindle_version = "1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"

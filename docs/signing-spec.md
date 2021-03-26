@@ -131,7 +131,7 @@ The exhaustive list (and the format) are discussed below.
 Signatures on an `invoice` look like this:
 
 ```toml
-bindle_version = "v1.0.0"
+bindleVersion = "v1.0.0"
 
 [bindle]
 name = "mybindle"
@@ -388,7 +388,7 @@ To verify a `yanked_signature`, an agent:
 The format of the `yanked_signature` is the same as the format of a regular signature:
 
 ```toml
-bindle_version = "1.0.0"
+bindleVersion = "1.0.0"
 yanked = true
 
 [[yanked_signature]]

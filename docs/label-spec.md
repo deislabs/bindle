@@ -205,7 +205,7 @@ Consequently, implementations SHOULD NOT provide support for filtering based on 
 For example, when supporting a set of parcels that act as an aggregate application, where some parcels are libraries and some are executables, this structure is NOT recommended:
 
 ```toml
-bindle_version = "1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "example/weather"
@@ -235,7 +235,7 @@ This structure labels one parcel of type "executable" and another of type "libra
 One alternative would be to not label the executable with a `type`. A better solution would be to specify these as two separate options:
 
 ```toml
-bindle_version = "1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "example/weather"
