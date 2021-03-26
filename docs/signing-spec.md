@@ -411,6 +411,9 @@ to do directly with creator intent. (In other words, the creator is not the auth
 A compromised host could yank all packages, which may have dire initial consequences.
 However, these consequences are probably the correct consequences when a compromise happens, as the result is a denial of service from the host to the agent.
 
+A `yanked` field and the `yanked_signature` could both be removed by a malicious `host`, which would allow a rollback attack.
+There is currently not a mitigation from this. (Compromised hosts can also remove regular signature blocks, effectively rendering a signed bindle unsigned.)
+
 ### Possible Alternatives to Yank Signing
 
 The `yanked` field could be included in the main signing metadata.
@@ -428,12 +431,12 @@ That was not the intent of the `yanked` field or the yanking operation.
 ## Threat Model
 
 This section describes our threat model in applying signatures.
-Our inspiration has been [TUF]().
+Our inspiration has been [TUF](https://theupdateframework.github.io/specification/latest/).
 However, Bindle's problem space is slightly different:
 - Bindle _is not_ concerned with updating a package. The identifier (name plus version) is "static" and must always point to the same artifact.
 - Bindle _is_ concerned with more than storage and retrieval.
 
-Likewise, Bindle is distinct from [in-toto]().
+Likewise, Bindle is distinct from [in-toto](https://github.com/in-toto/in-toto).
 While in-toto focuses on the assembly of the package (and how to attest and verify the steps of creating the package),
 Bindle's security model involves attesting and verifying the produced package at specific stages.
 It may be possible to map out Bindle's model using an in-toto static layout.
@@ -451,7 +454,7 @@ We assume that:
 - If an attack can compromise enough keys, the best that can be done by this spec is to limit the distribution of compromised bindles
 - A malicious signer can cause a package's trust to be doubted (e.g. denial of service), but it should not be able to make a doubted package's trust _accepted_.
     - That is, if other signatures are invalid, a malicious signature should not be able to override that invalidation
-    - But as a weakness in the system, if a malicious signer creates a bad signature, that signature may result in an uncompromised package becoming untrusted for any user who has the malicious signer's signature in their keyring
+    - But as a weakness in the system, if a malicious signer creates a bad signature, that signature may result in an un-compromised package becoming untrusted for any user who has the malicious signer's signature in their keyring
     - In highly secure systems, a malicious signer may be able to deny service merely by attaching a bad signature to an invoice (e.g. in a system that treats any verification failure -- on known or unknown keys -- as a failure condition)
 
 ### The Creator
