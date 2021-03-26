@@ -118,6 +118,10 @@ Longer textual formats are subject to parsing and serialization ambiguities, as 
 ## Signing on the Invoice
 
 Signatures are included in the `invoice.toml` for a Bindle.
+Signing an invoice is an append-only operation.
+Once a signature has been added, that signature MUST NOT be modified and MUST NOT be deleted.
+This specification provides a number of caveats for handling key rotation.
+Key rotation does not warrant or allow modifying signatures.
 
 The signature does not need to sign the entire content of the invoice.
 Rather, it needs to sign particular relationships.
@@ -414,6 +418,8 @@ However, these consequences are probably the correct consequences when a comprom
 A `yanked` field and the `yanked_signature` could both be removed by a malicious `host`, which would allow a rollback attack.
 There is currently not a mitigation from this. (Compromised hosts can also remove regular signature blocks, effectively rendering a signed bindle unsigned.)
 
+> As with regular signature blocks, `yanked_signature` is append-only. When a `host` rotates its keys, it SHOULD append a new `yanked_signature` block, but it MUST NOT remove the old `yanked_signature` block.
+
 ### Possible Alternatives to Yank Signing
 
 The `yanked` field could be included in the main signing metadata.
@@ -454,8 +460,8 @@ We assume that:
 - If an attack can compromise enough keys, the best that can be done by this spec is to limit the distribution of compromised bindles
 - A malicious signer can cause a package's trust to be doubted (e.g. denial of service), but it should not be able to make a doubted package's trust _accepted_.
     - That is, if other signatures are invalid, a malicious signature should not be able to override that invalidation
-    - But as a weakness in the system, if a malicious signer creates a bad signature, that signature may result in an un-compromised package becoming untrusted for any user who has the malicious signer's signature in their keyring
-    - In highly secure systems, a malicious signer may be able to deny service merely by attaching a bad signature to an invoice (e.g. in a system that treats any verification failure -- on known or unknown keys -- as a failure condition)
+    - But as a weakness in the system, if a malicious signer forges a bad signature, that signature may result in an un-compromised package becoming untrusted for any user who has the malicious signer's signature in their keyring. (For example, an attacker with access to the invoice could attach a signature with a known public key and a garbage signature block, and anything that validated the signatures would fail.)
+    - In highly secure systems, a malicious signer may be able to deny service merely by attaching a bad signature to an invoice (e.g. in a system that treats any verification failure -- on known or unknown keys -- as a failure condition). This, however, may be a valid condition, as it indicates that an attacker tampered with the invoice.
 
 ### The Creator
 
