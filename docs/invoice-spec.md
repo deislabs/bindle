@@ -43,6 +43,7 @@ The above bindle declares its `bindle` description, and then declares a manifest
 
 - `bindleVersion` is required, and should be `1.0.0` for this version of the specification.
 - `yanked` is a boolean field that indicates whether a Bindle has been yanked. This field appears outside of the `bindle` because it is mutable, though it can only be toggled on. Once set to true, a Bindle MUST NOT be un-yanked. A yanked bundle should never be served in an index or search, but MAY be accessed directly.
+- `yanked_reason` (OPTIONAL) is a string field in which a human-readable reason can be given for yanking the invoice.
 
 ## `bindle` Fields
 
@@ -50,6 +51,13 @@ The above bindle declares its `bindle` description, and then declares a manifest
 - `version`: [SemVer](https://semver.org) version (REQUIRED). The SemVer specification describes the allowable characters.
 - `authors`: Optional list of authors, where each field is a string conventionally containing a name and email address (OPTIONAL)
 - `description`: A one-line description intended to be viewed by end users (OPTIONAL)
+
+## `signature` and `yanked_signature` Lists
+
+A `signature` list contains all signature blocks for a bindle's content.
+A `yanked_signature` list contains all signature blocks that sign a yank operation.
+
+These sections are described in detail in the [Signing Specification](signing-spec.md).
 
 ## `annotations` Fields
 

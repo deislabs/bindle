@@ -118,6 +118,10 @@ Longer textual formats are subject to parsing and serialization ambiguities, as 
 ## Signing on the Invoice
 
 Signatures are included in the `invoice.toml` for a Bindle.
+Signing an invoice is an append-only operation.
+Once a signature has been added, that signature MUST NOT be modified and MUST NOT be deleted.
+This specification provides a number of caveats for handling key rotation.
+Key rotation does not warrant or allow modifying signatures.
 
 The signature does not need to sign the entire content of the invoice.
 Rather, it needs to sign particular relationships.
@@ -194,8 +198,9 @@ Verification of an invoice includes the following steps:
     a. Extract the public key
     b. Verify that the key has not already been used in another signature block
         - If a key is used to sign the same invoice multiple times, the implementation SHOULD fail
-    c. Verify the signature using the public key and the cleartext
-        - If verification fails for ANY signature block, fail
+    c. Verify the signature using the public key and the cleartext data
+        - If verification fails for a known signer, the application MUST fail
+        - If the verification fails for an unknown signer (whose key does not exist in the keyrings), the application SHOULD emit a warning and MAY fail. Consider, though, that failing could allow an attack to forge known-bad signatures as a denial of service attack.
     d. Locate the key in the keyring
         - If the key is not located, this is not an error
 5. Apply a key trust strategy (See "Strategies of Key Trust" below)
@@ -341,6 +346,241 @@ While not infallible, it can give an early and decisive warning if a package cro
 For example, if a package is signed by an unknown host key, then this package has been hosted on a server outside the chain of trust.
 While this level of scrutiny is not desirable on, say, a public Bindle registry, it may be invaluable to closed and air-gapped networks where the presence of an unknown signature may warn of a misconfiguration.
 
+
+## Yanking Bindles
+
+An invoice has the field `yanked` available as a top-level field.
+However, this field is not present in the signed metadata.
+The reason for this is that a yanked package is not, in virtue of its yanking, invalid.
+So simply yanking a bindle MUST NOT result in invalidating the bindle.
+(The reason a yank does not invalidate a Bindle is that the yank merely warns that the authors no longer wish for you to use the bindle, not that the bindle necessarily has a problem.)
+
+Consequently, when a bindle is yanked, the invoice MUST be updated in two ways:
+
+- The top-level `yanked` field MUST be set to true
+- The host key MUST generate a `yanked_signature` composed by signing the following block of data:
+
+```
+Matt Butcher <matt.butcher@example.com>
+mybindle
+0.1.0
+host
+1611960337
+yanked
+~
+A security flaw was found. See CVE-1234 for details.
+```
+
+This differs from the regular signature block in four important ways:
+- The only role that is allowed to sign in this way is the `host` role
+- The timestamp is the time at which the host marked this bindle as yanked
+- The word `yanked` appears below the timestamp. This is a trivial guard against an attack that attempts to repurpose a parcel-less signature as a yank block.
+- After the `~` divider, the optional `yanked_reason` is included. If a `yanked_reason` is provided on the invoice, it MUST be included in the signature block to prevent tampering.
+
+To verify a `yanked_signature`, an agent:
+
+- MUST verify that the host key used to sign is in the agent's keyring
+    - An agent MAY refuse to treat a bindle as yanked if the key is not known
+    - An agent SHOULD notify the user if a bindle is yanked, but the yanking host key is not known
+- MUST verify that the signature is valid (using the same formula described for regular signature validation).
+- SHOULD verify that the timestamp for yanking is not the same as the signature block's `at` timestamp.
+    - This is a trivial protection against attempts to forge a yank block.
+- SHOULD require that the host key used to yank is also the same host key originally used to sign
+    - This is complicated by host key rotation. Our recommendation is that on host key rotation, all packages should be re-signed using the new host key so that it is always clear who the host authority is.
+
+
+The format of the `yanked_signature` is the same as the format of a regular signature:
+
+```toml
+bindleVersion = "1.0.0"
+yanked = true
+
+[[yanked_signature]]
+by = "Matt Butcher <matt.butcher@example.com>"
+signature = "ddd237895ac..."
+key = "1c44..."
+role = "host"
+at = 1611960337
+```
+
+Note that this strategy does not prevent a key from being used to generate a known-bad signature so that the validation fails.
+
+### Known Issues with Yank Signing
+
+The current model does not provide a way to say "this package should never be trusted again" except for generating known-bad signatures.
+
+Likewise, while signing with `host` keys indicates that the host has yanked the package, there is no clear way to indicate the creator's intent, or a verifier's stance. The reason for this is that yanking is a host-specific operation, and does not have
+to do directly with creator intent. (In other words, the creator is not the authority on whether a bindle is yanked. The host is.)
+
+A compromised host could yank all packages, which may have dire initial consequences.
+However, these consequences are probably the correct consequences when a compromise happens, as the result is a denial of service from the host to the agent.
+
+A `yanked` field and the `yanked_signature` could both be removed by a malicious `host`, which would allow a rollback attack.
+There is currently not a mitigation from this. (Compromised hosts can also remove regular signature blocks, effectively rendering a signed bindle unsigned.)
+
+> As with regular signature blocks, `yanked_signature` is append-only. When a `host` rotates its keys, it SHOULD append a new `yanked_signature` block, but it MUST NOT remove the old `yanked_signature` block.
+
+### Possible Alternatives to Yank Signing
+
+The `yanked` field could be included in the main signing metadata.
+This would create a _strong yank_ under which the yank would invalidate all signatures.
+
+The main flaw with this route is that it makes a strong claim about what `yanked` means.
+In this case, `yanked` means "it is never secure to use this package", which may be true in some cases, but not all.
+
+Another issue with this approach is that a yanked bindle's non-host signatures would all be initially invalidated by the
+yank operation, even though the actual content of the package has not changed.
+This would require verifiers and creators to go _re-sign_ packages again after the `yanked` field was toggled to true.
+Thus, on yank, a bindle would become unusable until the signers re-signed.
+That was not the intent of the `yanked` field or the yanking operation.
+
+## Threat Model
+
+This section describes our threat model in applying signatures.
+Our inspiration has been [TUF](https://theupdateframework.github.io/specification/latest/).
+However, Bindle's problem space is slightly different:
+- Bindle _is not_ concerned with updating a package. The identifier (name plus version) is "static" and must always point to the same artifact.
+- Bindle _is_ concerned with more than storage and retrieval.
+
+Likewise, Bindle is distinct from [in-toto](https://github.com/in-toto/in-toto).
+While in-toto focuses on the assembly of the package (and how to attest and verify the steps of creating the package),
+Bindle's security model involves attesting and verifying the produced package at specific stages.
+It may be possible to map out Bindle's model using an in-toto static layout.
+
+Bindle's signing model is designed to provide a way for multiple entities (in different roles) to attach attestations to an immutable set of objects.
+Note that Bindle's security model is complementary to both TUF and in-toto: All three of these technologies could be used in conjunction.
+
+We assume that:
+
+- No single key holder can be assumed to be trustworthy
+    - A creator is generally an authority on what they wish to produce, but is not necessarily to be trusted to produce non-malicious bindles
+    - An approver, likewise, may produce results that are incomplete or potentially malicious
+    - A proxy or host may be malicious
+- An attacker can act as a man-in-the-middle (MITM) via hijacking or proxying. Therefore, the security model must assume a potential MITM.
+- If an attack can compromise enough keys, the best that can be done by this spec is to limit the distribution of compromised bindles
+- A malicious signer can cause a package's trust to be doubted (e.g. denial of service), but it should not be able to make a doubted package's trust _accepted_.
+    - That is, if other signatures are invalid, a malicious signature should not be able to override that invalidation
+    - But as a weakness in the system, if a malicious signer forges a bad signature, that signature may result in an un-compromised package becoming untrusted for any user who has the malicious signer's signature in their keyring. (For example, an attacker with access to the invoice could attach a signature with a known public key and a garbage signature block, and anything that validated the signatures would fail.)
+    - In highly secure systems, a malicious signer may be able to deny service merely by attaching a bad signature to an invoice (e.g. in a system that treats any verification failure -- on known or unknown keys -- as a failure condition). This, however, may be a valid condition, as it indicates that an attacker tampered with the invoice.
+
+### The Creator
+
+A creator signature is intended to indicate that the _entity that created the bindle_ believes the bindle to be a correct representation of their intent.
+A creator may intend to distribute malicious software.
+(That is, the creator may be malicious, or may be unaware that the software has been compromised already.)
+
+Proxy and approver signatures may help mitigate this.
+For example, an approver signature indicates that the approver believes the package to be safe.
+A proxy _may_ indicate that the package was rebuilt and found to be the same.
+
+### The Approver
+
+An approver signature indicates that the given signer believes the package to be safe.
+However, an approver may be acting maliciously.
+Note that this is only damaging if the creator's package is also compromised.
+That is, for a malicious approval to be dangerous, the package has to be compromised.
+Depending on the Key Trust Strategy, both the creator and approver would have to be malicious (or tricked) before this becomes a problem.
+
+### The Proxy
+
+A proxy key ought not be given high trust in most cases.
+It is intended to function as a trace that a bindle passed through its control.
+It is better viewed as a ledger entry for reconstructing the provenance of a bindle.
+
+### The Host
+
+A host signature is used to verify that the host that accepted the upload of the bindle was a trusted host.
+This affords an opportunity for stricter trust, in which only known trustworthy hosts are allowed to provide bindles.
+Given the distributed nature of Bindle, this means that an aggregation point (P, a proxy role) can pull in bindles from multiple hosts (H1, H2, H3). And a client may choose to only trust bindles that come from a trusted host (e.g. H1, but not H2 or H3).
+
+## Resistance Against Well-known Attacks
+
+Some sorts of attacks are well-known. This describes how Bindle attempts to minimize, thwart, or prevent such attacks.
+
+### Intentionally Malicious Creator
+
+An intentionally malicious creator is one who pushes bindles into a Bindle server with the express intention of distributing malware.
+Such actors are often difficult to detect.
+Bindle offers several mitigations against this sort of attack:
+
+- Bindle encourages a trust model that does not use packages created by an untrusted user. In Bindle, trust is _enacted_ on the agent's side by adding a signer's key to the keyring.
+- Bindle provides an `approver` role whose intent is to allow a third-party auditor to demarcate which bindles the auditor believes to be trustworthy. Again, trust in an approver is enacted by adding the approver's key to the agent keyring.
+- If a creator or package is determined to be malicious (or just have a security hole), a `host` can yank that package, forcing agents to explicitly accept the risk of using that package.
+
+### Freeze and Rollback Attacks
+
+A freeze attack occurs when an attacker can prevent a newer version of a package from taking precedence.
+A rollback attack occurs when an attacker can cause a newer version to be rolled back to a known-bad prior version.
+
+Bindle does not have an innate concept of upgrades, and so _prima facie_ would not have these problems.
+That is, bindle `example/1.2.3` is not "upgraded" by Bindle to `example/1.2.4`.
+Bindle sees those as two entirely separate packages.
+However, we know that _in practice_, Bindle will be used by systems that perform updates of bindles from one version to the next.
+For that reason, Bindle employs some lower-level tooling to prevent certain sorts of freeze and rollback attacks,
+but other variants must be addressed at a higher level.
+
+To prevent yank-based freeze/rollback attacks, `yanked_signatures` require that a host sign all yanked bindles, but in a way that does not invalidate the content signatures.
+This protects against most forms of freeze/rollback attacks in that (depending on the signature verification strategy) multiple
+keys must be compromised before a freeze/rollback can work.
+
+*However,* at the time of this writing a compromised host key could mark a release as `yanked` and encourage agents to roll back to previous versions. This could result in a rollback attack to a vulnerable version. One potential work-around would be to not roll back unless the `creator` key was also used to sign the yank. However, this would rule out host-only yanks, which we view as necessary to prevent bad-intentioned creators from blocking yanks.
+
+Note that even in such an attack, the compromised host cannot alter a bindle's content without invalidating the other signatures.
+
+A fully compromised Bindle server is vulnerable to a freeze attack for the obvious reason that the attacker would control all avenues for publishing a Bindle via that host.
+
+A proxy _could_ perpetrate something like a freeze attack if an implementation's only strategy for checking for an update is to contact the proxy.
+Then a proxy can effectively fail to fetch a bindle, and consequently cause a freeze.
+Note, though, that this is a desirable effect of a system such as Bindle, in which an internal proxy may only have a subset of the packages available on the open web.
+Consequently, mitigation of this issue is left to higher-level implementations that may specify that when they get a "new version" (which is a discrete bindle from the "old version"), it follows a strategy proper to its usage.
+
+## Generating a Known-invalid Signature
+
+This section is non-normative and may be removed.
+
+In the case where an existing package is discovered to have a flaw that should prevent its verification, it is possible (though not always recommended, and never required) to generate an intentionally bad signature to force a verification failure.
+
+The recommended way of doing this is to include the `INVALID` string inside of the hash contents after the timestamp.
+This makes it possible for an agent to reconstruct the signature and determine whether the signature was intentionally invalidated.
+
+```
+Matt Butcher <matt.butcher@example.com>
+mybindle
+0.1.0
+creator
+1611960337
+INVALID
+~
+e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
+098fa798779ac88094b6d54a3f5cdba41fe5a901
+5b992e90b71d5fadab3cd3777230ef370df75f5b
+```
+
+Note that simply generating an invalid signature does not necessarily mean that agents will respect this signature.
+An implementation may only mind invalid signatures on keys that are in its keyring or that are in a certain role.
+
+## Key Rotation
+
+Bindle makes no assumptions about the frequency of key rotation.
+However, there are a few non-normative recommendations:
+
+- If a `host` key is rotated, all packages SHOULD be re-signed by the new host key.
+    - For a properly configured Bindle server, this does not introduce an opportunity for an attacker to modify packages because the `creator` and all `proxy` and `approver` signatures remain unaltered, and any attempt to modify the package will invalidate those signatures
+- When a creator rotates keys, and the cause is NOT compromise, the user SHOULD re-sign existing bindles using the new key and the `approver` role. The original `creator` signature SHOULD NOT be altered in any way.
+- When an `approver` rotates keys, the `approver` SHOULD sign approved bindles with the new key. The old signature MUST NOT be removed.
+- When a proxy key is rotated, the proxy MAY sign previously signed bindles with the new key. However, because proxy signatures are considered to be temporal markers, this is entirely optional.
+    - Old proxy key signatures MUST NOT be removed
+
+If a host key is compromised and the window of time of compromise is known, the host SHOULD re-evaluate all packages marked as `yanked` during the compromise window. If the window of time is not known, then a thorough re-evaluation of yanked packages should take place.
+
+If a creator key is compromised, a host SHOULD mark all packages signed by that key as `yanked`. If the compromise's window of time is known, a host MAY choose instead to yank only packages signed during that compromise window.
+
+If a proxy or approver key is compromised, a host SHOULD remove all signature blocks made using that key. If a compromise's window of time is known, a host MAY choose instead to remove that signature from only the packages signed during that window.
+
+If at any point the number of trusted signatures on a package is less than one, that package should be deemed untrusted, and appropriate measures taken (including potentially deleting that bindle from the repository). Likewise, if the only trusted key is a proxy key, this may be considered insufficient to warrant full trust, and similar measures may be taken. This security exception is the only case in this specification were outright deletion of a package is condoned.
+
+In all of these cases, note that timestamps used inside of signature blocks from compromised keys should not be trusted.
+Timestamps from the system or from other signatures may serve as better points of trust.
 
 ## Questions
 
