@@ -217,24 +217,25 @@ A keyring is an annotated list of (public) keys that can be used for verifying s
 The keyring format is expressed as TOML here:
 
 ```toml
+version = "1.0"
 
 [[key]]
 label = "Matt Butcher <technosophos@example.com>"
 roles = ["creator", "approver"]
 key = "aa453q4..."
-label_signature = "dsaff678..."
+labelSignature = "dsaff678..."
 
 [[key]]
 label = "Brigade pipeline at builder.example.com"
 roles = ["proxy"]
 key = "bb453q4..."
-label_signature = "dsaff678..."
+labelSignature = "dsaff678..."
 
 [[key]]
 label = "https://bindle.example.com"
 roles = ["host"]
 key = "cc453q4..."
-label_signature = "dsaff678..."
+labelSignature = "dsaff678..."
 ```
 
 Fields on the `[[key]]` object:
@@ -242,7 +243,7 @@ Fields on the `[[key]]` object:
 - `label`: A human-readable label that hints what this key is for
 - `roles`: A list of roles that the user has granted to the key
 - `key`: The base64-encoded public key for this label
-- `label_signature`: A signature block for the label, to assert that the label is the same one that was intended by the key creator (optional, may be removed)
+- `labelSignature`: A signature block for the label, to assert that the label is the same one that was intended by the key creator (optional, may be removed)
 
 ## Reading Signatures as Provenance
 

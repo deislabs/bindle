@@ -185,6 +185,7 @@ mod test {
         Invoice {
             bindle_version: crate::BINDLE_VERSION_1.to_owned(),
             yanked: None,
+            yanked_signature: None,
             annotations: None,
             bindle: crate::BindleSpec {
                 id: format!("{}/{}", name, version).parse().unwrap(),
