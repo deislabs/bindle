@@ -51,7 +51,7 @@ pub type AnnotationMap = BTreeMap<String, String>;
 pub struct Invoice {
     pub bindle_version: String,
     pub yanked: Option<bool>,
-    pub yanked_signature: Option<Signature>,
+    pub yanked_signature: Option<Vec<Signature>>,
     pub bindle: BindleSpec,
     pub annotations: Option<AnnotationMap>,
     pub parcel: Option<Vec<Parcel>>,
