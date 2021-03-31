@@ -121,6 +121,7 @@ async fn main() {
     let mut invoice = bindle::Invoice {
         bindle_version: bindle::BINDLE_VERSION_1.to_owned(),
         yanked: None,
+        yanked_signature: None,
         bindle: bindle::BindleSpec {
             id: format!("{}/{}", cargo.package.name, cargo.package.version)
                 .parse()

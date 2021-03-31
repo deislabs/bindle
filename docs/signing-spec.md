@@ -217,24 +217,25 @@ A keyring is an annotated list of (public) keys that can be used for verifying s
 The keyring format is expressed as TOML here:
 
 ```toml
+version = "1.0"
 
 [[key]]
 label = "Matt Butcher <technosophos@example.com>"
 roles = ["creator", "approver"]
 key = "aa453q4..."
-label_signature = "dsaff678..."
+labelSignature = "dsaff678..."
 
 [[key]]
 label = "Brigade pipeline at builder.example.com"
 roles = ["proxy"]
 key = "bb453q4..."
-label_signature = "dsaff678..."
+labelSignature = "dsaff678..."
 
 [[key]]
 label = "https://bindle.example.com"
 roles = ["host"]
 key = "cc453q4..."
-label_signature = "dsaff678..."
+labelSignature = "dsaff678..."
 ```
 
 Fields on the `[[key]]` object:
@@ -242,7 +243,7 @@ Fields on the `[[key]]` object:
 - `label`: A human-readable label that hints what this key is for
 - `roles`: A list of roles that the user has granted to the key
 - `key`: The base64-encoded public key for this label
-- `label_signature`: A signature block for the label, to assert that the label is the same one that was intended by the key creator (optional, may be removed)
+- `labelSignature`: A signature block for the label, to assert that the label is the same one that was intended by the key creator (optional, may be removed)
 
 ## Reading Signatures as Provenance
 
@@ -415,10 +416,10 @@ to do directly with creator intent. (In other words, the creator is not the auth
 A compromised host could yank all packages, which may have dire initial consequences.
 However, these consequences are probably the correct consequences when a compromise happens, as the result is a denial of service from the host to the agent.
 
-A `yanked` field and the `yanked_signature` could both be removed by a malicious `host`, which would allow a rollback attack.
+A `yanked` field and the `yankedSignature` could both be removed by a malicious `host`, which would allow a rollback attack.
 There is currently not a mitigation from this. (Compromised hosts can also remove regular signature blocks, effectively rendering a signed bindle unsigned.)
 
-> As with regular signature blocks, `yanked_signature` is append-only. When a `host` rotates its keys, it SHOULD append a new `yanked_signature` block, but it MUST NOT remove the old `yanked_signature` block.
+> As with regular signature blocks, `yankedSignature` is append-only. When a `host` rotates its keys, it SHOULD append a new `yankedSignature` block, but it MUST NOT remove the old `yankedSignature` block.
 
 ### Possible Alternatives to Yank Signing
 
