@@ -5,11 +5,11 @@ This specification describes the invoice (`invoice.toml`).
 An invoice is the top-level descriptor of a bindle. Every bindle has exactly one invoice.
 
 ```toml
-bindleVersion = "v1.0.0"
+bindleVersion = "1.0.0"
 
 [bindle]
 name = "mybindle"
-version = "v0.1.0"
+version = "0.1.0"
 authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
 description = "My first bindle"
 
@@ -20,6 +20,7 @@ myname = "myvalue"
 label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
 label.mediaType = "text/html"
 label.name = "myparcel.html"
+label.size = 248098
 
 # Experimental support for conditional inclusions
 conditions.memberOf = ["server"]
@@ -28,6 +29,7 @@ conditions.memberOf = ["server"]
 label.sha256 = "098fa798779ac88094b6d54a3f5cdba41fe5a901"
 label.name = "style.css"
 label.mediaType = "text/css"
+label.size = 248098
 
 [[parcel]]
 label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
