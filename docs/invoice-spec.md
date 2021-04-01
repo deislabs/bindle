@@ -36,6 +36,7 @@ label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
 label.mediaType = "application/x-javascript"
 label.name = "foo.js"
 label.size = 248098
+label.origin = "footastic 1.2.3"
 ```
 (Source)[../test/data/simple-invoice.toml]
 
@@ -221,3 +222,53 @@ If the `server` group is installed (for example, if a user requests that group b
 
 - if `first` is chosen to satisfy `cli`, then it also satisfied `utility`.
 - if `second` is chosen to satisfy `cli`, then one of `first` or `third` must be processed to satisfy the `utility` group.
+
+## Provenance
+
+In our dealing with provenance, we are particularly interested in the level of cryptographic trust that provenance can enhance.
+We are not interested in provenance for other reasons (such as, for example, digital rights management).
+
+One anticipated usage of Bindle supposes that parcels from one invoice will be re-used (intentionally) within another invoice.
+For example, an application might fetch a dependency (as a bindle), and then include some or all of that dependency's parcels in its own invoice.
+
+In cases such as this, it is useful to retain sufficient information to reconstruct provenance.
+
+For example, say an application called `mybindle 0.1.0` uses a parcel originally from `footastic 1.2.3`.
+The `footastic 1.2.3` bindle has information that is useful to retain:
+
+- Original metadata
+- Signatures
+
+But that information is specific to the original invoice.
+Transferring the signature from the original invoice to the present invoice would not make sense,
+because signatures are contextual.
+A better solution is for a bindle to include references to any other bindles used in constructing the package.
+
+For this reason, the `[[parcel]]` description includes an `origin` field that can point to the original invoice from which the parcel was derived.
+
+Given this field, an auditing agent can fetch a bindle, and then for each parcel with an origin, fetch the referent.
+From there, it can reconstruct the provenance of the parcels in a bindle.
+
+Agents SHOULD include `origin` information on each parcel that is known to have come from another bindle.
+
+As a technical detail, there is no guarantee that just because two parcels are identical in content, they share provenance.
+
+Consider the trivial, but nearly universal example:
+
+```
+Hello, world!
+```
+
+It is possible that multiple invoices might all use a parcel with exactly the same content,
+but not through shared provenance. Bindle (as a virtue of the system) would crate and maintain
+only one internal parcel for all of the different invoices that reference the file whose
+contents are `Hello, world!`.
+
+Second, the provenance trail is discretionary, and directed from referrer to referent.
+In other words, the invoice that uses parcels that were obtained via another invoice is
+the thing that references the other invoice.
+Therefore, the author of an invoice may omit reference to the origin, and this situation
+becomes undetectable in the system. This is not a problem in trust-based provenance systems,
+since in such situations, removing the `origin` is harmful to a provenance evaluation.
+
+For these two reasons, Bindle's provenance system is not particularly well suited for digital rights management.

@@ -29,3 +29,4 @@ label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
 label.mediaType = "application/x-javascript"
 label.name = "foo.js"
 label.size = 248098
+label.origin = "footastic 1.2.3"

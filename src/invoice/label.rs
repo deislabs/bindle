@@ -17,6 +17,7 @@ pub struct Label {
     pub size: u64,
     pub annotations: Option<AnnotationMap>,
     pub feature: Option<FeatureMap>,
+    pub origin: Option<String>,
 }
 
 impl Label {
@@ -38,6 +39,7 @@ impl Default for Label {
             size: 0,
             annotations: None,
             feature: None,
+            origin: None,
         }
     }
 }
