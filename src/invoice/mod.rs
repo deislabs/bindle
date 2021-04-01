@@ -181,6 +181,10 @@ impl Invoice {
                     let cleartext = self.cleartext(s.by.clone(), s.role.clone());
 
                     // Verify the signature
+                    // TODO: This would allow a trivial DOS attack in which an attacker
+                    // would only need to attach a known-bad signature, and that would
+                    // prevent the module from ever being usable. This is marginally
+                    // better if we only verify signatures on known keys.
                     self.verify_signature(&s, cleartext.as_bytes())?;
 
                     // See if the public key is known to us
