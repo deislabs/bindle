@@ -115,14 +115,11 @@ async fn main() -> std::result::Result<(), ClientError> {
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join("secret_keys.toml")
             });
-            println!("Writing keys to {}", dir.to_string_lossy());
+            println!("Writing keys to {}", dir.display());
 
-            match std::fs::metadata(dir.clone()) {
-                Err(_) => {
-                    println!(
-                        "File {} does not exist. Creating it.",
-                        dir.to_string_lossy()
-                    );
+            match tokio::fs::metadata(&dir).await {
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
+                    println!("File {} does not exist. Creating it.", dir.display());
                     let mut keyfile = SecretKeyFile::default();
                     let newkey = SecretKeyEntry::new(
                         create_opts.label,
@@ -131,6 +128,7 @@ async fn main() -> std::result::Result<(), ClientError> {
                     keyfile.key.push(newkey);
                     keyfile
                         .save_file(dir)
+                        .await
                         .map_err(|e| ClientError::Other(e.to_string()))?;
                 }
                 Ok(info) => {
@@ -141,6 +139,7 @@ async fn main() -> std::result::Result<(), ClientError> {
                         ));
                     }
                     let mut keyfile = SecretKeyFile::load_file(dir.clone())
+                        .await
                         .map_err(|e| ClientError::Other(e.to_string()))?;
                     let newkey = SecretKeyEntry::new(
                         create_opts.label,
@@ -149,8 +148,10 @@ async fn main() -> std::result::Result<(), ClientError> {
                     keyfile.key.push(newkey);
                     keyfile
                         .save_file(dir)
+                        .await
                         .map_err(|e| ClientError::Other(e.to_string()))?;
                 }
+                Err(e) => return Err(ClientError::Other(e.to_string())),
             }
         }
     }

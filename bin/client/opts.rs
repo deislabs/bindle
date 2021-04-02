@@ -68,7 +68,7 @@ pub enum SubCommand {
     GenerateLabel(GenerateLabel),
     #[clap(
         name = "create-key",
-        about = "creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email addres, of the form 'name <email>'."
+        about = "creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email address, of the form 'name <email>'."
     )]
     CreateKey(CreateKey),
 }
@@ -241,7 +241,7 @@ pub struct CreateKey {
     #[clap(
         short = 'f',
         long = "secrets-file",
-        about = "the path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appened."
+        about = "the path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
     )]
     pub secret_file: Option<PathBuf>,
 }

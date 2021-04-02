@@ -178,16 +178,16 @@ impl Default for SecretKeyFile {
 }
 
 impl SecretKeyFile {
-    pub fn load_file(path: PathBuf) -> Result<SecretKeyFile, anyhow::Error> {
-        let s = std::fs::read_to_string(path)?;
+    pub async fn load_file(path: PathBuf) -> anyhow::Result<SecretKeyFile> {
+        let s = tokio::fs::read_to_string(path).await?;
         let t = toml::from_str(s.as_str())?;
         Ok(t)
     }
 
     /// Save the present keyfile to the named path.
-    pub fn save_file(&self, dest: PathBuf) -> anyhow::Result<()> {
+    pub async fn save_file(&self, dest: PathBuf) -> anyhow::Result<()> {
         let out = toml::to_vec(self)?;
-        std::fs::write(dest, out)?;
+        tokio::fs::write(dest, out).await?;
         Ok(())
     }
 }
@@ -214,8 +214,8 @@ mod test {
         assert!(ke.label_signature.is_some());
     }
 
-    #[test]
-    fn test_secret_keys() {
+    #[tokio::test]
+    async fn test_secret_keys() {
         let mut kr = SecretKeyFile::default();
         assert_eq!(kr.key.len(), 0);
         kr.key.push(SecretKeyEntry::new(
@@ -228,8 +228,11 @@ mod test {
         let dest = outdir.path().join("testkey.toml");
 
         kr.save_file(dest.clone())
+            .await
             .expect("Should write new key to file");
-        let newfile = SecretKeyFile::load_file(dest).expect("Should load key from file");
+        let newfile = SecretKeyFile::load_file(dest)
+            .await
+            .expect("Should load key from file");
         assert_eq!(newfile.key.len(), 1);
     }
 }
