@@ -134,10 +134,12 @@ impl KeyEntry {
     }
     pub fn verify_label(self, key: PublicKey) -> anyhow::Result<()> {
         match self.label_signature {
-            // If there is no label signature, then I guess we say everything's good.
-            None => Ok(()),
+            None => {
+                log::info!("Label was not signed. Skipping.");
+                Ok(())
+            }
             Some(txt) => {
-                let decoded_txt = base64::decode(txt.as_bytes())?;
+                let decoded_txt = base64::decode(txt)?;
                 let sig = EdSignature::new(decoded_txt.as_slice().try_into()?);
                 key.verify_strict(self.label.as_bytes(), &sig)?;
                 Ok(())
