@@ -1,9 +1,10 @@
 //! Contains the Signature type along with associated types and Roles
 
-use ed25519_dalek::{Keypair, Signer};
+use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use std::convert::TryInto;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 /// The latest key ring version supported by this library.
@@ -131,6 +132,20 @@ impl KeyEntry {
         let sig = key.sign(self.label.as_bytes());
         self.label_signature = Some(base64::encode(sig.to_bytes()));
     }
+    pub fn verify_label(self, key: PublicKey) -> anyhow::Result<()> {
+        match self.label_signature {
+            None => {
+                log::info!("Label was not signed. Skipping.");
+                Ok(())
+            }
+            Some(txt) => {
+                let decoded_txt = base64::decode(txt)?;
+                let sig = EdSignature::new(decoded_txt.as_slice().try_into()?);
+                key.verify_strict(self.label.as_bytes(), &sig)?;
+                Ok(())
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -150,8 +165,11 @@ mod test {
             label_signature: None,
         };
 
+        let pubkey = keypair.public;
         ke.sign_label(keypair);
 
         assert!(ke.label_signature.is_some());
+
+        ke.verify_label(pubkey).expect("verification failed");
     }
 }
