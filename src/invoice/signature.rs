@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::path::PathBuf;
 
 /// The latest key ring version supported by this library.
 pub const KEY_RING_VERSION: &str = "1.0";
@@ -133,6 +134,64 @@ impl KeyEntry {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretKeyEntry {
+    /// A label for this key.
+    ///
+    /// This is intended for human consumption
+    pub label: String,
+    /// Base64-encoded Ed25519 key
+    pub keypair: String,
+    /// The roles this key should be used for.
+    /// The default should be SignatureRole::Creator
+    pub roles: Vec<SignatureRole>,
+}
+
+impl SecretKeyEntry {
+    pub fn new(label: String, roles: Vec<SignatureRole>) -> Self {
+        let mut rng = rand::rngs::OsRng {};
+        let rawkey = Keypair::generate(&mut rng);
+        let keypair = base64::encode(rawkey.to_bytes());
+        Self {
+            label,
+            keypair,
+            roles,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretKeyFile {
+    pub version: String,
+    pub key: Vec<SecretKeyEntry>,
+}
+
+impl Default for SecretKeyFile {
+    fn default() -> Self {
+        Self {
+            version: KEY_RING_VERSION.to_owned(),
+            key: vec![],
+        }
+    }
+}
+
+impl SecretKeyFile {
+    pub fn load_file(path: PathBuf) -> Result<SecretKeyFile, anyhow::Error> {
+        let s = std::fs::read_to_string(path)?;
+        let t = toml::from_str(s.as_str())?;
+        Ok(t)
+    }
+
+    /// Save the present keyfile to the named path.
+    pub fn save_file(&self, dest: PathBuf) -> anyhow::Result<()> {
+        let out = toml::to_vec(self)?;
+        std::fs::write(dest, out)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -153,5 +212,24 @@ mod test {
         ke.sign_label(keypair);
 
         assert!(ke.label_signature.is_some());
+    }
+
+    #[test]
+    fn test_secret_keys() {
+        let mut kr = SecretKeyFile::default();
+        assert_eq!(kr.key.len(), 0);
+        kr.key.push(SecretKeyEntry::new(
+            "test".to_owned(),
+            vec![SignatureRole::Proxy],
+        ));
+        assert_eq!(kr.key.len(), 1);
+
+        let outdir = tempfile::tempdir().expect("created a temp dir");
+        let dest = outdir.path().join("testkey.toml");
+
+        kr.save_file(dest.clone())
+            .expect("Should write new key to file");
+        let newfile = SecretKeyFile::load_file(dest).expect("Should load key from file");
+        assert_eq!(newfile.key.len(), 1);
     }
 }

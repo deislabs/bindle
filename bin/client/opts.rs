@@ -66,6 +66,11 @@ pub enum SubCommand {
         about = "generates a label for the given file and prints it to stdout. This can be used to generate the label and add it to an invoice"
     )]
     GenerateLabel(GenerateLabel),
+    #[clap(
+        name = "create-key",
+        about = "creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email addres, of the form 'name <email>'."
+    )]
+    CreateKey(CreateKey),
 }
 
 #[derive(Clap)]
@@ -223,6 +228,22 @@ pub struct GenerateLabel {
         about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
     )]
     pub media_type: Option<String>,
+}
+
+#[derive(Clap)]
+pub struct CreateKey {
+    #[clap(
+        index = 1,
+        value_name = "LABEL",
+        about = "The name of the key, such as 'Matt <me@example.com>'"
+    )]
+    pub label: String,
+    #[clap(
+        short = 'f',
+        long = "secrets-file",
+        about = "the path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appened."
+    )]
+    pub secret_file: Option<PathBuf>,
 }
 
 #[derive(Clap)]
