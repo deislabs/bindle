@@ -454,6 +454,7 @@ mod test {
             size: 101,
             annotations: None,
             feature: None,
+            origin: None,
         };
         let parcel = Parcel {
             label,
