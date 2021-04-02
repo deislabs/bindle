@@ -151,7 +151,7 @@ async fn main() -> std::result::Result<(), ClientError> {
                         .await
                         .map_err(|e| ClientError::Other(e.to_string()))?;
                 }
-                Err(e) => return Err(ClientError::Other(e.to_string())),
+                Err(e) => return Err(e.into()),
             }
         }
     }
