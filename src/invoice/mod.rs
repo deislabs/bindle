@@ -7,7 +7,7 @@ mod condition;
 mod group;
 mod label;
 mod parcel;
-mod signature;
+pub mod signature;
 
 #[doc(inline)]
 pub use api::{ErrorResponse, InvoiceCreateResponse, MissingParcelsResponse, QueryOptions};

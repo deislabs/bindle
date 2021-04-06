@@ -9,7 +9,7 @@
 //! client and a server implementation, along with various other utilities
 
 mod id;
-mod invoice;
+pub mod invoice;
 
 pub mod async_util;
 #[cfg(feature = "caching")]

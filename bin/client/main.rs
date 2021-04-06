@@ -1,7 +1,8 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
+use bindle::invoice::signature::{SecretKeyEntry, SecretKeyFile};
 use bindle::provider::ProviderError;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
 use bindle::{
@@ -107,6 +108,51 @@ async fn main() -> std::result::Result<(), ClientError> {
             )
             .await?;
             println!("{}", toml::to_string_pretty(&label)?);
+        }
+        SubCommand::CreateKey(create_opts) => {
+            let dir = create_opts.secret_file.unwrap_or_else(|| {
+                default_config_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("secret_keys.toml")
+            });
+            println!("Writing keys to {}", dir.display());
+
+            match tokio::fs::metadata(&dir).await {
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
+                    println!("File {} does not exist. Creating it.", dir.display());
+                    let mut keyfile = SecretKeyFile::default();
+                    let newkey = SecretKeyEntry::new(
+                        create_opts.label,
+                        vec![bindle::SignatureRole::Creator],
+                    );
+                    keyfile.key.push(newkey);
+                    keyfile
+                        .save_file(dir)
+                        .await
+                        .map_err(|e| ClientError::Other(e.to_string()))?;
+                }
+                Ok(info) => {
+                    if !info.is_file() {
+                        eprint!("Path must point to a file.");
+                        return Err(ClientError::Other(
+                            "Keyfile cannot be directory or symlink".to_owned(),
+                        ));
+                    }
+                    let mut keyfile = SecretKeyFile::load_file(dir.clone())
+                        .await
+                        .map_err(|e| ClientError::Other(e.to_string()))?;
+                    let newkey = SecretKeyEntry::new(
+                        create_opts.label,
+                        vec![bindle::SignatureRole::Creator],
+                    );
+                    keyfile.key.push(newkey);
+                    keyfile
+                        .save_file(dir)
+                        .await
+                        .map_err(|e| ClientError::Other(e.to_string()))?;
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
     }
 
@@ -263,4 +309,8 @@ fn map_storage_error(e: ProviderError) -> ClientError {
         ProviderError::ProxyError(inner) => inner,
         _ => ClientError::Other(format!("{:?}", e)),
     }
+}
+
+fn default_config_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|v| v.join("bindle"))
 }

@@ -213,6 +213,28 @@ async fn test_get_invoice() {
 }
 
 #[tokio::test]
+async fn test_create_key() {
+    let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
+    let cmd = format!(
+        "run --features cli --bin bindle -- create-key testkey -f {}",
+        tempdir.path().join("testkey.toml").to_str().unwrap()
+    );
+    let output = std::process::Command::new("cargo")
+        .args(cmd.split(' '))
+        .env("BINDLE_SERVER_URL", "localhost:8080")
+        .output()
+        .expect("Key should get created");
+    assert_status(output, "Key should be generated");
+    assert!(
+        tokio::fs::metadata(tempdir.path().join("testkey.toml"))
+            .await
+            .expect("Unable to read keyfile")
+            .is_file(),
+        "Expected key file"
+    )
+}
+
+#[tokio::test]
 async fn test_get_parcel() {
     let controller = TestController::new().await;
     setup_data(&controller.client).await;
