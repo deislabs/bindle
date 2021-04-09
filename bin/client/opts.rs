@@ -72,8 +72,8 @@ pub enum SubCommand {
     )]
     CreateKey(CreateKey),
     #[clap(
-        name="sign-invoice",
-        about = "sign an invoice with the first creator key in your private keys"
+        name = "sign-invoice",
+        about = "sign an invoice with one of your secret keys"
     )]
     SignInvoice(SignInvoice),
 }
@@ -271,6 +271,12 @@ pub struct SignInvoice {
         about = "the role to sign with. Values are: c[reator], a[pprover], h[ost], p[roxy]. If no role is specified, 'creator' is used"
     )]
     pub role: Option<String>,
+    #[clap(
+        short = 'o',
+        long = "out",
+        about = "the location to write the modified invoice. By default, it will write to invoice-HASH.toml, where HASH is computed on name and version"
+    )]
+    pub destination: Option<String>,
 }
 
 #[derive(Clap)]

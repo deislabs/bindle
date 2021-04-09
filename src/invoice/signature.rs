@@ -52,6 +52,8 @@ pub enum SignatureError {
     UnknownSigningKey(String),
     #[error("none of the signatures are made with a known key")]
     NoKnownKey,
+    #[error("cannot sign the data again with a key that has already signed the data")]
+    DuplicateSignature,
 }
 
 /// The role of a signer in a signature block.
@@ -183,6 +185,8 @@ impl SecretKeyEntry {
         })?;
         let keypair = Keypair::from_bytes(&rawbytes).map_err(|e| {
             log::error!("Error loading key: {}", e);
+            // Don't leak information about the key, because this could be sent to
+            // a remote. A generic error is all the user should see.
             SignatureError::CorruptKey("Could not load keypair".to_owned())
         })?;
         Ok(keypair)

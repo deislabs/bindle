@@ -107,17 +107,20 @@ async fn main() -> std::result::Result<(), ClientError> {
             });
             // Signing key
             let (key, label) = first_matching_key(keyfile, &role).await?;
-            println!("Signing {} with role {:?}", sign_opts.invoice, role);
 
-            let h = tokio::fs::read(sign_opts.invoice).await?;
+            // Load the invoice and sign it.
+            let mut inv: Invoice = bindle::client::load::toml(sign_opts.invoice.as_str()).await?;
+            inv.sign(label, role.clone(), &key)?;
 
-            let mut inv: Invoice = toml::from_slice(&h)?; //bindle::client::load::toml(sign_opts.invoice).await?;
-            inv.sign(label, role, key)?;
+            // Write the signed invoice to a file.
+            let outfile = sign_opts
+                .destination
+                .unwrap_or_else(|| format!("./invoice-{}.toml", inv.canonical_name()));
 
-            // Temporarily, we write to this special file. We need to figure out what we actually
-            // want to do.
-            let outfile = format!("./invoice-{}.toml", inv.canonical_name());
-            println!("Writing signed invoice to {}", outfile);
+            println!(
+                "Signed as {} with role {} and wrote to {}",
+                sign_opts.invoice, role, outfile
+            );
             tokio::fs::write(outfile, toml::to_string(&inv)?).await?;
         }
         SubCommand::PushFile(push_opts) => {
