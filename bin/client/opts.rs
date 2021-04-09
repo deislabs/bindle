@@ -71,6 +71,11 @@ pub enum SubCommand {
         about = "creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email address, of the form 'name <email>'."
     )]
     CreateKey(CreateKey),
+    #[clap(
+        name="sign-invoice",
+        about = "sign an invoice with the first creator key in your private keys"
+    )]
+    SignInvoice(SignInvoice),
 }
 
 #[derive(Clap)]
@@ -244,6 +249,28 @@ pub struct CreateKey {
         about = "the path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
     )]
     pub secret_file: Option<PathBuf>,
+}
+
+#[derive(Clap)]
+pub struct SignInvoice {
+    #[clap(
+        index = 1,
+        value_name = "INVOICE",
+        about = "the path to the invoice to sign"
+    )]
+    pub invoice: String,
+    #[clap(
+        short = 'f',
+        long = "secrets-file",
+        about = "the path to the file where secret keys are stored. Use 'create-key' to create a new key"
+    )]
+    pub secret_file: Option<PathBuf>,
+    #[clap(
+        short = 'r',
+        long = "role",
+        about = "the role to sign with. Values are: c[reator], a[pprover], h[ost], p[roxy]. If no role is specified, 'creator' is used"
+    )]
+    pub role: Option<String>,
 }
 
 #[derive(Clap)]

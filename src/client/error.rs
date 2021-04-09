@@ -55,6 +55,9 @@ pub enum ClientError {
     #[error("User has invalid credentials or is not authorized to access the requested resource")]
     Unauthorized,
 
+    #[error("Signature error: {0:?}")]
+    SignatureError(#[from] crate::invoice::signature::SignatureError),
+
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying
     /// issue
     #[error("{0}")]
