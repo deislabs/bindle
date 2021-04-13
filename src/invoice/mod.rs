@@ -39,6 +39,68 @@ pub type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
 /// Alias for annotations map
 pub type AnnotationMap = BTreeMap<String, String>;
 
+/// A strategy for verifying an invoice.
+trait VerificationStrategy {
+    fn verify(&self, inv: &Invoice, keyring: Vec<PublicKey>) -> Result<(), SignatureError>;
+    fn verify_signature(&self, sig: &Signature, cleartext: &[u8]) -> Result<(), SignatureError> {
+        let pk = base64::decode(sig.key.as_bytes())
+            .map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
+        let sig_block = base64::decode(sig.signature.as_bytes())
+            .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
+
+        let pubkey =
+            PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
+        let ed_sig = EdSignature::new(
+            sig_block
+                .as_slice()
+                .try_into()
+                .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?,
+        );
+        pubkey
+            .verify_strict(cleartext, &ed_sig)
+            .map_err(|_| SignatureError::Unverified(sig.key.clone()))
+    }
+}
+
+pub struct DefaultVerificationStrategy {}
+impl VerificationStrategy for DefaultVerificationStrategy {
+    fn verify(&self, inv: &Invoice, keyring: Vec<PublicKey>) -> Result<(), SignatureError> {
+        // Either the Creator or an Approver must be in the keyring
+        match inv.signature.as_ref() {
+            None => Ok(()),
+            Some(signatures) => {
+                let mut known_key = false;
+                for s in signatures {
+                    let cleartext = self.cleartext(s.by.clone(), s.role.clone());
+
+                    // Verify the signature
+                    // TODO: This would allow a trivial DOS attack in which an attacker
+                    // would only need to attach a known-bad signature, and that would
+                    // prevent the module from ever being usable. This is marginally
+                    // better if we only verify signatures on known keys.
+                    self.verify_signature(&s, cleartext.as_bytes())?;
+
+                    // See if the public key is known to us
+                    let pubkey = base64::decode(s.key.clone())
+                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
+                    let pko = PublicKey::from_bytes(pubkey.as_slice())
+                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
+                    if keyring.contains(&pko) {
+                        known_key = true;
+                    }
+                }
+                if !known_key {
+                    // If we get here, then the none of the signatures were created with
+                    // a key from the keyring. This means the package is untrusted.
+                    Err(SignatureError::NoKnownKey)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
 /// The main structure for a Bindle invoice.
 ///
 /// The invoice describes a specific version of a bindle. For example, the bindle
@@ -158,8 +220,9 @@ impl Invoice {
         &mut self,
         signer_name: String,
         signer_role: SignatureRole,
-        key: &Keypair,
+        keyfile: &SecretKeyEntry,
     ) -> Result<(), SignatureError> {
+        let key = keyfile.key()?;
         // The spec says it is illegal for the a single key to sign the same invoice
         // more than once.
         let encoded_key = base64::encode(key.public.to_bytes());
@@ -193,6 +256,14 @@ impl Invoice {
         };
 
         Ok(())
+    }
+
+    pub fn verify2(
+        &self,
+        strategy: impl VerificationStrategy,
+        keyring: Vec<PublicKey>,
+    ) -> Result<(), SignatureError> {
+        strategy.verify(&self, keyring)
     }
 
     /// Verify that every signature on this invoice is correct.

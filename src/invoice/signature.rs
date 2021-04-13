@@ -177,7 +177,7 @@ impl SecretKeyEntry {
         }
     }
 
-    pub fn key(&self) -> Result<Keypair, SignatureError> {
+    pub(crate) fn key(&self) -> Result<Keypair, SignatureError> {
         let rawbytes = base64::decode(&self.keypair).map_err(|_e| {
             // We swallow the source error because it could disclose information about
             // the secret key.
@@ -192,6 +192,10 @@ impl SecretKeyEntry {
         Ok(keypair)
     }
 }
+
+// pub trait KeyLoader {
+//     fn load(&self) -> anyhow::Result<SecretKeyFile>;
+// }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -221,6 +225,10 @@ impl SecretKeyFile {
         let out = toml::to_vec(self)?;
         tokio::fs::write(dest, out).await?;
         Ok(())
+    }
+
+    pub fn get_first_matching(&self, role: SignatureRole) -> Option<SecretKeyEntry> {
+        self.key.iter().find(|key| k.roles.contains(role)).clone()
     }
 }
 

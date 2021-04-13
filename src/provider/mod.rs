@@ -34,6 +34,23 @@ use crate::Id;
 /// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
 pub type Result<T> = core::result::Result<T, ProviderError>;
 
+pub trait Strategy {
+    fn validate(&self, inv: &Invoice) -> Result<()>;
+}
+
+pub struct BasicStrategy {
+    keychain: String,
+    verify_all: bool,
+}
+
+impl BasicStrategy {
+    pub fn new(keychain: String, roles: Vec<SignatureRole>) -> Self {}
+}
+
+pub trait KeyLoader {
+    fn load(&self) -> Result<SecretKeyFile>;
+}
+
 /// The basic functionality required for a Bindle provider.
 ///
 /// Please note that due to this being an `async_trait`, the types might look complicated. Look at
@@ -51,7 +68,13 @@ pub trait Provider {
     ///
     /// It must verify that each referenced parcel is present in storage. Any parcel that is not
     /// present must be returned in the list of labels.
-    async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>>;
+    async fn create_invoice(
+        &self,
+        inv: &super::Invoice,
+        role: SignatureRole,
+        key: TryInto<SecretKeyFile>,
+        verification_strategy: VerificationStrategy,
+    ) -> Result<Vec<super::Label>>;
 
     /// Load an invoice and return it
     ///

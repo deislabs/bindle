@@ -55,6 +55,12 @@ pub mod v1 {
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let accept = accept_header.unwrap_or_default();
+        trace!("Create invoice request with invoice: {:?}", inv);
+
+        // Right here, I need to load one secret key and a ring of public keys.
+        // Then I need to validate the invoice against the public keys, sign the invoice
+        // with my private key, and THEN go on to store.create_invoice()
+
         let labels = match store.create_invoice(&inv).await {
             Ok(l) => l,
             Err(e) => {
