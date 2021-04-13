@@ -77,7 +77,7 @@ setting = "two"
 setting = "one"
 ```
 
-The purpose of dividing features into sections is to enforce a top-level grouping mechanism to divide similar properties up. By convention, `SECTION_NAME` MAY be either the name of the specific runtime or of a group of related configuration parameters.
+The purpose of dividing features into sections is to enforce a top-level grouping mechanism to divide similar properties. By convention, `SECTION_NAME` MAY be either the name of the specific runtime or of a group of related configuration parameters.
 
 For example, consider a two-section feature set:
 
