@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
-use bindle::invoice::signature::{SecretKeyEntry, SecretKeyFile};
+use bindle::invoice::signature::{Keypair, SecretKeyEntry, SecretKeyFile, SignatureRole};
+use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
 use bindle::{
@@ -90,6 +91,37 @@ async fn main() -> std::result::Result<(), ClientError> {
                 .create_invoice_from_file(push_opts.path)
                 .await?;
             println!("Invoice {} created", resp.invoice.bindle.id);
+        }
+        SubCommand::SignInvoice(sign_opts) => {
+            // Role
+            let role = if let Some(r) = sign_opts.role {
+                role_from_name(r)?
+            } else {
+                SignatureRole::Creator
+            };
+            // Keyfile
+            let keyfile = sign_opts.secret_file.unwrap_or_else(|| {
+                default_config_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("secret_keys.toml")
+            });
+            // Signing key
+            let (key, label) = first_matching_key(keyfile, &role).await?;
+
+            // Load the invoice and sign it.
+            let mut inv: Invoice = bindle::client::load::toml(sign_opts.invoice.as_str()).await?;
+            inv.sign(label, role.clone(), &key)?;
+
+            // Write the signed invoice to a file.
+            let outfile = sign_opts
+                .destination
+                .unwrap_or_else(|| format!("./invoice-{}.toml", inv.canonical_name()));
+
+            println!(
+                "Signed as {} with role {} and wrote to {}",
+                sign_opts.invoice, role, outfile
+            );
+            tokio::fs::write(outfile, toml::to_string(&inv)?).await?;
         }
         SubCommand::PushFile(push_opts) => {
             let label =
@@ -313,4 +345,31 @@ fn map_storage_error(e: ProviderError) -> ClientError {
 
 fn default_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|v| v.join("bindle"))
+}
+
+fn role_from_name(name: String) -> Result<SignatureRole> {
+    match name.as_str() {
+        "c" | "creator" => Ok(SignatureRole::Creator),
+        "h" | "host" => Ok(SignatureRole::Host),
+        "a" | "approver" => Ok(SignatureRole::Approver),
+        "p" | "proxy" => Ok(SignatureRole::Proxy),
+        _ => Err(ClientError::Other("Unknown role".to_owned())),
+    }
+}
+
+async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<(Keypair, String)> {
+    let keys = SecretKeyFile::load_file(fpath.clone()).await.map_err(|e| {
+        ClientError::Other(format!(
+            "Error loading file {}: {}",
+            fpath.display(),
+            e.to_string()
+        ))
+    })?;
+    for key in keys.key {
+        if key.roles.contains(role) {
+            let pair = key.key().map_err(|e| ClientError::Other(e.to_string()))?;
+            return Ok((pair, key.label));
+        }
+    }
+    Err(ClientError::Other("No satisfactory key found".to_owned()))
 }

@@ -213,25 +213,49 @@ async fn test_get_invoice() {
 }
 
 #[tokio::test]
-async fn test_create_key() {
+async fn test_create_key_and_sign_invoice() {
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
-    let cmd = format!(
-        "run --features cli --bin bindle -- create-key testkey -f {}",
-        tempdir.path().join("testkey.toml").to_str().unwrap()
-    );
-    let output = std::process::Command::new("cargo")
-        .args(cmd.split(' '))
-        .env("BINDLE_SERVER_URL", "localhost:8080")
-        .output()
-        .expect("Key should get created");
-    assert_status(output, "Key should be generated");
-    assert!(
-        tokio::fs::metadata(tempdir.path().join("testkey.toml"))
-            .await
-            .expect("Unable to read keyfile")
-            .is_file(),
-        "Expected key file"
-    )
+    // Create a signing key
+    {
+        let cmd = format!(
+            "run --features cli --bin bindle -- create-key testkey -f {}",
+            tempdir.path().join("testkey.toml").to_str().unwrap()
+        );
+        let output = std::process::Command::new("cargo")
+            .args(cmd.split(' '))
+            .env("BINDLE_SERVER_URL", "localhost:8080")
+            .output()
+            .expect("Key should get created");
+        assert_status(output, "Key should be generated");
+        assert!(
+            tokio::fs::metadata(tempdir.path().join("testkey.toml"))
+                .await
+                .expect("Unable to read keyfile")
+                .is_file(),
+            "Expected key file"
+        );
+    }
+    // Use the new key to sign an invoice
+    {
+        let cmd = format!(
+            "run --features cli --bin bindle -- sign-invoice ./test/data/simple-invoice.toml -o {} -f {}",
+            tempdir.path().join("signed-invoice.toml").to_str().unwrap(),
+            tempdir.path().join("testkey.toml").to_str().unwrap()
+        );
+        let output = std::process::Command::new("cargo")
+            .args(cmd.split(' '))
+            .env("BINDLE_SERVER_URL", "localhost:8080")
+            .output()
+            .expect("Invoice should get signed");
+        assert_status(output, "Invoice should get signed");
+        assert!(
+            tokio::fs::metadata(tempdir.path().join("signed-invoice.toml"))
+                .await
+                .expect("Unable to read invoice")
+                .is_file(),
+            "Expected signed invoice"
+        )
+    }
 }
 
 #[tokio::test]

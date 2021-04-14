@@ -130,8 +130,19 @@ impl Invoice {
         &mut self,
         signer_name: String,
         signer_role: SignatureRole,
-        key: Keypair,
+        key: &Keypair,
     ) -> Result<(), SignatureError> {
+        // The spec says it is illegal for the a single key to sign the same invoice
+        // more than once.
+        let encoded_key = base64::encode(key.public.to_bytes());
+        if let Some(sigs) = self.signature.as_ref() {
+            for s in sigs {
+                if s.key == encoded_key {
+                    return Err(SignatureError::DuplicateSignature);
+                }
+            }
+        }
+
         let cleartext = self.cleartext(signer_name.clone(), signer_role.clone());
         let signature: EdSignature = key.sign(cleartext.as_bytes());
 
@@ -142,7 +153,7 @@ impl Invoice {
 
         let signature_entry = Signature {
             by: signer_name,
-            key: base64::encode(key.public.to_bytes()),
+            key: encoded_key,
             signature: base64::encode(signature.to_bytes()),
             role: signer_role,
             at: ts.as_secs(),
@@ -331,12 +342,17 @@ mod test {
 
         // Add two signatures
         invoice
-            .sign(signer_name1, SignatureRole::Creator, keypair1)
+            .sign(signer_name1, SignatureRole::Creator, &keypair1)
             .expect("sign the parcel");
 
         invoice
-            .sign(signer_name2, SignatureRole::Proxy, keypair2)
+            .sign(signer_name2.clone(), SignatureRole::Proxy, &keypair2)
             .expect("sign the parcel");
+
+        // Should not be able to sign the same invoice again with the same key, even with a different role
+        assert!(invoice
+            .sign(signer_name2, SignatureRole::Host, &keypair2)
+            .is_err());
 
         println!("{}", toml::to_string(&invoice).unwrap());
 

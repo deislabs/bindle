@@ -1,6 +1,6 @@
 //! Contains the Signature type along with associated types and Roles
 
-use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
+pub use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -52,13 +52,15 @@ pub enum SignatureError {
     UnknownSigningKey(String),
     #[error("none of the signatures are made with a known key")]
     NoKnownKey,
+    #[error("cannot sign the data again with a key that has already signed the data")]
+    DuplicateSignature,
 }
 
 /// The role of a signer in a signature block.
 ///
 /// Signatories on a signature must have an associated role, as defined in the
 /// specification.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum SignatureRole {
     Creator,
@@ -173,6 +175,21 @@ impl SecretKeyEntry {
             keypair,
             roles,
         }
+    }
+
+    pub fn key(&self) -> Result<Keypair, SignatureError> {
+        let rawbytes = base64::decode(&self.keypair).map_err(|_e| {
+            // We swallow the source error because it could disclose information about
+            // the secret key.
+            SignatureError::CorruptKey("Base64 decoding of the keypair failed".to_owned())
+        })?;
+        let keypair = Keypair::from_bytes(&rawbytes).map_err(|e| {
+            log::error!("Error loading key: {}", e);
+            // Don't leak information about the key, because this could be sent to
+            // a remote. A generic error is all the user should see.
+            SignatureError::CorruptKey("Could not load keypair".to_owned())
+        })?;
+        Ok(keypair)
     }
 }
 
