@@ -100,11 +100,11 @@ async fn main() -> std::result::Result<(), ClientError> {
                 SignatureRole::Creator
             };
             // Keyfile
-            let keyfile = sign_opts.secret_file.unwrap_or_else(|| {
-                default_config_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join("secret_keys.toml")
-            });
+            let keyfile = match sign_opts.secret_file {
+                Some(dir) => dir,
+                None => ensure_config_dir().await?.join("secret_keys.toml"),
+            };
+
             // Signing key
             let (key, label) = first_matching_key(keyfile, &role).await?;
 
@@ -142,11 +142,10 @@ async fn main() -> std::result::Result<(), ClientError> {
             println!("{}", toml::to_string_pretty(&label)?);
         }
         SubCommand::CreateKey(create_opts) => {
-            let dir = create_opts.secret_file.unwrap_or_else(|| {
-                default_config_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join("secret_keys.toml")
-            });
+            let dir = match create_opts.secret_file {
+                Some(dir) => dir,
+                None => ensure_config_dir().await?.join("secret_keys.toml"),
+            };
             println!("Writing keys to {}", dir.display());
 
             match tokio::fs::metadata(&dir).await {
@@ -345,6 +344,21 @@ fn map_storage_error(e: ProviderError) -> ClientError {
 
 fn default_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|v| v.join("bindle"))
+}
+
+/// Get the config dir, ensuring that it exists.
+///
+/// This will return the default config directory. If that directory does not
+/// exist, it will be created before the path is returned.
+///
+/// If the system does not have a configuration directory, this will create a directory named
+/// `bindle/` in the local working directory.
+///
+/// This will return an error
+async fn ensure_config_dir() -> Result<PathBuf> {
+    let dir = default_config_dir().unwrap_or_else(|| PathBuf::from("./bindle"));
+    tokio::fs::create_dir_all(dir.clone()).await?;
+    Ok(dir)
 }
 
 fn role_from_name(name: String) -> Result<SignatureRole> {
