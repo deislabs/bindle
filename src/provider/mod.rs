@@ -29,11 +29,15 @@ use thiserror::Error;
 use tokio_stream::Stream;
 
 use crate::id::ParseError;
+use crate::invoice::{
+    signature::SecretKeyFileLoader, Invoice, SignatureRole, VerificationStrategy,
+};
 use crate::Id;
 
 /// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
 pub type Result<T> = core::result::Result<T, ProviderError>;
 
+/*
 pub trait Strategy {
     fn validate(&self, inv: &Invoice) -> Result<()>;
 }
@@ -50,6 +54,7 @@ impl BasicStrategy {
 pub trait KeyLoader {
     fn load(&self) -> Result<SecretKeyFile>;
 }
+*/
 
 /// The basic functionality required for a Bindle provider.
 ///
@@ -72,8 +77,8 @@ pub trait Provider {
         &self,
         inv: &super::Invoice,
         role: SignatureRole,
-        key: TryInto<SecretKeyFile>,
-        verification_strategy: VerificationStrategy,
+        keyloader: SecretKeyFileLoader,
+        verification_strategy: impl VerificationStrategy,
     ) -> Result<Vec<super::Label>>;
 
     /// Load an invoice and return it

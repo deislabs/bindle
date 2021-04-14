@@ -21,6 +21,7 @@ use tokio_util::io::StreamReader;
 use tracing::{debug, error, info, instrument, trace, warn};
 use tracing_futures::Instrument;
 
+use crate::invoice::{signature::SecretKeyFileLoader, SignatureRole, VerificationStrategy};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::search::Search;
 use crate::Id;
@@ -151,7 +152,13 @@ impl<T: Search + Send + Sync> FileProvider<T> {
 #[async_trait::async_trait]
 impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     #[instrument(level = "trace", skip(self, inv), fields(id = %inv.bindle.id))]
-    async fn create_invoice(&self, inv: &crate::Invoice) -> Result<Vec<crate::Label>> {
+    async fn create_invoice(
+        &self,
+        inv: &crate::Invoice,
+        role: SignatureRole,
+        keyloader: SecretKeyFileLoader,
+        strategy: VerificationStrategy,
+    ) -> Result<Vec<crate::Label>> {
         // It is illegal to create a yanked invoice.
         if inv.yanked.unwrap_or(false) {
             debug!(id = %inv.bindle.id, "Invoice being created is set to yanked");

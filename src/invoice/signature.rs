@@ -227,10 +227,34 @@ impl SecretKeyFile {
         Ok(())
     }
 
-    pub fn get_first_matching(&self, role: SignatureRole) -> Option<SecretKeyEntry> {
-        self.key.iter().find(|key| k.roles.contains(role)).clone()
+    pub fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
+        self.key.iter().find(|k| k.roles.contains(role)).clone()
     }
 }
+
+pub struct SecretKeyFileLoader {
+    path: PathBuf,
+}
+impl SecretKeyFileLoader {
+    pub async fn load_file(&self) -> anyhow::Result<SecretKeyFile> {
+        let s = tokio::fs::read_to_string(self.path.clone()).await?;
+        let t = toml::from_str(s.as_str())?;
+        Ok(t)
+    }
+
+    /// Save the present keyfile to the named path.
+    pub async fn save_file(&self, keyfile: &SecretKeyFile) -> anyhow::Result<()> {
+        let out = toml::to_vec(keyfile)?;
+        tokio::fs::write(self.path.clone(), out).await?;
+        Ok(())
+    }
+}
+// impl TryInto<SecretKeyFile> for SecretKeyFileLoader {
+//     type Error = anyhow::Error;
+//     fn try_into(self) -> Result<SecretKeyFile, Self::Error> {
+//         self.load_file()
+//     }
+// }
 
 #[cfg(test)]
 mod test {

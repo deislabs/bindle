@@ -334,7 +334,7 @@ The result is that every signature is partially tested, at least one must be ful
 
 (Bindle currently implements this strategy, but in the future, strategy will be configurable)
 
-## Strategy 5: Complete Verification
+## Strategy 5: Exhaustive Verification
 
 In this strategy, _every signature on the invoice_ must be verified.
 

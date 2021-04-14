@@ -22,7 +22,7 @@ pub use label::Label;
 #[doc(inline)]
 pub use parcel::Parcel;
 #[doc(inline)]
-pub use signature::{Signature, SignatureError, SignatureRole};
+pub use signature::{SecretKeyEntry, Signature, SignatureError, SignatureRole};
 
 use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use semver::{Compat, Version, VersionReq};
@@ -39,8 +39,17 @@ pub type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
 /// Alias for annotations map
 pub type AnnotationMap = BTreeMap<String, String>;
 
+/// This enumerates the verifications strategies described in the signing spec.
+pub enum VerificationStrategy {
+    CreativeIntegrity,
+    AuthoritativeIntegrity,
+    MultipleAttestation(Vec<SignatureRole>),
+    GreedyVerification,
+    ExhaustiveVerification,
+}
+
 /// A strategy for verifying an invoice.
-trait VerificationStrategy {
+pub trait VerificationStrategy2 {
     fn verify(&self, inv: &Invoice, keyring: Vec<PublicKey>) -> Result<(), SignatureError>;
     fn verify_signature(&self, sig: &Signature, cleartext: &[u8]) -> Result<(), SignatureError> {
         let pk = base64::decode(sig.key.as_bytes())
@@ -63,7 +72,7 @@ trait VerificationStrategy {
 }
 
 pub struct DefaultVerificationStrategy {}
-impl VerificationStrategy for DefaultVerificationStrategy {
+impl VerificationStrategy2 for DefaultVerificationStrategy {
     fn verify(&self, inv: &Invoice, keyring: Vec<PublicKey>) -> Result<(), SignatureError> {
         // Either the Creator or an Approver must be in the keyring
         match inv.signature.as_ref() {
@@ -71,7 +80,7 @@ impl VerificationStrategy for DefaultVerificationStrategy {
             Some(signatures) => {
                 let mut known_key = false;
                 for s in signatures {
-                    let cleartext = self.cleartext(s.by.clone(), s.role.clone());
+                    let cleartext = inv.cleartext(s.by.clone(), s.role.clone());
 
                     // Verify the signature
                     // TODO: This would allow a trivial DOS attack in which an attacker
@@ -260,10 +269,20 @@ impl Invoice {
 
     pub fn verify2(
         &self,
-        strategy: impl VerificationStrategy,
+        strategy: VerificationStrategy,
         keyring: Vec<PublicKey>,
     ) -> Result<(), SignatureError> {
-        strategy.verify(&self, keyring)
+        match strategy {
+            VerificationStrategy::GreedyVerification => self.verify(keyring),
+            VerificationStrategy::CreativeIntegrity => {
+                // For each signature, if the signature is a Creator, then verify
+            }
+            VerificationStrategy::CreativeIntegrity => {
+                // For each signature, if it is a Creator or Approver, verify it.
+                // As long as we find one known key that is legit, this passes.
+            }
+            _ => Err(SignatureError::NoKnownKey),
+        }
     }
 
     /// Verify that every signature on this invoice is correct.
@@ -429,15 +448,14 @@ mod test {
             .expect("If no signature, then this should verify fine");
 
         // Create two signing keys.
-        let mut rng = rand::rngs::OsRng {};
-        let keypair1 = Keypair::generate(&mut rng);
         let signer_name1 = "Matt Butcher <matt@example.com>".to_owned();
-
-        let keypair2 = Keypair::generate(&mut rng);
         let signer_name2 = "Not Matt Butcher <not.matt@example.com>".to_owned();
 
+        let keypair1 = SecretKeyEntry::new(signer_name1, vec![SignatureRole::Creator]);
+        let keypair2 = SecretKeyEntry::new(signer_name2, vec![SignatureRole::Proxy]);
+
         // Put one of the two keys on the keyring
-        let keyring = vec![keypair2.public];
+        let keyring = vec![keypair2.key().expect("generated key exists").public];
 
         // Add two signatures
         invoice
