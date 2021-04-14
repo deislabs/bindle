@@ -80,7 +80,11 @@ pub enum SubCommand {
 
 #[derive(Clap)]
 pub struct Info {
-    #[clap(index = 1, value_name = "BINDLE")]
+    #[clap(
+        index = 1,
+        value_name = "BINDLE",
+        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+    )]
     pub bindle_id: String,
     #[clap(
         short = 'y',
@@ -92,7 +96,11 @@ pub struct Info {
 
 #[derive(Clap)]
 pub struct Push {
-    #[clap(index = 1, value_name = "BINDLE")]
+    #[clap(
+        index = 1,
+        value_name = "BINDLE",
+        about = "The name of the bindle, e.g. foo/bar/baz/1.2.3"
+    )]
     pub bindle_id: String,
     #[clap(
         short = 'p',
@@ -281,7 +289,12 @@ pub struct SignInvoice {
 
 #[derive(Clap)]
 pub struct PushInvoice {
-    #[clap(index = 1, value_name = "FILE", default_value = "./invoice.toml")]
+    #[clap(
+        index = 1,
+        value_name = "FILE",
+        default_value = "./invoice.toml",
+        about = "The path to the invoice TOML file"
+    )]
     pub path: PathBuf,
 }
 
