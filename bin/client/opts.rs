@@ -15,7 +15,7 @@ pub struct Opts {
         short = 's',
         long = "server",
         env = "BINDLE_SERVER_URL",
-        about = "The address of the bindle server"
+        about = "The address of the bindle server. For the default local server, this should be http://localhost:8080/v1"
     )]
     pub server_url: String,
     #[clap(
@@ -113,7 +113,11 @@ pub struct Push {
 
 #[derive(Clap)]
 pub struct Get {
-    #[clap(index = 1, value_name = "BINDLE")]
+    #[clap(
+        index = 1,
+        value_name = "BINDLE",
+        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+    )]
     pub bindle_id: String,
     #[clap(
         short = 'y',
@@ -131,7 +135,11 @@ pub struct Get {
 
 #[derive(Clap)]
 pub struct Yank {
-    #[clap(index = 1, value_name = "BINDLE")]
+    #[clap(
+        index = 1,
+        value_name = "BINDLE",
+        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+    )]
     pub bindle_id: String,
 }
 
@@ -193,9 +201,17 @@ impl From<Search> for bindle::QueryOptions {
 
 #[derive(Clap)]
 pub struct GetParcel {
-    #[clap(index = 1, value_name = "BINDLE_ID")]
+    #[clap(
+        index = 1,
+        value_name = "BINDLE_ID",
+        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+    )]
     pub bindle_id: bindle::Id,
-    #[clap(index = 2, value_name = "PARCEL_SHA")]
+    #[clap(
+        index = 2,
+        value_name = "PARCEL_SHA",
+        about = "The SHA256 of the parcel"
+    )]
     pub sha: String,
     #[clap(
         short = 'o',
@@ -208,7 +224,11 @@ pub struct GetParcel {
 
 #[derive(Clap)]
 pub struct GetInvoice {
-    #[clap(index = 1, value_name = "BINDLE")]
+    #[clap(
+        index = 1,
+        value_name = "BINDLE",
+        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+    )]
     pub bindle_id: String,
     #[clap(
         short = 'o',
@@ -227,7 +247,11 @@ pub struct GetInvoice {
 
 #[derive(Clap)]
 pub struct GenerateLabel {
-    #[clap(index = 1, value_name = "FILE")]
+    #[clap(
+        index = 1,
+        value_name = "FILE",
+        about = "The path to a file. This will generate a label for the file at that path"
+    )]
     pub path: PathBuf,
     #[clap(
         short = 'n',
@@ -302,7 +326,11 @@ pub struct PushInvoice {
 pub struct PushFile {
     #[clap(index = 1, value_name = "BINDLE_ID")]
     pub bindle_id: bindle::Id,
-    #[clap(index = 2, value_name = "FILE")]
+    #[clap(
+        index = 2,
+        value_name = "FILE",
+        about = "The path to the file that should be pushed as a parcel"
+    )]
     pub path: PathBuf,
     #[clap(
         short = 'n',
