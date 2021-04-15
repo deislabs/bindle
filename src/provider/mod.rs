@@ -28,33 +28,12 @@ use std::convert::TryInto;
 use thiserror::Error;
 use tokio_stream::Stream;
 
-use crate::id::ParseError;
-use crate::invoice::{
-    signature::SecretKeyFileLoader, Invoice, SignatureRole, VerificationStrategy,
-};
+use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::Id;
+use crate::{id::ParseError, SignatureError};
 
 /// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
 pub type Result<T> = core::result::Result<T, ProviderError>;
-
-/*
-pub trait Strategy {
-    fn validate(&self, inv: &Invoice) -> Result<()>;
-}
-
-pub struct BasicStrategy {
-    keychain: String,
-    verify_all: bool,
-}
-
-impl BasicStrategy {
-    pub fn new(keychain: String, roles: Vec<SignatureRole>) -> Self {}
-}
-
-pub trait KeyLoader {
-    fn load(&self) -> Result<SecretKeyFile>;
-}
-*/
 
 /// The basic functionality required for a Bindle provider.
 ///
@@ -75,11 +54,33 @@ pub trait Provider {
     /// present must be returned in the list of labels.
     async fn create_invoice(
         &self,
-        inv: &super::Invoice,
-        role: SignatureRole,
-        keyloader: SecretKeyFileLoader,
-        verification_strategy: impl VerificationStrategy,
+        inv: &mut super::Invoice, // Signing requires mutability
+        signing_role: SignatureRole,
+        secret_key: &SecretKeyEntry,
+        verification_strategy: VerificationStrategy,
     ) -> Result<Vec<super::Label>>;
+
+    /// This is the default implementation of the signing logic. All providers should call
+    /// this function to sign the invoice when creating a new invoice.
+    fn sign_invoice(
+        &self,
+        inv: &mut super::Invoice,
+        role: SignatureRole,
+        secret_key: &SecretKeyEntry,
+    ) -> Result<()> {
+        inv.sign(secret_key.label.clone(), role, secret_key)?;
+        Ok(())
+    }
+
+    fn verify_invoice(
+        &self,
+        inv: &super::Invoice,
+        strategy: VerificationStrategy,
+        keys: Vec<super::signature::PublicKey>,
+    ) -> Result<()> {
+        strategy.verify(inv, keys)?;
+        Ok(())
+    }
 
     /// Load an invoice and return it
     ///
@@ -211,6 +212,9 @@ pub enum ProviderError {
     /// The data cannot be properly serialized from TOML
     #[error("resource cannot be stored: {0:?}")]
     Unserializable(#[from] toml::ser::Error),
+
+    #[error("failed signature check invoice: {0:?}")]
+    FailedSigning(#[from] SignatureError),
 
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying
     /// issue

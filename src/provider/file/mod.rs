@@ -21,7 +21,7 @@ use tokio_util::io::StreamReader;
 use tracing::{debug, error, info, instrument, trace, warn};
 use tracing_futures::Instrument;
 
-use crate::invoice::{signature::SecretKeyFileLoader, SignatureRole, VerificationStrategy};
+use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::search::Search;
 use crate::Id;
@@ -154,9 +154,9 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     #[instrument(level = "trace", skip(self, inv), fields(id = %inv.bindle.id))]
     async fn create_invoice(
         &self,
-        inv: &crate::Invoice,
+        inv: &mut crate::Invoice,
         role: SignatureRole,
-        keyloader: SecretKeyFileLoader,
+        secret_key: &SecretKeyEntry,
         strategy: VerificationStrategy,
     ) -> Result<Vec<crate::Label>> {
         // It is illegal to create a yanked invoice.
@@ -164,6 +164,14 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             debug!(id = %inv.bindle.id, "Invoice being created is set to yanked");
             return Err(ProviderError::CreateYanked);
         }
+
+        // Currently this will always fail.
+        // We need a way of getting the public keyring into this context. Probably,
+        // it should be a field hanging of the FileProvider struct, since this
+        // is persistent over time.
+        self.verify_invoice(inv, strategy, vec![])?;
+
+        self.sign_invoice(inv, role, secret_key)?;
 
         let invoice_id = inv.canonical_name();
 
@@ -623,6 +631,7 @@ impl Drop for PartFile {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::invoice::signature::SecretKeyEntry;
     use crate::testing;
     use tempfile::tempdir;
     use tokio::io::AsyncReadExt;
@@ -642,19 +651,40 @@ mod test {
         );
     }
 
+    fn mock_secret_key() -> SecretKeyEntry {
+        SecretKeyEntry::new(
+            "Bogo Key".to_owned(),
+            vec![
+                SignatureRole::Host,
+                SignatureRole::Proxy,
+                SignatureRole::Creator,
+            ],
+        )
+    }
+
     #[tokio::test]
     async fn test_should_create_yank_invoice() {
         // Create a temporary directory
         let root = tempdir().unwrap();
-        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
         )
         .await;
         let inv_name = scaffold.invoice.canonical_name();
+
+        let sk = mock_secret_key();
         // Create an file
-        let missing = store.create_invoice(&scaffold.invoice).await.unwrap();
+        let missing = store
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            )
+            .await
+            .unwrap();
         assert_eq!(1, missing.len());
 
         // Out-of-band read the invoice
@@ -689,12 +719,21 @@ mod test {
         )
         .await;
 
-        assert!(store.create_invoice(&scaffold.invoice).await.is_err());
+        let sk = mock_secret_key();
+        assert!(store
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            )
+            .await
+            .is_err());
     }
 
     #[tokio::test]
     async fn test_should_write_read_parcel() {
-        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").unwrap();
         let root = tempdir().expect("create tempdir");
         let store = FileProvider::new(
@@ -703,9 +742,15 @@ mod test {
         )
         .await;
 
+        let sk = mock_secret_key();
         // Create the invoice so we can create a parcel
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            )
             .await
             .expect("should be able to create invoice");
 
@@ -752,11 +797,17 @@ mod test {
         )
         .await;
 
-        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
 
+        let sk = mock_secret_key();
         // Store an invoice first and then create the parcel for it
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            )
             .await
             .expect("should be able to create an invoice");
 

@@ -108,11 +108,11 @@ async fn main() -> std::result::Result<(), ClientError> {
             };
 
             // Signing key
-            let (key, label) = first_matching_key(keyfile, &role).await?;
+            let key = first_matching_key(keyfile, &role).await?;
 
             // Load the invoice and sign it.
             let mut inv: Invoice = bindle::client::load::toml(sign_opts.invoice.as_str()).await?;
-            inv.sign(label, role.clone(), &key)?;
+            inv.sign(key.label.clone(), role.clone(), &key)?;
 
             // Write the signed invoice to a file.
             let outfile = sign_opts
@@ -373,7 +373,7 @@ fn role_from_name(name: String) -> Result<SignatureRole> {
     }
 }
 
-async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<(Keypair, String)> {
+async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<SecretKeyEntry> {
     let keys = SecretKeyFile::load_file(fpath.clone()).await.map_err(|e| {
         ClientError::Other(format!(
             "Error loading file {}: {}",
@@ -381,11 +381,8 @@ async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<(Key
             e.to_string()
         ))
     })?;
-    for key in keys.key {
-        if key.roles.contains(role) {
-            let pair = key.key().map_err(|e| ClientError::Other(e.to_string()))?;
-            return Ok((pair, key.label));
-        }
-    }
-    Err(ClientError::Other("No satisfactory key found".to_owned()))
+
+    keys.get_first_matching(role)
+        .map(|k| k.to_owned())
+        .ok_or_else(|| ClientError::Other("No satisfactory key found".to_owned()))
 }

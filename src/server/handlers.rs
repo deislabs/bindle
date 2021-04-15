@@ -5,6 +5,7 @@ use warp::Reply;
 
 use super::filters::InvoiceQuery;
 use super::reply;
+use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::provider::Provider;
 use crate::search::Search;
 
@@ -61,7 +62,16 @@ pub mod v1 {
         // Then I need to validate the invoice against the public keys, sign the invoice
         // with my private key, and THEN go on to store.create_invoice()
 
-        let labels = match store.create_invoice(&inv).await {
+        // FIXME: Allow other strategies
+        let strategy = VerificationStrategy::default();
+        let role = SignatureRole::Host;
+        // FIXME: Load the keyfile
+        let sk = SecretKeyEntry::new("TEMPORARY".to_owned(), vec![SignatureRole::Host]);
+
+        let labels = match store
+            .create_invoice(&mut inv.clone(), role, &sk, strategy)
+            .await
+        {
             Ok(l) => l,
             Err(e) => {
                 return Ok(reply::into_reply(e));

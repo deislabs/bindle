@@ -121,6 +121,7 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<SerializedDat
         #[cfg(feature = "client")]
         ProviderError::ProxyError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         ProviderError::Other(_) | ProviderError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::FailedSigning(_) => StatusCode::BAD_REQUEST,
     };
 
     reply_from_error(error, status_code)

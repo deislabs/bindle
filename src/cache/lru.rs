@@ -16,6 +16,7 @@ use tracing::{debug, instrument, trace};
 use tracing_futures::Instrument;
 
 use super::*;
+use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::{Id, Invoice};
 
@@ -56,8 +57,17 @@ where
     Remote: Provider + Send + Sync + Clone,
 {
     #[instrument(level = "trace", skip(self))]
-    async fn create_invoice(&self, inv: &Invoice) -> Result<Vec<crate::Label>> {
-        self.remote.create_invoice(inv).await
+    async fn create_invoice(
+        &self,
+        inv: &mut Invoice,
+        role: SignatureRole,
+        key: &SecretKeyEntry,
+        strategy: VerificationStrategy,
+    ) -> Result<Vec<crate::Label>> {
+        // In this case, the cache itself does not sign the invoice, though perhaps
+        // it should at least check to see if the invoice has been signed with the
+        // local proxy key.
+        self.remote.create_invoice(inv, role, key, strategy).await
     }
 
     #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
@@ -226,7 +236,13 @@ mod test {
 
     #[async_trait::async_trait]
     impl Provider for TestProvider {
-        async fn create_invoice(&self, _inv: &Invoice) -> Result<Vec<crate::Label>> {
+        async fn create_invoice(
+            &self,
+            _inv: &mut Invoice,
+            _role: SignatureRole,
+            _secret_key: &SecretKeyEntry,
+            _strategy: VerificationStrategy,
+        ) -> Result<Vec<crate::Label>> {
             let mut called = self.create_invoice_called.lock().await;
             *called = true;
             Ok(Vec::new())
@@ -392,10 +408,16 @@ mod test {
         // Make sure all the create operations pass through
         let provider = TestProvider::default();
         let cache = LruCache::new(10, provider.clone());
+        let sk = SecretKeyEntry::new("TEST".to_owned(), vec![SignatureRole::Proxy]);
 
-        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
         cache
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Proxy,
+                &sk,
+                VerificationStrategy::CreativeIntegrity,
+            )
             .await
             .expect("Should be able to create invoice");
         cache

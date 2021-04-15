@@ -84,6 +84,7 @@ mod test {
 
     use crate::authn::always::AlwaysAuthenticate;
     use crate::authz::always::AlwaysAuthorize;
+    use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
     use crate::provider::Provider;
     use crate::testing;
 
@@ -251,10 +252,18 @@ mod test {
         let (store, index) = testing::setup().await;
 
         let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
+
+        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+
         // Insert an invoice
-        let scaffold = testing::Scaffold::load("incomplete").await;
+        let mut scaffold = testing::Scaffold::load("incomplete").await;
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::default(),
+            )
             .await
             .expect("Should be able to insert invoice");
 
@@ -307,9 +316,14 @@ mod test {
 
         let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
-        let valid = testing::Scaffold::from(valid_raw.clone());
+        let mut valid = testing::Scaffold::from(valid_raw.clone());
         store
-            .create_invoice(&valid.invoice)
+            .create_invoice(
+                &mut valid.invoice,
+                SignatureRole::Host,
+                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
+                VerificationStrategy::default(),
+            )
             .await
             .expect("Invoice create failure");
 
@@ -337,11 +351,16 @@ mod test {
 
         let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
         // Insert a parcel
-        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
         let data = std::io::Cursor::new(parcel.data.clone());
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
+                VerificationStrategy::default(),
+            )
             .await
             .expect("Unable to insert invoice into store");
         store
@@ -370,11 +389,16 @@ mod test {
             String::from_utf8_lossy(res.body())
         );
 
-        let scaffold = testing::Scaffold::load("invalid").await;
+        let mut scaffold = testing::Scaffold::load("invalid").await;
 
         // Create invoice first
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
+                VerificationStrategy::default(),
+            )
             .await
             .expect("Unable to create invoice");
 
@@ -413,7 +437,12 @@ mod test {
         for b in bindles_to_insert.into_iter() {
             let current = testing::Scaffold::load(b).await;
             store
-                .create_invoice(&current.invoice)
+                .create_invoice(
+                    &mut current.invoice.clone(),
+                    SignatureRole::Host,
+                    &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
+                    VerificationStrategy::default(),
+                )
                 .await
                 .expect("Unable to create invoice");
         }
@@ -505,7 +534,12 @@ mod test {
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice.clone(),
+                SignatureRole::Host,
+                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
+                VerificationStrategy::default(),
+            )
             .await
             .expect("Unable to load in invoice");
         let parcel = scaffold

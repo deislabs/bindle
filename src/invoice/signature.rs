@@ -235,6 +235,7 @@ impl SecretKeyFile {
 pub struct SecretKeyFileLoader {
     path: PathBuf,
 }
+
 impl SecretKeyFileLoader {
     pub async fn load_file(&self) -> anyhow::Result<SecretKeyFile> {
         let s = tokio::fs::read_to_string(self.path.clone()).await?;
@@ -249,12 +250,6 @@ impl SecretKeyFileLoader {
         Ok(())
     }
 }
-// impl TryInto<SecretKeyFile> for SecretKeyFileLoader {
-//     type Error = anyhow::Error;
-//     fn try_into(self) -> Result<SecretKeyFile, Self::Error> {
-//         self.load_file()
-//     }
-// }
 
 #[cfg(test)]
 mod test {

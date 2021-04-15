@@ -6,9 +6,13 @@ use std::convert::TryInto;
 use reqwest::StatusCode;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::client::{Client, ClientError};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
+use crate::{
+    client::{Client, ClientError},
+    signature::SignatureRole,
+    SecretKeyEntry, VerificationStrategy,
+};
 
 #[derive(Clone)]
 pub struct Proxy {
@@ -23,7 +27,20 @@ impl Proxy {
 
 #[async_trait::async_trait]
 impl Provider for Proxy {
-    async fn create_invoice(&self, inv: &crate::Invoice) -> Result<Vec<crate::Label>> {
+    async fn create_invoice(
+        &self,
+        inv: &mut crate::Invoice,
+        _role: SignatureRole,
+        secret_key: &SecretKeyEntry,
+        strategy: VerificationStrategy,
+    ) -> Result<Vec<crate::Label>> {
+        // TODO: Need a way to load the local public keyring
+        let keyring = vec![];
+        strategy.verify(inv, keyring)?;
+
+        let mut inv2 = inv.to_owned();
+        self.sign_invoice(&mut inv2, SignatureRole::Proxy, secret_key)?;
+
         let res = self.client.create_invoice(inv.to_owned()).await?;
         Ok(res.missing.unwrap_or_default())
     }

@@ -6,6 +6,7 @@ use tracing::{debug, instrument, trace, warn};
 use tracing_futures::Instrument;
 
 use super::{into_cache_result, Cache};
+use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
 
@@ -36,7 +37,13 @@ where
     Local: Provider + Send + Sync + Clone,
     Remote: Provider + Send + Sync + Clone,
 {
-    async fn create_invoice(&self, _: &crate::Invoice) -> Result<Vec<crate::Label>> {
+    async fn create_invoice(
+        &self,
+        _: &mut crate::Invoice,
+        _: SignatureRole,
+        _: &SecretKeyEntry,
+        _: VerificationStrategy,
+    ) -> Result<Vec<crate::Label>> {
         Err(ProviderError::Other(
             "This cache implementation does not allow for creation of invoices".to_string(),
         ))
@@ -56,13 +63,29 @@ where
             None => {
                 async {
                     debug!(
-                        "Cache miss for invoice, attempting to fetch from server",
+                        "Cache miss for invoice {}, attempting to fetch from server",
+                        parsed_id
                     );
-                    let inv = self.remote.get_yanked_invoice(&parsed_id).await?;
+                    let inv = self.remote.get_yanked_invoice(parsed_id).await?;
+
+                    // TODO: In this case, we should be signing with a proxy key. The reason
+                    // is that we are receiving from a remote (self.remote) and then storing
+                    // locally. If this invoice is then subsequently fetched, it should have
+                    // the present host's proxy signature.
+                    let sk = SecretKeyEntry::new("FAKE".to_owned(), vec![SignatureRole::Proxy]);
+
                     // Attempt to insert the invoice into the store, if it fails, warn the user and return the invoice anyway
-                    trace!("Attempting to store invoice in cache");
-                    if let Err(e) = self.local.create_invoice(&inv).await {
-                        warn!(error = %e, "Fetched invoice from server, but encountered error when trying to save to local store");
+                    if let Err(e) = self
+                        .local
+                        .create_invoice(
+                            &mut inv.clone(),
+                            SignatureRole::Proxy,
+                            &sk,
+                            VerificationStrategy::default(),
+                        )
+                        .await
+                    {
+                        warn!("Fetched invoice from server, but encountered error when trying to save to local store: {:?}", e);
                     }
                     Ok(inv)
                 }.instrument(tracing::trace_span!("get_invoice_cache_miss", invoice_id = %parsed_id)).await
