@@ -76,9 +76,55 @@ Enough with talk, let's get down to the business of using Bindle.
 
 ## Using Bindle
 
-This is a Rust project. The simplest way to get started is to clone this repository and then run `cargo run --bin bindle-serve`. That will start up a Bindle server.
+To build Bindle, you can use `make` or `cargo`:
 
-In a separate terminal, you can run `cargo run --bin bindle` to execute the client, but you may find it easier to `cargo build` and then use the `bindle` client as a compiled binary.
+```console
+$ # Recommended
+$ make build
+$ # The above is approximately equivalent to:
+$ cargo build --feature=cli --bin bindle
+$ cargo build --all-features --bin bindle-server
+```
+
+The binaries will be built in `target/debug/bindle` and `target/debug/bindle-server`.
+For both client and server, the `--help` flag will print out documentation.
+
+### Starting the Server
+
+To start the compiled server, simply run `target/debug/bindle-server`. If you would like
+to see the available options, use the `--help` command.
+
+If you would like to run the server with `cargo run` (useful when debugging), use `make serve`.
+
+#### Supplying a Configuration File
+
+The Bindle server looks for a configuration file in `$XDG_DATA/bindle/server.toml`.
+If it finds one, it loads configuration from there.
+You can override this location with the `--config-path path/to/some.toml` flag.
+
+```toml
+address = "127.0.0.1:8080"
+bindle-directory = "/var/run/bindle"
+cert-path = "/etc/ssl/bindle/certificate.pem"
+key-path = "/etc/ssl/bindle/key.pem"
+```
+
+### Running the Client
+
+If you compiled, the client is in `target/debug/bindle`. You can also run from source with
+`cargo run --features=cli --bin=bindle` or `$(make client)` (e.g. `$(make client) --help`).
+
+You will either need to supply the `--server` parameter on the command line or set the `BINDLE_SERVER_URL`.
+
+```console
+$ export BINDLE_SERVER_URL="http://localhost:8080/v1"
+$ # Running from build
+$ target/debug/bindle --help
+$ # Running from Cargo
+$ cargo run --bin bindle --features=cli -- --help
+$ # Running from make
+$ $(make client) --help
+```
 
 For more, see [the docs](docs/README.md).
 
