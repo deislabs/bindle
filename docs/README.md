@@ -2,6 +2,23 @@
 
 ## Installing Bindle
 
+### From Source
+
+Prerequisites:
+
+- A recent version of Rust and Cargo
+
+Clone the repository at https://github.com/deislabs/bindle, and then use `make` to build
+the binaries:
+
+```console
+$ git clone https://github.com/deislabs/bindle.git
+$ cd bindle
+$ make build
+```
+
+You will now have binaries built in `target/debug/bindle` and `target/debug/bindle-server`.
+
 ### From the Binary Releases
 
 Every release of Bindle provides compiled releases for a variety of operating systems. These
@@ -42,6 +59,12 @@ Here are links to the common builds:
 ## Using Bindle
 
 The `bindle` program is the client. The `bindle-server` program is the HTTP server.
+
+Before using the `bindle` client, set the `BINDLE_SERVER_URL` environment variable:
+
+```console
+$ export BINDLE_SERVER_URL="http://localhost:8080/v1/" 
+```
 
 To bootstrap a new bindle instance:
 
