@@ -265,7 +265,7 @@ fn version_compare(version: &Version, requirement: &str) -> bool {
             return req.matches(version);
         }
         Err(e) => {
-            log::error!("SemVer range could not parse: {}", e);
+            tracing::log::error!("SemVer range could not parse: {}", e);
         }
     }
     false

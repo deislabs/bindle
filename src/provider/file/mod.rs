@@ -11,7 +11,6 @@ use std::task::{Context, Poll};
 use std::{convert::TryInto, ffi::OsString};
 
 use ::lru::LruCache;
-use log::{debug, error, trace};
 use sha2::{Digest, Sha256};
 use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -19,6 +18,8 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_stream::{Stream, StreamExt};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
+use tracing::{debug, error, info, instrument, trace, warn};
+use tracing_futures::Instrument;
 
 use crate::provider::{Provider, ProviderError, Result};
 use crate::search::Search;
@@ -58,13 +59,15 @@ impl<T: Clone> Clone for FileProvider<T> {
 
 impl<T: Search + Send + Sync> FileProvider<T> {
     pub async fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
+        debug!(path = %path.as_ref().display(), cache_size = CACHE_SIZE, "Creating new file provider");
         let fs = FileProvider {
             root: path.as_ref().to_owned(),
             index,
             invoice_cache: Arc::new(TokioMutex::new(LruCache::new(CACHE_SIZE))),
         };
+        debug!("warming index");
         if let Err(e) = fs.warm_index().await {
-            log::error!("Error warming index: {}", e);
+            warn!(error = %e, "Error warming index");
         }
         fs
     }
@@ -77,9 +80,10 @@ impl<T: Search + Send + Sync> FileProvider<T> {
     /// in the repository. So it needs to communicate (on startup) what documents it knows
     /// about. The storage engine merely needs to store any non-duplicates. So we can
     /// safely insert, but ignore errors that come back because of duplicate entries.
+    #[instrument(level = "trace", skip(self))]
     async fn warm_index(&self) -> anyhow::Result<()> {
         // Read all invoices
-        debug!("Beginning index warm from {}", self.root.display());
+        info!(path = %self.root.display(), "Beginning index warm");
         let mut total_indexed: u64 = 0;
         // Check if the invoice directory exists. If it doesn't, this is likely the first time and
         // we should just return
@@ -96,9 +100,9 @@ impl<T: Search + Send + Sync> FileProvider<T> {
                 Some(sha_opt) => sha_opt,
                 None => continue,
             };
-            log::info!("Loading invoice {}/invoice.toml into search index", sha);
             // Load invoice
             let inv_path = self.invoice_toml_path(&sha);
+            info!(path = %inv_path.display(), "Loading invoice into search index");
             // Open file
             let inv_toml = std::fs::read_to_string(inv_path)?;
 
@@ -114,11 +118,11 @@ impl<T: Search + Send + Sync> FileProvider<T> {
             }
 
             if let Err(e) = self.index.index(&invoice).await {
-                error!("Error indexing {}: {}", sha, e);
+                error!(invoice_id = %invoice.bindle.id, error = %e, "Error indexing invoice");
             }
             total_indexed += 1;
         }
-        trace!("Warmed index with {} entries", total_indexed);
+        debug!(total_indexed, "Warmed index");
         Ok(())
     }
 
@@ -146,9 +150,11 @@ impl<T: Search + Send + Sync> FileProvider<T> {
 
 #[async_trait::async_trait]
 impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
+    #[instrument(level = "trace", skip(self, inv), fields(id = %inv.bindle.id))]
     async fn create_invoice(&self, inv: &crate::Invoice) -> Result<Vec<crate::Label>> {
         // It is illegal to create a yanked invoice.
         if inv.yanked.unwrap_or(false) {
+            debug!(id = %inv.bindle.id, "Invoice being created is set to yanked");
             return Err(ProviderError::CreateYanked);
         }
 
@@ -156,29 +162,34 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
 
         // Create the base path if necessary
         let inv_path = self.invoice_path(&invoice_id);
-        if !tokio::fs::metadata(&inv_path)
-            .await
-            .map(|m| m.is_dir())
-            .unwrap_or(false)
-        {
+        trace!(path = %inv_path.display(), "Checking if invoice base path already exists on disk");
+        // With errors we default to false in this logic block, so just convert to an Option
+        let metadata = tokio::fs::metadata(&inv_path).await.ok();
+        if !metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false) {
             // If it exists and is a regular file, we have a problem
-            if tokio::fs::metadata(&inv_path)
-                .await
-                .map(|m| m.is_file())
-                .unwrap_or(false)
-            {
+            if metadata.map(|m| m.is_file()).unwrap_or(false) {
+                debug!("Invoice being created already exists in storage");
                 return Err(ProviderError::Exists);
             }
+            trace!(path = %inv_path.display(), "Base path doesn't exist, creating");
             create_dir_all(inv_path).await?;
         }
 
         // Open the destination or error out if it already exists.
         let dest = self.invoice_toml_path(&invoice_id);
-        if dest.exists() {
+        trace!(path = %dest.display(), "Checking if invoice already exists on disk");
+        // We can't just call `exists` because it can do IO calls, so look up using the metadata
+        if tokio::fs::metadata(&dest)
+            .await
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            debug!("Invoice being created already exists in storage");
             return Err(ProviderError::Exists);
         }
         // Create the part file to indicate that we are currently writing
         let part = part_path(&dest).await?;
+        trace!(path = %part.display(), "Checking that a write is not currently in progress");
         // Make sure we aren't already writing
         if tokio::fs::metadata(&part)
             .await
@@ -188,9 +199,8 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             return Err(ProviderError::WriteInProgress);
         }
         debug!(
-            "Storing invoice with ID {} in part file {}",
-            inv.bindle.id,
-            part.display()
+            path = %part.display(),
+            "Storing invoice in part file"
         );
         let mut out = OpenOptions::new()
             .create_new(true)
@@ -199,22 +209,22 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             .open(&part)
             .await?;
 
+        trace!("Encoding invoice to TOML");
         // Encode the invoice into a TOML object
         let data = toml::to_vec(inv)?;
         out.write_all(data.as_slice()).await?;
 
         // Now that it is written, move the part file to the actual file name
         debug!(
-            "Renaming part file to {} for invoice with ID {}",
-            dest.display(),
-            inv.bindle.id
+            renamed_path = %dest.display(),
+            "Renaming part file for invoice"
         );
         tokio::fs::rename(part, dest).await?;
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
         if let Err(e) = self.index.index(&inv).await {
-            log::error!("Error indexing {:?}: {}", inv.bindle.id, e);
+            error!(error = %e, "Error indexing new invoice");
         }
 
         // if there are no parcels, bail early
@@ -222,10 +232,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             return Ok(Vec::with_capacity(0));
         }
 
-        trace!(
-            "Checking for missing parcels listed in newly created invoice {:?}",
-            inv.bindle.id
-        );
+        trace!("Checking for missing parcels listed in newly created invoice");
         // Note: this will not allocate
         let zero_vec = Vec::with_capacity(0);
         // Loop through the boxes and see what exists
@@ -246,44 +253,46 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             });
 
         Ok(futures::future::join_all(missing)
+            .instrument(tracing::trace_span!("lookup_missing"))
             .await
             .into_iter()
             .filter_map(|x| x)
             .collect())
     }
 
+    #[instrument(level = "trace", skip(self, id), fields(id))]
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
         let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
+        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
 
         if let Some(inv) = self.invoice_cache.lock().await.get(&parsed_id) {
-            trace!("Found invoice {} in cache, returning", parsed_id);
+            debug!("Found invoice in cache, returning");
             return Ok(inv.clone());
         }
-        trace!("Getting invoice {} from file system", parsed_id);
+        debug!("Getting invoice from file system");
 
         let invoice_id = parsed_id.sha();
 
         // Now construct a path and read it
         let invoice_path = self.invoice_toml_path(&invoice_id);
 
-        trace!(
-            "Reading invoice {:?} from {}",
-            parsed_id,
-            invoice_path.display()
+        debug!(
+            path = %invoice_path.display(),
+            "Reading invoice"
         );
         // Open file
-        let inv_toml = tokio::fs::read_to_string(invoice_path)
-            .await
-            .map_err(map_io_error)?;
+        let inv_toml = tokio::fs::read(invoice_path).await.map_err(map_io_error)?;
 
         // Parse
-        let invoice: crate::Invoice = toml::from_str(&inv_toml)?;
+        trace!("Parsing invoice from raw TOML data");
+        let invoice: crate::Invoice = toml::from_slice(&inv_toml)?;
 
         // Put it into the cache
+        trace!("Putting invoice into cache");
         self.invoice_cache
             .lock()
             .await
@@ -293,42 +302,49 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         Ok(invoice)
     }
 
+    #[instrument(level = "trace", skip(self, id), fields(id))]
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
+        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        trace!("Fetching invoice from storage");
         let mut inv = self.get_yanked_invoice(&parsed_id).await?;
         inv.yanked = Some(true);
 
-        trace!("Yanking invoice {:?}", parsed_id);
+        debug!("Yanking invoice");
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
+        trace!("Indexing yanked invoice");
         if let Err(e) = self.index.index(&inv).await {
-            log::error!("Error indexing {}: {}", parsed_id, e);
+            error!(error = %e, "Error indexing yanked invoice");
         }
 
         // Open the destination or error out if it already exists.
         let dest = self.invoice_toml_path(&inv.canonical_name());
 
         // Encode the invoice into a TOML object
+        trace!("Encoding invoice to TOML");
         let data = toml::to_vec(&inv)?;
         // NOTE: Right now, this just force-overwites the existing invoice. We are assuming
         // that the bindle has already been confirmed to be present. However, we have not
-        // ensured that here. So it is theoretically possible (if get_invoice was not used)
+        // ensured that here. So it is theoretically possible (if get_invoice was not used
         // to build the invoice) that this could _create_ a new file. We could probably change
         // this behavior with OpenOptions.
-
+        debug!(path = %dest.display(), "Writing yanked invoice to disk");
         tokio::fs::write(dest, data).await?;
 
         // Drop the invoice from the cache (as it is unlikely that someone will want to fetch it
         // right after yanking it)
+        trace!("Dropping yanked invoice from cache");
         self.invoice_cache.lock().await.pop(&parsed_id);
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self, bindle_id, data), fields(id))]
     async fn create_parcel<I, R, B>(&self, bindle_id: I, parcel_id: &str, data: R) -> Result<()>
     where
         I: TryInto<Id> + Send,
@@ -336,9 +352,10 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
         B: bytes::Buf + Send,
     {
-        debug!("Creating parcel with SHA {}", parcel_id);
-
-        self.validate_parcel(bindle_id, parcel_id).await?;
+        debug!("Validating bindle -> parcel relationship");
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        self.validate_parcel(parsed_id, parcel_id).await?;
 
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(parcel_id);
@@ -347,9 +364,11 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             .map(|m| m.is_dir())
             .unwrap_or(false)
         {
+            debug!(path = %par_path.display(), "Parcel directory already exists");
             return Err(ProviderError::Exists);
         }
         // Create box dir
+        trace!(path = %par_path.display(), "Creating parcel directory");
         create_dir_all(par_path).await?;
 
         // Write data
@@ -357,10 +376,9 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         let part = part_path(&data_file).await?;
         {
             // Create the part file to indicate that we are currently writing
-            trace!(
-                "Writing parcel data part for SHA {} at {}",
-                parcel_id,
-                part.display()
+            debug!(
+                path = %part.display(),
+                "Storing parcel data in part file"
             );
             let mut out = OpenOptions::new()
                 // TODO: Right now, if we write the file and then sha validation fails, the user
@@ -370,7 +388,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
                 .read(true)
                 .open(&part)
                 .await?;
-
+            trace!("Copying data to open file");
             tokio::io::copy(
                 &mut StreamReader::new(
                     data.map(|res| {
@@ -379,28 +397,31 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
                 ),
                 &mut out,
             )
+            .instrument(tracing::trace_span!("parcel_data_write"))
             .await?;
             // Verify parcel by rewinding the parcel and then hashing it.
             // This MUST be after the last write to out, otherwise the results will
             // not be correct.
             out.flush().await?;
             out.seek(std::io::SeekFrom::Start(0)).await?;
-            trace!("Validating data for SHA {}", parcel_id);
-            validate_sha256(&mut out, parcel_id).await?;
-            trace!("SHA {} data validated", parcel_id);
+            trace!("Validating data for parcel");
+            validate_sha256(&mut out, parcel_id)
+                .instrument(tracing::trace_span!("parcel_data_validation"))
+                .await?;
+            trace!("SHA data validated");
             // TODO: Should we also validate length? We use it for returning the proper content length
         }
 
         debug!(
-            "Renaming part file to {} for SHA {}",
-            data_file.display(),
-            parcel_id
+            renamed_path = %data_file.display(),
+            "Renaming part file for parcel"
         );
         tokio::fs::rename(part, data_file).await?;
 
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self, bindle_id), fields(id))]
     async fn get_parcel<I>(
         &self,
         bindle_id: I,
@@ -410,25 +431,33 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
-        self.validate_parcel(bindle_id, parcel_id).await?;
+        debug!("Validating bindle -> parcel relationship");
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        self.validate_parcel(parsed_id, parcel_id).await?;
 
-        debug!("Getting parcel with SHA {}", parcel_id);
         let name = self.parcel_data_path(parcel_id);
+        debug!(path = %name.display(), "Getting parcel from storage");
         let reader = File::open(name).await.map_err(map_io_error)?;
-        Ok(Box::new(
+        Ok::<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>, _>(Box::new(
             FramedRead::new(reader, BytesCodec::new())
                 .map(|res| res.map_err(map_io_error).map(|b| b.freeze())),
         ))
     }
 
+    #[instrument(level = "trace", skip(self, bindle_id), fields(id))]
     async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> Result<bool>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
-        self.validate_parcel(bindle_id, parcel_id).await?;
-        debug!("Checking if parcel sha {} exists", parcel_id);
+        debug!("Validating bindle -> parcel relationship");
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        self.validate_parcel(parsed_id, parcel_id).await?;
+
         let label_path = self.parcel_data_path(parcel_id);
+        debug!(path = %label_path.display(), "Checking if parcel exists in storage");
         match tokio::fs::metadata(label_path).await {
             Ok(m) => Ok(m.is_file()),
             Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => Ok(false),
@@ -446,7 +475,7 @@ fn map_io_error(e: std::io::Error) -> ProviderError {
 
 /// Given the path, generates a new part path for it, returning a `WriteInProgress` error if it
 /// already exists
-async fn part_path(dest: &PathBuf) -> Result<PathBuf> {
+async fn part_path(dest: &Path) -> Result<PathBuf> {
     let extension = match dest.extension() {
         Some(s) => {
             let mut ext = s.to_owned();

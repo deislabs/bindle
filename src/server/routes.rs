@@ -33,6 +33,7 @@ where
         .recover(filters::handle_invalid_request_path)
         .recover(filters::handle_authn_rejection)
         .recover(filters::handle_authz_rejection)
+        .with(warp::trace::request())
 }
 
 pub mod v1 {

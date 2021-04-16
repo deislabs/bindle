@@ -7,11 +7,11 @@ pub mod load;
 use std::convert::TryInto;
 use std::path::Path;
 
-use log::{debug, info};
 use reqwest::header;
 use reqwest::Client as HttpClient;
 use reqwest::{Body, RequestBuilder, StatusCode};
 use tokio_stream::{Stream, StreamExt};
+use tracing::log::{debug, info};
 use url::Url;
 
 use crate::Id;

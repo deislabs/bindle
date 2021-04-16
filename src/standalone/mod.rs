@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
-use log::{debug, info};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio_stream::{Stream, StreamExt};
+use tracing::log::{debug, info};
 
 use crate::client::{Client, ClientError, Result};
 use crate::Id;
@@ -120,7 +120,7 @@ impl StandaloneRead {
 /// submitted one could be incorrect (intentionally or unintentionally)
 async fn create_or_get_invoice(
     client: &Client,
-    invoice_path: &PathBuf,
+    invoice_path: &Path,
 ) -> Result<crate::InvoiceCreateResponse> {
     // Load the invoice into memory so we can have access to its ID for fetching if needed
     let inv: crate::Invoice = crate::client::load::toml(invoice_path).await?;

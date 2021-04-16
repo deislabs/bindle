@@ -13,7 +13,7 @@ where
 {
     Toml {
         inner: toml::to_vec(val).map_err(|e| {
-            log::error!("Error while serializing TOML: {:?}", e);
+            tracing::log::error!("Error while serializing TOML: {:?}", e);
         }),
     }
 }

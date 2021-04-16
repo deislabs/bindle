@@ -5,7 +5,7 @@ use thiserror::Error;
 pub enum ClientError {
     /// Indicates that the given URL is invalid, contains the underlying parsing error
     #[error("Invalid URL given: {0:?}")]
-    InvalidURL(#[from] url::ParseError),
+    InvalidUrl(#[from] url::ParseError),
     /// Invalid configuration was given to the client
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
