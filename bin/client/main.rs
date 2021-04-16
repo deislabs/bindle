@@ -12,12 +12,12 @@ use bindle::{
 };
 
 use clap::Clap;
-use log::{info, warn};
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 use tokio_util::io::StreamReader;
+use tracing::log::{info, warn};
 
 mod opts;
 
@@ -26,8 +26,8 @@ use opts::*;
 #[tokio::main]
 async fn main() -> std::result::Result<(), ClientError> {
     let opts = opts::Opts::parse();
-    // TODO: Allow log level setting
-    env_logger::init();
+    // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
+    tracing_subscriber::fmt::init();
 
     let bindle_client = Client::new(&opts.server_url)?;
     let bindle_dir = opts

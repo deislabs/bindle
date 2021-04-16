@@ -10,11 +10,11 @@ pub struct NoopEngine {}
 impl Search for NoopEngine {
     async fn query(
         &self,
-        term: String,
-        _filter: String,
+        term: &str,
+        _filter: &str,
         options: SearchOptions,
     ) -> anyhow::Result<Matches> {
-        Ok(Matches::new(&options, term))
+        Ok(Matches::new(&options, term.to_owned()))
     }
 
     async fn index(&self, _: &crate::Invoice) -> anyhow::Result<()> {

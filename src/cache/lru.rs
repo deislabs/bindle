@@ -3,7 +3,6 @@ use std::convert::TryInto;
 use std::sync::Arc;
 
 use ::lru::LruCache as Lru;
-use log::{debug, trace};
 use tempfile::NamedTempFile;
 use tokio::fs::File;
 use tokio::io::AsyncSeekExt;
@@ -13,6 +12,7 @@ use tokio_util::{
     codec::{BytesCodec, FramedRead},
     io::StreamReader,
 };
+use tracing::log::{debug, trace};
 
 use super::*;
 use crate::provider::{Provider, ProviderError, Result};

@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use log::trace;
+use tracing::{debug, instrument, trace, trace_span};
 use warp::Reply;
 
 use super::filters::InvoiceQuery;
@@ -13,19 +13,20 @@ pub mod v1 {
 
     use crate::QueryOptions;
     use tokio_stream::{self as stream, StreamExt};
+    use tracing::Instrument;
 
     //////////// Invoice Functions ////////////
+    #[instrument(level = "trace", skip(index))]
     pub async fn query_invoices<S: Search>(
         options: QueryOptions,
         index: S,
     ) -> Result<impl warp::Reply, Infallible> {
-        trace!("Query invoice request with options: {:?}", options);
         let term = options.query.clone().unwrap_or_default();
         let version = options.version.clone().unwrap_or_default();
-        let matches = match index.query(term, version, options.into()).await {
+        let matches = match index.query(&term, &version, options.into()).await {
             Ok(m) => m,
             Err(e) => {
-                trace!("Got bad query request: {:?}", e);
+                debug!(error = %e, "Got bad query request");
                 return Ok(reply::reply_from_error(
                     e,
                     warp::http::StatusCode::BAD_REQUEST,
@@ -33,17 +34,19 @@ pub mod v1 {
             }
         };
 
+        trace!(?matches, "Index query successful");
+
         Ok(warp::reply::with_status(
             reply::toml(&matches),
             warp::http::StatusCode::OK,
         ))
     }
 
+    #[instrument(level = "trace", skip(store))]
     pub async fn create_invoice<P: Provider>(
         store: P,
         inv: crate::Invoice,
     ) -> Result<impl warp::Reply, Infallible> {
-        trace!("Create invoice request with invoice: {:?}", inv);
         let labels = match store.create_invoice(&inv).await {
             Ok(l) => l,
             Err(e) => {
@@ -54,9 +57,9 @@ pub mod v1 {
         // things were accepted, but will not be fetchable until further action is taken
         if !labels.is_empty() {
             trace!(
-                "Newly created invoice {:?} is missing {} parcels",
-                inv.bindle.id,
-                labels.len()
+                invoice_id = %inv.bindle.id,
+                missing = labels.len(),
+                "Newly created invoice is missing parcels",
             );
             Ok(warp::reply::with_status(
                 reply::toml(&crate::InvoiceCreateResponse {
@@ -67,8 +70,8 @@ pub mod v1 {
             ))
         } else {
             trace!(
-                "Newly created invoice {:?} has all existing parcels",
-                inv.bindle.id
+                invoice_id = %inv.bindle.id,
+                "Newly created invoice has all existing parcels",
             );
             Ok(warp::reply::with_status(
                 reply::toml(&crate::InvoiceCreateResponse {
@@ -80,16 +83,12 @@ pub mod v1 {
         }
     }
 
+    #[instrument(level = "trace", skip(store), fields(id = %id, yanked = query.yanked.unwrap_or_default()))]
     pub async fn get_invoice<P: Provider + Sync>(
         id: String,
         query: InvoiceQuery,
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        trace!(
-            "Get invoice request for {} with yanked = {}",
-            id,
-            query.yanked.unwrap_or_default()
-        );
         let res = if query.yanked.unwrap_or_default() {
             store.get_yanked_invoice(id)
         } else {
@@ -98,24 +97,24 @@ pub mod v1 {
         let inv = match res.await {
             Ok(i) => i,
             Err(e) => {
-                trace!("Got error during get invoice request: {:?}", e);
-                return Ok(Box::new(reply::into_reply(e)));
+                debug!(error = %e, "Got error during get invoice request");
+                return Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(reply::into_reply(e)));
             }
         };
-        Ok(Box::new(warp::reply::with_status(
+        Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(warp::reply::with_status(
             reply::toml(&inv),
             warp::http::StatusCode::OK,
         )))
     }
 
+    #[instrument(level = "trace", skip(store), fields(id = tail.as_str()))]
     pub async fn yank_invoice<P: Provider>(
         tail: warp::path::Tail,
         store: P,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
-        trace!("Yank invoice request for {}", id);
         if let Err(e) = store.yank_invoice(id).await {
-            trace!("Got error during yank invoice request: {:?}", e);
+            debug!(error = %e, "Got error during yank invoice request");
             return Ok(reply::into_reply(e));
         }
 
@@ -127,24 +126,25 @@ pub mod v1 {
         ))
     }
 
+    #[instrument(level = "trace", skip(store))]
     pub async fn head_invoice<P: Provider + Sync>(
         id: String,
         query: InvoiceQuery,
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        trace!("Head invoice request for {}", id);
+        trace!("Getting invoice data");
         let inv = get_invoice(id, query, store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
 
-        Ok(Box::new(super::HeadResponse {
+        Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(super::HeadResponse {
             headers: parts.headers,
         }))
     }
 
     //////////// Parcel Functions ////////////
-
+    #[instrument(level = "trace", skip(store, body))]
     pub async fn create_parcel<P, B, D>(
         (bindle_id, sha): (String, String),
         body: B,
@@ -155,7 +155,7 @@ pub mod v1 {
         B: stream::Stream<Item = Result<D, warp::Error>> + Send + Sync + Unpin + 'static,
         D: bytes::Buf + Send,
     {
-        trace!("Create parcel request, checking if parcel exists in bindle");
+        trace!("Checking if parcel exists in bindle");
 
         // Validate that this sha belongs
         if let Err(e) = parcel_in_bindle(&store, &bindle_id, &sha).await {
@@ -172,6 +172,7 @@ pub mod v1 {
             )
             .await
         {
+            debug!(error = %e, "Got error while creating parcel in store");
             return Ok(reply::into_reply(e));
         }
 
@@ -183,21 +184,22 @@ pub mod v1 {
         ))
     }
 
+    #[instrument(level = "trace", skip(store))]
     pub async fn get_parcel<P: Provider + Sync>(
         (bindle_id, id): (String, String),
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        trace!("Get parcel request for {}", id);
         // Get parcel label to ascertain content type and length, and validate that it does exist
         let label = match parcel_in_bindle(&store, &bindle_id, &id).await {
             Ok(l) => l,
-            Err(e) => return Ok(Box::new(e)),
+            Err(e) => return Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(e)),
         };
 
         let data = match store.get_parcel(bindle_id, &id).await {
             Ok(reader) => reader,
             Err(e) => {
-                return Ok(Box::new(reply::into_reply(e)));
+                debug!(error = %e, "Got error while getting parcel from store");
+                return Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(reply::into_reply(e)));
             }
         };
 
@@ -211,29 +213,30 @@ pub mod v1 {
             .unwrap();
 
         // Gotta box because this is not a toml reply type (which we use for sending error messages to the user)
-        Ok(Box::new(warp::reply::with_status(
+        Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(warp::reply::with_status(
             resp,
             warp::http::StatusCode::OK,
         )))
     }
 
+    #[instrument(level = "trace", skip(store))]
     pub async fn head_parcel<P: Provider + Sync>(
         (bindle_id, id): (String, String),
         store: P,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
-        trace!("Head parcel request for {}", id);
+        trace!("Getting parcel data");
         let inv = get_parcel((bindle_id, id), store).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
 
-        Ok(Box::new(super::HeadResponse {
+        Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(super::HeadResponse {
             headers: parts.headers,
         }))
     }
 
     //////////// Relationship Functions ////////////
-
+    #[instrument(level = "trace", skip(store), fields(id = tail.as_str()))]
     pub async fn get_missing<P: Provider + Sync + Clone>(
         tail: warp::path::Tail,
         store: P,
@@ -271,6 +274,7 @@ pub mod v1 {
             });
 
         let missing = match futures::future::join_all(missing_futures)
+            .instrument(trace_span!("find_missing_parcels"))
             .await
             .into_iter()
             .collect::<Result<Vec<Option<crate::Label>>, crate::provider::ProviderError>>()
@@ -291,12 +295,14 @@ pub mod v1 {
 
     /// Fetches an invoice from the given store and checks that the given SHA exists within that
     /// invoice. Returns a result where the Error variant is a warp reply containing the error
+    #[instrument(level = "trace", skip(store))]
     async fn parcel_in_bindle<P: Provider + Sync>(
         store: &P,
         bindle_id: &str,
         sha: &str,
     ) -> std::result::Result<crate::Label, warp::reply::WithStatus<crate::server::reply::Toml>>
     {
+        trace!("fetching invoice data");
         let inv = match store.get_invoice(bindle_id).await {
             Ok(i) => i,
             Err(e) => return Err(reply::into_reply(e)),

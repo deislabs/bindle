@@ -4,6 +4,8 @@ use std::io::Read;
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use tracing::{debug, instrument, trace};
+use tracing_futures::Instrument;
 use warp::reject::{custom, Reject, Rejection};
 use warp::Filter;
 
@@ -23,17 +25,20 @@ pub struct InvoiceQuery {
 pub fn invoice() -> impl Filter<Extract = (String,), Error = Rejection> + Copy {
     warp::path("_i")
         .and(warp::path::tail())
-        .and_then(|tail: warp::path::Tail| async move {
-            let (inv, parcel) = match handle_tail(tail.as_str()) {
-                Ok(i) => i,
-                // The try operator doesn't work because I can't implement `From` for the sealed
-                // CombinedRejection type
-                Err(e) => return Err(e),
-            };
-            if parcel.is_some() {
-                return Err(custom(InvalidRequestPath));
+        .and_then(|tail: warp::path::Tail| {
+            async move {
+                let (inv, parcel) = match handle_tail(tail.as_str()) {
+                    Ok(i) => i,
+                    // The try operator doesn't work because I can't implement `From` for the sealed
+                    // CombinedRejection type
+                    Err(e) => return Err(e),
+                };
+                if parcel.is_some() {
+                    return Err(custom(InvalidRequestPath));
+                }
+                Ok(inv)
             }
-            Ok(inv)
+            .instrument(tracing::debug_span!("invoice_filter"))
         })
 }
 
@@ -42,21 +47,25 @@ pub fn invoice() -> impl Filter<Extract = (String,), Error = Rejection> + Copy {
 pub fn parcel() -> impl Filter<Extract = ((String, String),), Error = Rejection> + Copy {
     warp::path("_i")
         .and(warp::path::tail())
-        .and_then(|tail: warp::path::Tail| async move {
-            let (inv, parcel) = match handle_tail(tail.as_str()) {
-                Ok(i) => i,
-                // The try operator doesn't work because I can't implement `From` for the sealed
-                // CombinedRejection type
-                Err(e) => return Err(e),
-            };
-            let parcel = match parcel {
-                None => return Err(custom(InvalidRequestPath)),
-                Some(p) => p,
-            };
-            Ok((inv, parcel))
+        .and_then(|tail: warp::path::Tail| {
+            async move {
+                let (inv, parcel) = match handle_tail(tail.as_str()) {
+                    Ok(i) => i,
+                    // The try operator doesn't work because I can't implement `From` for the sealed
+                    // CombinedRejection type
+                    Err(e) => return Err(e),
+                };
+                let parcel = match parcel {
+                    None => return Err(custom(InvalidRequestPath)),
+                    Some(p) => p,
+                };
+                Ok((inv, parcel))
+            }
+            .instrument(tracing::debug_span!("parcel_filter"))
         })
 }
 
+#[instrument(level = "trace")]
 fn handle_tail(tail: &str) -> Result<(String, Option<String>), Rejection> {
     let mut split: Vec<String> = tail
         .split(PARCEL_ID_SEPARATOR)
@@ -66,11 +75,15 @@ fn handle_tail(tail: &str) -> Result<(String, Option<String>), Rejection> {
     // The unwraps here are safe because we are checking length
     match split.len() {
         1 => {
-            log::trace!("Matched only bindle ID {}", split[0]);
+            trace!(bindle_id = %split[0], "Matched only bindle ID");
             Ok((split.pop().unwrap(), None))
         }
         2 => {
-            log::trace!("Matched bindle ID {} and sha {}", split[0], split[1]);
+            trace!(
+                bindle_id = %split[0],
+                sha = %split[1],
+                "Matched bindle ID and sha"
+            );
             let parcel = split.pop().unwrap();
             let inv = split.pop().unwrap();
             Ok((inv, Some(parcel)))
@@ -90,6 +103,7 @@ fn authenticate<Authn: Authenticator + Clone + Send + Sync>(
         .and_then(_authenticate)
 }
 
+#[instrument(level = "trace", skip(authn, auth_data), name = "authentication")]
 async fn _authenticate<A: Authenticator + Clone + Send>(
     authn: A,
     auth_data: Option<String>,
@@ -98,7 +112,7 @@ async fn _authenticate<A: Authenticator + Clone + Send>(
     match authn.authenticate(&auth_data.unwrap_or_default()).await {
         Ok(a) => Ok(a),
         Err(e) => {
-            log::debug!("Authentication error: {}", e);
+            debug!(error = %e, "Authentication error");
             Err(warp::reject::custom(AuthnFail))
         }
     }
@@ -109,10 +123,12 @@ struct AuthnFail;
 
 impl warp::reject::Reject for AuthnFail {}
 
+#[instrument(level = "trace", skip(err))]
 pub(crate) async fn handle_authn_rejection(
     err: warp::Rejection,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if err.find::<AuthnFail>().is_some() {
+        debug!("Handling rejection as authn rejection");
         Ok(crate::server::reply::reply_from_error(
             "unauthorized",
             warp::http::StatusCode::UNAUTHORIZED,
@@ -135,12 +151,16 @@ pub(crate) fn authenticate_and_authorize<
         .and(warp::method())
         .and(warp::any().map(move || authz.clone()))
         .and_then(
-            |item: Authn::Item, path: warp::path::FullPath, method, authz: Authz| async move {
-                if let Err(e) = authz.authorize(item, path.as_str(), method) {
-                    log::debug!("Authorization error: {}", e);
-                    return Err(warp::reject::custom(AuthzFail));
+            |item: Authn::Item, path: warp::path::FullPath, method, authz: Authz| {
+                async move {
+                    trace!(path = path.as_str(), %method, "Authorizing request");
+                    if let Err(e) = authz.authorize(item, path.as_str(), method) {
+                        debug!(error = %e, "Authorization error");
+                        return Err(warp::reject::custom(AuthzFail));
+                    }
+                    Ok(())
                 }
-                Ok(())
+                .instrument(tracing::trace_span!("authorization"))
             },
         )
 }
@@ -150,10 +170,12 @@ struct AuthzFail;
 
 impl warp::reject::Reject for AuthzFail {}
 
+#[instrument(level = "trace", skip(err))]
 pub(crate) async fn handle_authz_rejection(
     err: warp::Rejection,
 ) -> std::result::Result<impl warp::Reply, warp::Rejection> {
     if err.find::<AuthzFail>().is_some() {
+        debug!("Handling rejection as authz rejection");
         Ok(crate::server::reply::reply_from_error(
             "access denied",
             warp::http::StatusCode::FORBIDDEN,
@@ -181,10 +203,12 @@ async fn parse_toml<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T
     toml::from_slice(&raw).map_err(|err| custom(BodyDeserializeError { cause: err.into() }))
 }
 
+#[instrument(level = "trace", skip(err))]
 pub(crate) async fn handle_deserialize_rejection(
     err: warp::Rejection,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if let Some(e) = err.find::<BodyDeserializeError>() {
+        debug!("Handling rejection as deserialize rejection");
         Ok(crate::server::reply::reply_from_error(
             e,
             warp::http::StatusCode::BAD_REQUEST,
@@ -213,10 +237,12 @@ impl Error for BodyDeserializeError {
 
 impl Reject for BodyDeserializeError {}
 
+#[instrument(level = "trace", skip(err))]
 pub(crate) async fn handle_invalid_request_path(
     err: warp::Rejection,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if err.find::<InvalidRequestPath>().is_some() {
+        debug!("Handling rejection as invalid request rejection");
         Ok(crate::server::reply::reply_from_error(
             "Invalid URL. Missing Bindle ID and/or parcel SHA",
             warp::http::StatusCode::BAD_REQUEST,

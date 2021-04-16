@@ -11,6 +11,8 @@ mod routes;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use tracing::debug;
+
 use super::provider::Provider;
 use crate::search::Search;
 
@@ -45,12 +47,17 @@ where
     let server = warp::serve(api);
     match tls {
         None => {
+            debug!("No TLS config found, starting server in HTTP mode");
             server
                 .try_bind_with_graceful_shutdown(addr, shutdown_signal())?
                 .1
                 .await
         }
         Some(config) => {
+            debug!(
+                ?config.key_path,
+                ?config.cert_path, "Got TLS config, starting server in HTTPS mode",
+            );
             server
                 .tls()
                 .key_path(config.key_path)

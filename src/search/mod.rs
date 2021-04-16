@@ -94,8 +94,8 @@ pub trait Search {
     /// or if the search engine itself fails to process the query.
     async fn query(
         &self,
-        term: String,
-        filter: String,
+        term: &str,
+        filter: &str,
         options: SearchOptions,
     ) -> anyhow::Result<Matches>;
 

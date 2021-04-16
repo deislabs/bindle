@@ -138,7 +138,7 @@ impl KeyEntry {
     pub fn verify_label(self, key: PublicKey) -> anyhow::Result<()> {
         match self.label_signature {
             None => {
-                log::info!("Label was not signed. Skipping.");
+                tracing::log::info!("Label was not signed. Skipping.");
                 Ok(())
             }
             Some(txt) => {
@@ -184,7 +184,7 @@ impl SecretKeyEntry {
             SignatureError::CorruptKey("Base64 decoding of the keypair failed".to_owned())
         })?;
         let keypair = Keypair::from_bytes(&rawbytes).map_err(|e| {
-            log::error!("Error loading key: {}", e);
+            tracing::log::error!("Error loading key: {}", e);
             // Don't leak information about the key, because this could be sent to
             // a remote. A generic error is all the user should see.
             SignatureError::CorruptKey("Could not load keypair".to_owned())

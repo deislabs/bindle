@@ -1,8 +1,10 @@
-SERVER_FEATURES ?= "--all-features"
-SERVER_BIN := "bindle-server"
-CLIENT_FEATURES ?= "--features=cli"
-CLIENT_BIN := "bindle"
-BINDLE_LOG_LEVEL ?= "debug"
+SERVER_FEATURES ?= --all-features
+SERVER_BIN := bindle-server
+CLIENT_FEATURES ?= --features=cli
+CLIENT_BIN := bindle
+BINDLE_LOG_LEVEL ?= debug
+
+export RUST_LOG=error,warp=info,bindle=${BINDLE_LOG_LEVEL}
 
 .PHONY: test
 test:
@@ -10,7 +12,6 @@ test:
 
 .PHONY: serve
 serve:
-	RUST_LOG=debug,bindle::*=${BINDLE_LOG_LEVEL}\ 
 	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN}
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
