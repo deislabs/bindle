@@ -8,6 +8,7 @@ mod group;
 mod label;
 mod parcel;
 pub mod signature;
+pub mod verification;
 
 #[doc(inline)]
 pub use api::{ErrorResponse, InvoiceCreateResponse, MissingParcelsResponse, QueryOptions};
@@ -23,8 +24,10 @@ pub use label::Label;
 pub use parcel::Parcel;
 #[doc(inline)]
 pub use signature::{SecretKeyEntry, Signature, SignatureError, SignatureRole};
+#[doc(inline)]
+pub use verification::VerificationStrategy;
 
-use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
+use ed25519_dalek::{PublicKey, Signature as EdSignature, Signer};
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -38,132 +41,6 @@ pub type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
 
 /// Alias for annotations map
 pub type AnnotationMap = BTreeMap<String, String>;
-
-/// This enumerates the verifications strategies described in the signing spec.
-pub enum VerificationStrategy {
-    /// CreativeIntegrity verifies that (a) the key that signs as Creator is a known key,
-    /// and that the signature is valid.
-    CreativeIntegrity,
-    /// AuthoritativeIntegrity verifies that at least one of the Creator or Approver keys
-    /// is known and the signature is valid.
-    AuthoritativeIntegrity,
-    /// Verify that the Creator key is known and that all signatures are valid.
-    ///
-    /// This is subject to a DOS attack if a signer can generate intentionally bad signatures.
-    GreedyVerification,
-    /// Verify that every key on the invoice is known, and that every signature is valid.
-    ExhaustiveVerification,
-    /// Verifies that all signatures of the given roles are valid and signed by know keys.
-    ///
-    /// If the bool is true, unknown signers will also be valdidated.
-    /// Be aware that doing so may make the validation subject to a special for of
-    /// DOS attack in which someone can generate a known-bad signature.
-    MultipleAttestation(Vec<SignatureRole>, bool),
-}
-
-impl Default for VerificationStrategy {
-    fn default() -> Self {
-        VerificationStrategy::GreedyVerification
-    }
-}
-
-/// A strategy for verifying an invoice.
-impl VerificationStrategy {
-    fn verify_signature(&self, sig: &Signature, cleartext: &[u8]) -> Result<(), SignatureError> {
-        let pk = base64::decode(sig.key.as_bytes())
-            .map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let sig_block = base64::decode(sig.signature.as_bytes())
-            .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
-
-        let pubkey =
-            PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let ed_sig = EdSignature::new(
-            sig_block
-                .as_slice()
-                .try_into()
-                .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?,
-        );
-        pubkey
-            .verify_strict(cleartext, &ed_sig)
-            .map_err(|_| SignatureError::Unverified(sig.key.clone()))
-    }
-    pub fn verify(&self, inv: &Invoice, keyring: Vec<PublicKey>) -> Result<(), SignatureError> {
-        let (roles, all_valid, all_verified) = match self {
-            VerificationStrategy::GreedyVerification => (vec![SignatureRole::Creator], true, true),
-            VerificationStrategy::CreativeIntegrity => (vec![SignatureRole::Creator], false, true),
-            VerificationStrategy::AuthoritativeIntegrity => (
-                vec![SignatureRole::Creator, SignatureRole::Approver],
-                false,
-                false,
-            ),
-            VerificationStrategy::ExhaustiveVerification => (
-                vec![
-                    SignatureRole::Creator,
-                    SignatureRole::Approver,
-                    SignatureRole::Host,
-                    SignatureRole::Proxy,
-                ],
-                true,
-                true,
-            ),
-            VerificationStrategy::MultipleAttestation(a, b) => (a.clone(), b.clone(), true),
-        };
-
-        // Either the Creator or an Approver must be in the keyring
-        match inv.signature.as_ref() {
-            None => Ok(()),
-            Some(signatures) => {
-                let mut known_key = false;
-                for s in signatures {
-                    let target_role = roles.contains(&s.role);
-
-                    // If we're not validating all, and this role isn't one we're interested in,
-                    // skip it.
-                    if !all_valid && !target_role {
-                        continue;
-                    }
-
-                    let cleartext = inv.cleartext(s.by.clone(), s.role.clone());
-
-                    // Verify the signature
-                    // TODO: This would allow a trivial DOS attack in which an attacker
-                    // would only need to attach a known-bad signature, and that would
-                    // prevent the module from ever being usable. This is marginally
-                    // better if we only verify signatures on known keys.
-                    self.verify_signature(&s, cleartext.as_bytes())?;
-
-                    if !target_role {
-                        continue;
-                    }
-                    // See if the public key is known to us
-                    let pubkey = base64::decode(s.key.clone())
-                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-                    let pko = PublicKey::from_bytes(pubkey.as_slice())
-                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-
-                    if all_verified {
-                        // If all_verified, than any verification failure means we bail
-                        return Err(SignatureError::Unverified(
-                            "strategy requires that all signatures for role(s) must be verified"
-                                .to_owned(),
-                        ));
-                    } else if keyring.contains(&pko) {
-                        // Otherwise, we need only one to verify. But we might need to check
-                        // all for valid signatures.
-                        known_key = true;
-                    }
-                }
-                if !known_key {
-                    // If we get here, then the none of the signatures were created with
-                    // a key from the keyring. This means the package is untrusted.
-                    Err(SignatureError::NoKnownKey)
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-}
 
 /// The main structure for a Bindle invoice.
 ///
@@ -282,10 +159,10 @@ impl Invoice {
     /// to any invoice.
     pub fn sign(
         &mut self,
-        signer_name: String,
         signer_role: SignatureRole,
         keyfile: &SecretKeyEntry,
     ) -> Result<(), SignatureError> {
+        let signer_name = keyfile.label.clone();
         let key = keyfile.key()?;
         // The spec says it is illegal for the a single key to sign the same invoice
         // more than once.
@@ -496,17 +373,15 @@ mod test {
 
         // Add two signatures
         invoice
-            .sign(signer_name1, SignatureRole::Creator, &keypair1)
+            .sign(SignatureRole::Creator, &keypair1)
             .expect("sign the parcel");
 
         invoice
-            .sign(signer_name2.clone(), SignatureRole::Proxy, &keypair2)
+            .sign(SignatureRole::Proxy, &keypair2)
             .expect("sign the parcel");
 
         // Should not be able to sign the same invoice again with the same key, even with a different role
-        assert!(invoice
-            .sign(signer_name2, SignatureRole::Host, &keypair2)
-            .is_err());
+        assert!(invoice.sign(SignatureRole::Host, &keypair2).is_err());
 
         println!("{}", toml::to_string(&invoice).unwrap());
 

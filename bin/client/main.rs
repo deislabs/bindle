@@ -112,7 +112,7 @@ async fn main() -> std::result::Result<(), ClientError> {
 
             // Load the invoice and sign it.
             let mut inv: Invoice = bindle::client::load::toml(sign_opts.invoice.as_str()).await?;
-            inv.sign(key.label.clone(), role.clone(), &key)?;
+            inv.sign(role.clone(), &key)?;
 
             // Write the signed invoice to a file.
             let outfile = sign_opts

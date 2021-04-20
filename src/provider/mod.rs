@@ -68,7 +68,7 @@ pub trait Provider {
         role: SignatureRole,
         secret_key: &SecretKeyEntry,
     ) -> Result<()> {
-        inv.sign(secret_key.label.clone(), role, secret_key)?;
+        inv.sign(role, secret_key)?;
         Ok(())
     }
 
@@ -78,7 +78,7 @@ pub trait Provider {
         strategy: VerificationStrategy,
         keys: Vec<super::signature::PublicKey>,
     ) -> Result<()> {
-        strategy.verify(inv, keys)?;
+        strategy.verify(inv, &keys)?;
         Ok(())
     }
 

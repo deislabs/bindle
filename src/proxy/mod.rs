@@ -36,7 +36,7 @@ impl Provider for Proxy {
     ) -> Result<Vec<crate::Label>> {
         // TODO: Need a way to load the local public keyring
         let keyring = vec![];
-        strategy.verify(inv, keyring)?;
+        strategy.verify(inv, &keyring)?;
 
         let mut inv2 = inv.to_owned();
         self.sign_invoice(&mut inv2, SignatureRole::Proxy, secret_key)?;
