@@ -62,14 +62,14 @@ struct Opts {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
-    env_logger::init();
+    // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
+    tracing_subscriber::fmt::init();
 
     // load config file if it exists
     let config_file_path = match opts.config_file {
         Some(c) => c,
-        None => {
-            default_config_file().ok_or(anyhow::anyhow!("could not find a default config path"))?
-        }
+        None => default_config_file()
+            .ok_or_else(|| anyhow::anyhow!("could not find a default config path"))?,
     };
 
     let config_file = tokio::fs::read_to_string(config_file_path)
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
                 .get("address")
                 .map(|v| v.as_str().unwrap().to_string())
         })
-        .unwrap_or(String::from("127.0.0.1:8080"))
+        .unwrap_or_else(|| String::from("127.0.0.1:8080"))
         .parse()?;
 
     // find bindle directory
@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
                 .get("bindle-directory")
                 .map(|v| v.as_str().unwrap().parse().unwrap())
         })
-        .unwrap_or(PathBuf::from("/tmp"));
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
 
     let cert_path = opts.cert_path.or_else(|| {
         config
@@ -128,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
     let index = search::StrictEngine::default();
     let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
 
-    log::info!(
+    tracing::log::info!(
         "Starting server at {}, and serving bindles from {}",
         addr.to_string(),
         bindle_directory.display()

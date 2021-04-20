@@ -1,8 +1,8 @@
 //! A cache that doesn't ever expire entries, generally for use by a client storing bindles on disk
 use std::convert::TryInto;
 
-use log::{info, warn};
 use tokio_stream::{Stream, StreamExt};
+use tracing::log::{info, warn};
 
 use super::{into_cache_result, Cache};
 use crate::provider::{Provider, ProviderError, Result};

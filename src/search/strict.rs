@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 
-use log::trace;
 use tokio::sync::RwLock;
+use tracing::{debug, instrument, trace};
 
 use crate::search::{Matches, Search, SearchOptions};
 
@@ -28,18 +28,14 @@ impl Default for StrictEngine {
 
 #[async_trait::async_trait]
 impl Search for StrictEngine {
+    #[instrument(level = "trace", skip(self))]
     async fn query(
         &self,
-        term: String,
-        filter: String,
+        term: &str,
+        filter: &str,
         options: SearchOptions,
     ) -> anyhow::Result<Matches> {
-        trace!(
-            "beginning search with term {}, version {}, and options {:?}",
-            term,
-            filter,
-            options
-        );
+        trace!("beginning search");
         let mut found: Vec<crate::Invoice> = self
             .index
             .read()
@@ -48,13 +44,13 @@ impl Search for StrictEngine {
             .filter(|(_, i)| {
                 // Term and version have to be exact matches.
                 // TODO: Version should have matching turned on.
-                i.bindle.id.name() == term && i.version_in_range(&filter)
+                i.bindle.id.name() == term && i.version_in_range(filter)
             })
             .map(|(_, v)| (*v).clone())
             .collect();
 
-        trace!("Found {} total matches", found.len());
-        let mut matches = Matches::new(&options, term);
+        debug!(total_matches = found.len(), "Found matches");
+        let mut matches = Matches::new(&options, term.to_owned());
         matches.strict = true;
         matches.yanked = false;
         matches.total = found.len() as u64;
@@ -72,6 +68,7 @@ impl Search for StrictEngine {
         }
 
         matches.more = matches.total > last_index + 1;
+        trace!(last_index, matches.more, "Getting next page of results");
         let range = RangeInclusive::new(matches.offset as usize, last_index as usize);
         matches.invoices = found.drain(range).collect();
         trace!("Returning {} found invoices", matches.invoices.len());
@@ -110,11 +107,7 @@ mod test {
 
         // Search for one result
         let matches = searcher
-            .query(
-                "my/bindle".to_owned(),
-                "1.2.3".to_owned(),
-                SearchOptions::default(),
-            )
+            .query("my/bindle", "1.2.3", SearchOptions::default())
             .await
             .expect("found some matches");
 
@@ -122,11 +115,7 @@ mod test {
 
         // Search for two results
         let matches = searcher
-            .query(
-                "my/bindle".to_owned(),
-                "^1.2.3".to_owned(),
-                SearchOptions::default(),
-            )
+            .query("my/bindle", "^1.2.3", SearchOptions::default())
             .await
             .expect("found some matches");
 
@@ -134,22 +123,14 @@ mod test {
 
         // Search for non-existant bindle
         let matches = searcher
-            .query(
-                "my/bindle2".to_owned(),
-                "1.2.3".to_owned(),
-                SearchOptions::default(),
-            )
+            .query("my/bindle2", "1.2.3", SearchOptions::default())
             .await
             .expect("found some matches");
         assert!(matches.invoices.is_empty());
 
         // Search for non-existant version
         let matches = searcher
-            .query(
-                "my/bindle".to_owned(),
-                "1.2.99".to_owned(),
-                SearchOptions::default(),
-            )
+            .query("my/bindle", "1.2.99", SearchOptions::default())
             .await
             .expect("found some matches");
         assert!(matches.invoices.is_empty());
