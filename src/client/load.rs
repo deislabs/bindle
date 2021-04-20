@@ -8,6 +8,7 @@ use crate::client::Result;
 use tokio::fs::File;
 use tokio_stream::Stream;
 use tokio_util::codec::{BytesCodec, FramedRead};
+use tracing::instrument;
 
 /// Loads a file as an async `Stream`, returning the stream, and the SHA256 sum of the file. Used
 /// primarily for streaming parcel data to a bindle server
@@ -20,6 +21,7 @@ pub async fn raw<P: AsRef<Path>>(
 
 /// Loads a file and deserializes it from TOML to an arbirary type. Turbofish may be required to
 /// specify the type: `bindle::client::load::toml::<bindle::Label>("/my/path.toml").await;`
+#[instrument(level = "trace", skip(file_path), fields(path = %file_path.as_ref().display()))]
 pub async fn toml<T>(file_path: impl AsRef<Path>) -> Result<T>
 where
     T: serde::de::DeserializeOwned,

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio_stream::{Stream, StreamExt};
-use tracing::log::{debug, info};
+use tracing::{debug, info, instrument, trace};
 
 use crate::client::{Client, ClientError, Result};
 use crate::Id;
@@ -37,6 +37,7 @@ impl StandaloneRead {
     ///
     /// In the above example, the `StandaloneWrite` will be configured to read bindle data from the
     /// `/foo/bar/187e908f466500c76c13953c3191fafa869c277e2689f451e92d75cda32452df` directory
+    #[instrument(level = "trace", skip(base_path, bindle_id))]
     pub async fn new<P, I>(base_path: P, bindle_id: I) -> Result<StandaloneRead>
     where
         P: AsRef<Path>,
@@ -47,12 +48,14 @@ impl StandaloneRead {
             .as_ref()
             .join(bindle_id.try_into().map_err(|e| e.into())?.sha());
         let invoice_file = base.join(INVOICE_FILE);
+        trace!(path = %invoice_file.display(), "Computed invoice file path");
         let parcel_dir = base.join(PARCEL_DIR);
-        let mut stream = tokio::fs::read_dir(&parcel_dir).await?;
-        let mut parcels = Vec::new();
-        while let Some(entry) = stream.next_entry().await? {
-            parcels.push(entry.path());
-        }
+        trace!(path = %parcel_dir.display(), "Listing parcels in parcels directory");
+        let stream = tokio::fs::read_dir(&parcel_dir).await?;
+        let parcels = tokio_stream::wrappers::ReadDirStream::new(stream)
+            .map(|res| res.map(|entry| entry.path()).map_err(|e| e.into()))
+            .collect::<Result<_>>()
+            .await?;
         Ok(StandaloneRead {
             invoice_file,
             parcel_dir,
@@ -65,6 +68,7 @@ impl StandaloneRead {
     /// Push this standalone bindle to a bindle server using the given client. This function will
     /// automatically handle cases where the invoice or some of the parcels already exist on the
     /// target bindle server
+    #[instrument(level = "trace", skip(self, client))]
     pub async fn push(&self, client: &Client) -> Result<()> {
         let inv_create = create_or_get_invoice(client, &self.invoice_file).await?;
         let missing = inv_create.missing.unwrap_or_default();
@@ -83,27 +87,26 @@ impl StandaloneRead {
                 if let Some(label) = missing.iter().find(|label| label.sha256 == sha) {
                     Some((label.sha256.clone(), path.clone()))
                 } else {
-                    info!("Parcel {} not in missing parcels, skipping...", sha);
+                    info!(%sha, "Parcel not in missing parcels, skipping...");
                     None
                 }
             })
             .collect();
 
         debug!(
-            "Found {} parcels in this bindle that do not yet exist on the server: {:?}",
-            to_upload.len(),
-            to_upload
+            num_parcels = to_upload.len(),
+            "Found parcels in this bindle that do not yet exist on the server"
         );
 
         let parcel_futures = to_upload
             .into_iter()
             .map(|(sha, path)| (sha, path, inv.bindle.id.clone(), client.clone()))
             .map(|(sha, path, bindle_id, client)| async move {
-                info!("Uploading parcel {} to server", sha);
+                debug!(%sha, "Uploading parcel to server");
                 client
                     .create_parcel_from_file(bindle_id, &sha, path)
                     .await?;
-                info!("Finished uploading parcel {} to server", sha);
+                debug!(%sha, "Finished uploading parcel to server");
                 Ok(())
             });
 
@@ -123,12 +126,17 @@ async fn create_or_get_invoice(
     invoice_path: &Path,
 ) -> Result<crate::InvoiceCreateResponse> {
     // Load the invoice into memory so we can have access to its ID for fetching if needed
+    trace!(path = %invoice_path.display(), "Loading invoice file from disk");
     let inv: crate::Invoice = crate::client::load::toml(invoice_path).await?;
     let id = inv.bindle.id.clone();
+    debug!(invoice_id = %id, "Attempting to create invoice");
     match client.create_invoice(inv).await {
-        Ok(resp) => Ok(resp),
+        Ok(resp) => {
+            debug!(invoice_id = %id, "Invoice created");
+            Ok(resp)
+        }
         Err(e) if matches!(e, crate::client::ClientError::InvoiceAlreadyExists) => {
-            info!("Invoice {} already exists on the bindle server. Fetching existing invoice and missing parcels list", id);
+            info!(invoice_id = %id, "Invoice already exists on the bindle server. Fetching existing invoice and missing parcels list");
             let invoice = client.get_invoice(&id).await?;
             let missing = client.get_missing_parcels(id).await?;
             let missing = if missing.is_empty() {
@@ -182,6 +190,7 @@ impl StandaloneWrite {
 
     /// Writes the given invoice and `HashMap` of parcels (as readers). The key
     /// of the `HashMap` should be the SHA of the parcel
+    #[instrument(level = "trace", skip(self, inv, parcels), fields(invoice_id = %inv.bindle.id, num_parcels = parcels.len(), base_dir = %self.base_path.display()))]
     pub async fn write<T: AsyncRead + Unpin + Send + Sync>(
         &self,
         inv: crate::Invoice,
@@ -190,9 +199,11 @@ impl StandaloneWrite {
         validate_shas(&inv, parcels.keys())?;
 
         // Should create all the directories needed down to the parcels directory
+        trace!("Creating necessary subdirectories");
         tokio::fs::create_dir_all(self.base_path.join(PARCEL_DIR)).await?;
 
         // Write the invoice into the directory
+        trace!("Writing invoice");
         write_invoice(&self.base_path, &inv).await?;
 
         // TODO(thomastaylor312): we might be able to dedup this and the work done in the other
@@ -206,10 +217,10 @@ impl StandaloneWrite {
                 .open(&path)
                 .await?;
 
-            debug!("Writing parcel to {}", path.display());
+            trace!(path = %path.display(), "Writing parcel");
             tokio::io::copy(&mut reader, &mut file).await?;
             file.flush().await?;
-            debug!("Finished writing parcel to {}", path.display());
+            trace!(path = %path.display(), "Finished writing parcel");
             Ok(())
         });
         futures::future::join_all(parcel_writes)
@@ -220,6 +231,7 @@ impl StandaloneWrite {
     }
 
     /// Writes the given invoice and collection of parcel streams
+    #[instrument(level = "trace", skip(self, inv, parcels), fields(invoice_id = %inv.bindle.id, num_parcels = parcels.len(), base_dir = %self.base_path.display()))]
     pub async fn write_stream<E, T>(
         &self,
         inv: crate::Invoice,
@@ -232,8 +244,10 @@ impl StandaloneWrite {
         validate_shas(&inv, parcels.keys())?;
 
         // Should create all the directories needed down to the parcels directory
+        trace!("Creating necessary subdirectories");
         tokio::fs::create_dir_all(self.base_path.join(PARCEL_DIR)).await?;
 
+        trace!("Writing invoice");
         write_invoice(&self.base_path, &inv).await?;
 
         let parcel_writes = parcels.into_iter().map(|(sha, mut stream)| async move {
@@ -245,7 +259,7 @@ impl StandaloneWrite {
                 .open(&path)
                 .await?;
 
-            debug!("Writing parcel to {}", path.display());
+            trace!(path = %path.display(), "Writing parcel");
 
             while let Some(b) = stream.next().await {
                 let b =
@@ -254,7 +268,7 @@ impl StandaloneWrite {
             }
             file.flush().await?;
 
-            debug!("Finished writing parcel to {}", path.display());
+            trace!(path = %path.display(), "Finished writing parcel");
             Ok(())
         });
         futures::future::join_all(parcel_writes)
@@ -266,8 +280,9 @@ impl StandaloneWrite {
     }
 }
 
+#[instrument(level = "trace", skip(base_path, inv), fields(invoice_id = %inv.bindle.id, outfile = %base_path.as_ref().display()))]
 async fn write_invoice(base_path: impl AsRef<Path>, inv: &crate::Invoice) -> Result<()> {
-    debug!("Writing invoice file into {}", base_path.as_ref().display());
+    debug!("Writing invoice file");
     tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true) // Make sure we aren't overwriting
@@ -282,6 +297,7 @@ async fn write_invoice(base_path: impl AsRef<Path>, inv: &crate::Invoice) -> Res
 
 /// Validates all shas in the hashmap to make sure they exist in the invoice. Returns an error
 /// containing a list of the offending SHAs that aren't found in the invoice
+#[instrument(level = "trace", skip(inv, parcels), fields(invoice_id = %inv.bindle.id))]
 fn validate_shas<'a, T: Iterator<Item = &'a String>>(
     inv: &crate::Invoice,
     parcels: T,
