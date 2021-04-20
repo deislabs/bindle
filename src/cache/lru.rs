@@ -12,7 +12,8 @@ use tokio_util::{
     codec::{BytesCodec, FramedRead},
     io::StreamReader,
 };
-use tracing::log::{debug, trace};
+use tracing::{debug, instrument, trace};
+use tracing_futures::Instrument;
 
 use super::*;
 use crate::provider::{Provider, ProviderError, Result};
@@ -54,32 +55,37 @@ impl<Remote> Provider for LruCache<Remote>
 where
     Remote: Provider + Send + Sync + Clone,
 {
+    #[instrument(level = "trace", skip(self))]
     async fn create_invoice(&self, inv: &Invoice) -> Result<Vec<crate::Label>> {
         self.remote.create_invoice(inv).await
     }
 
+    #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<Invoice>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
-        trace!("Checking for invoice {} in cache", parsed_id);
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
+        trace!("Checking for invoice in cache");
         let mut invoices = self.invoices.lock().await;
         match invoices.get(&parsed_id) {
             Some(i) => Ok(i.clone()),
             None => {
-                debug!(
-                    "Did not find invoice {} in cache, attempting to fetch from remote",
-                    parsed_id
-                );
-                let inv = self.remote.get_yanked_invoice(&parsed_id).await?;
-                invoices.put(parsed_id, inv.clone());
-                Ok(inv)
+                async {
+                    debug!("Did not find invoice in cache, attempting to fetch from remote");
+                    let inv = self.remote.get_yanked_invoice(&parsed_id).await?;
+                    invoices.put(parsed_id.clone(), inv.clone());
+                    Ok(inv)
+                }
+                .instrument(tracing::trace_span!("get_invoice_cache_miss", invoice_id = %parsed_id))
+                .await
             }
         }
     }
 
+    #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
     async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id> + Send,
@@ -87,10 +93,13 @@ where
     {
         // Delete the invoice from the local cache as it will be no longer valid
         let parsed_id = id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
+        debug!("Removing local cache entry for yanked invoice");
         self.invoices.lock().await.pop(&parsed_id);
         self.remote.yank_invoice(parsed_id).await
     }
 
+    #[instrument(level = "trace", skip(self, bindle_id, data), fields(invoice_id))]
     async fn create_parcel<I, R, B>(&self, bindle_id: I, parcel_id: &str, data: R) -> Result<()>
     where
         I: TryInto<Id> + Send,
@@ -99,10 +108,13 @@ where
         B: bytes::Buf + Send,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         self.validate_parcel(&parsed_id, parcel_id).await?;
+        debug!("Passing through create parcel request to remote");
         self.remote.create_parcel(parsed_id, parcel_id, data).await
     }
 
+    #[instrument(level = "trace", skip(self, bindle_id), fields(invoice_id))]
     async fn get_parcel<I>(
         &self,
         bindle_id: I,
@@ -113,15 +125,12 @@ where
         I::Error: Into<ProviderError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         // TODO: Should we be worrying about checking the parcel exists in the invoice here? As
         // this is a cache, the remote it fetches from should cover this, but I could also see
         // someone misusing this by fetching from a parcel they have access to and then being
         // able to fetch the parcel without a bindle reference, but maybe that is just paranoia
-        trace!(
-            "Validating that parcel {} exists in invoice {}",
-            parcel_id,
-            parsed_id
-        );
+        trace!("Validating that parcel exists in invoice");
         self.validate_parcel(&parsed_id, parcel_id).await?;
 
         let mut parcels = self.parcels.lock().await;
@@ -135,48 +144,61 @@ where
                 File::from_std(tokio::task::block_in_place(move || f.reopen())?)
             }
             None => {
-                let stream = self.remote.get_parcel(parsed_id, parcel_id).await?;
-                let tempfile = tokio::task::spawn_blocking(NamedTempFile::new)
-                    .await
-                    .map_err(|e| ProviderError::Other(e.to_string()))??;
-                let handle = tempfile.as_file().try_clone()?;
-                let mut file = File::from_std(handle);
-                tokio::io::copy(
-                    &mut StreamReader::new(stream.map(|res| {
-                        res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-                    })),
-                    &mut file,
-                )
-                .await?;
+                async {
+                    debug!("Cache miss for getting parcel. Attempting to fetch from server");
+                    let stream = self.remote.get_parcel(&parsed_id, parcel_id).await?;
+                    trace!("Attempting to insert parcel data into cache");
+                    let tempfile = tokio::task::spawn_blocking(NamedTempFile::new)
+                        .await
+                        .map_err(|e| ProviderError::Other(e.to_string()))??;
+                    let handle = tempfile.as_file().try_clone()?;
+                    let mut file = File::from_std(handle);
+                    tokio::io::copy(
+                        &mut StreamReader::new(stream.map(|res| {
+                            res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                        })),
+                        &mut file,
+                    )
+                    .await?;
 
-                // Insert the file in the cache
-                parcels.put(parcel_id_owned, tempfile);
+                    // Insert the file in the cache
+                    parcels.put(parcel_id_owned, tempfile);
+                    trace!("Parcel caching successful");
 
-                // Seek back to the beginning of the file before returning
-                file.seek(std::io::SeekFrom::Start(0)).await?;
-                file
+                    // Seek back to the beginning of the file before returning
+                    trace!("Resetting file cursor to start");
+                    file.seek(std::io::SeekFrom::Start(0)).await?;
+                    Ok::<_, ProviderError>(file)
+                }
+                .instrument(tracing::trace_span!("get_parcel_cache_miss", invoice_id = %parsed_id, parcel_id))
+                .await?
             }
         };
 
-        Ok(Box::new(FramedRead::new(file, BytesCodec::default()).map(
-            |res| res.map(|b| b.freeze()).map_err(ProviderError::from),
-        )))
+        Ok::<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>, _>(Box::new(
+            FramedRead::new(file, BytesCodec::default())
+                .map(|res| res.map(|b| b.freeze()).map_err(ProviderError::from)),
+        ))
     }
 
+    #[instrument(level = "trace", skip(self, bindle_id), fields(invoice_id))]
     async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> Result<bool>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         self.validate_parcel(&parsed_id, parcel_id).await?;
         let parcels = self.parcels.lock().await;
         // For some reason we can't just used the borrowed string here because I think it is
         // expecting an &String vs an &str
         if parcels.contains(&parcel_id.to_owned()) {
+            trace!("Parcel exists in cache, returning");
             Ok(true)
         } else {
-            self.remote.parcel_exists(parsed_id, parcel_id).await
+            debug!("Parcel does not exist in cache, checking remote");
+            self.remote.parcel_exists(&parsed_id, parcel_id).instrument(tracing::trace_span!("parcel_exists_cache_miss", invoice_id = %parsed_id, parcel_id)).await
         }
     }
 }

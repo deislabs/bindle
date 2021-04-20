@@ -11,7 +11,7 @@ use reqwest::header;
 use reqwest::Client as HttpClient;
 use reqwest::{Body, RequestBuilder, StatusCode};
 use tokio_stream::{Stream, StreamExt};
-use tracing::log::{debug, info};
+use tracing::{debug, info, instrument, trace};
 use url::Url;
 
 use crate::Id;
@@ -68,6 +68,7 @@ impl Client {
     // TODO: Right now this is mainly used if you want to HEAD any of the endpoints, as a HEAD
     // requests is used to get the headers and status code, which is pretty much a raw response
     // anyway. But should we make those their own methods instead?
+    #[instrument(level = "trace", skip(self, body))]
     pub async fn raw(
         &self,
         method: reqwest::Method,
@@ -86,6 +87,7 @@ impl Client {
 
     /// Creates the given invoice, returns a response containing the created invoice and a list of
     /// missing parcels (that have not yet been uploaded)
+    #[instrument(level = "trace", skip(self, inv), fields(id = %inv.bindle.id))]
     pub async fn create_invoice(
         &self,
         inv: crate::Invoice,
@@ -96,13 +98,14 @@ impl Client {
 
     /// Same as [`create_invoice`](Client::create_invoice), but takes a path to an invoice file
     /// instead. This will load the invoice file directly into the request, skipping serialization
+    #[instrument(level = "trace", skip(self, file_path), fields(path = %file_path.as_ref().display()))]
     pub async fn create_invoice_from_file<P: AsRef<Path>>(
         &self,
         file_path: P,
     ) -> Result<crate::InvoiceCreateResponse> {
         // Create an owned version of the path to avoid worrying about lifetimes here for the stream
         let path = file_path.as_ref().to_owned();
-        debug!("Loading invoice from {}", path.display());
+        debug!("Loading invoice from file");
         let inv_stream = load::raw(path).await?;
         debug!("Successfully loaded invoice stream");
         let req = self
@@ -122,6 +125,7 @@ impl Client {
         &self,
         req: RequestBuilder,
     ) -> Result<crate::InvoiceCreateResponse> {
+        trace!(?req);
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
@@ -133,12 +137,14 @@ impl Client {
     /// that can convert into the `Id` type, but generally speaking, this is the canonical name of
     /// the bindle (e.g. `example.com/foo/1.0.0`). If you want to fetch a yanked invoice, use the
     /// [`get_yanked_invoice`](Client::get_yanked_invoice) function
+    #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
     pub async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         self.get_invoice_request(
             self.base_url
                 .join(&format!("{}/{}", INVOICE_ENDPOINT, parsed_id))?,
@@ -147,12 +153,14 @@ impl Client {
     }
 
     /// Same as `get_invoice` but allows you to fetch a yanked invoice
+    #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
     pub async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let mut url = self
             .base_url
             .join(&format!("{}/{}", INVOICE_ENDPOINT, parsed_id))?;
@@ -162,6 +170,7 @@ impl Client {
 
     async fn get_invoice_request(&self, url: Url) -> Result<crate::Invoice> {
         let req = self.client.get(url);
+        trace!(?req);
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
@@ -170,16 +179,17 @@ impl Client {
     //////////////// Query Invoice ////////////////
 
     /// Queries the bindle server for matching invoices as specified by the given query options
+    #[instrument(level = "trace", skip(self))]
     pub async fn query_invoices(
         &self,
         query_opts: crate::QueryOptions,
     ) -> Result<crate::search::Matches> {
-        let resp = self
+        let req = self
             .client
             .get(self.base_url.join(QUERY_ENDPOINT).unwrap())
-            .query(&query_opts)
-            .send()
-            .await?;
+            .query(&query_opts);
+        trace!(?req);
+        let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Query).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
     }
@@ -189,17 +199,20 @@ impl Client {
     /// Yanks the invoice from availability on the bindle server. This can take any form that can
     /// convert into the `Id` type, but generally speaking, this is the canonical name of the bindle
     /// (e.g. `example.com/foo/1.0.0`)
+    #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
     pub async fn yank_invoice<I>(&self, id: I) -> Result<()>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let req = self.client.delete(self.base_url.join(&format!(
             "{}/{}",
             INVOICE_ENDPOINT,
             parsed_id.to_string()
         ))?);
+        trace!(?req);
         let resp = req.send().await?;
         unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(())
@@ -210,6 +223,7 @@ impl Client {
     /// Creates the given parcel using the SHA and the raw parcel data to upload to the server.
     ///
     /// Parcels are only accessible through a bindle, so the Bindle ID is required as well
+    #[instrument(level = "trace", skip(self, bindle_id, data), fields(invoice_id, data_len = data.len()))]
     pub async fn create_parcel<I>(
         &self,
         bindle_id: I,
@@ -221,6 +235,7 @@ impl Client {
         I::Error: Into<ClientError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         self.create_parcel_request(
             self.create_parcel_builder(&parsed_id, parcel_sha)
                 .body(data),
@@ -231,6 +246,7 @@ impl Client {
     /// Same as [`create_parcel`](Client::create_parcel), but takes a path to the parcel
     /// file. This will be more efficient for large files as it will stream the data into the body
     /// rather than taking the intermediate step of loading the bytes into a `Vec`.
+    #[instrument(level = "trace", skip(self, bindle_id, data_path), fields(invoice_id, path = %data_path.as_ref().display()))]
     pub async fn create_parcel_from_file<D, I>(
         &self,
         bindle_id: I,
@@ -245,7 +261,8 @@ impl Client {
         // Copy the path to avoid lifetime issues
         let data = data_path.as_ref().to_owned();
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
-        debug!("Loading parcel data from {}", data.display());
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
+        debug!("Loading parcel data from file");
         let stream = load::raw(data).await?;
         debug!("Successfully loaded parcel stream");
         let data_body = Body::wrap_stream(stream);
@@ -258,6 +275,7 @@ impl Client {
     }
 
     /// Same as [`create_parcel`](Client::create_parcel), but takes a stream of parcel data as bytes
+    #[instrument(level = "trace", skip(self, bindle_id, stream), fields(invoice_id))]
     pub async fn create_parcel_from_stream<I, S, B>(
         &self,
         bindle_id: I,
@@ -271,6 +289,7 @@ impl Client {
         B: bytes::Buf,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let map = stream.map(|res| res.map(|mut b| b.copy_to_bytes(b.remaining())));
         let data_body = Body::wrap_stream(map);
         self.create_parcel_request(
@@ -294,6 +313,7 @@ impl Client {
 
     async fn create_parcel_request(&self, req: RequestBuilder) -> Result<()> {
         // We can unwrap here because any URL error would be programmers fault
+        trace!(?req);
         let resp = req.send().await?;
         unwrap_status(resp, Endpoint::Parcel).await?;
         Ok(())
@@ -302,12 +322,14 @@ impl Client {
     //////////////// Get Parcel ////////////////
 
     /// Returns the requested parcel (identified by its Bindle ID and SHA) as a vector of bytes
+    #[instrument(level = "trace", skip(self, bindle_id), fields(invoice_id))]
     pub async fn get_parcel<I>(&self, bindle_id: I, sha: &str) -> Result<Vec<u8>>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let resp = self.get_parcel_request(&parsed_id, sha).await?;
         Ok(resp.bytes().await?.to_vec())
     }
@@ -315,6 +337,7 @@ impl Client {
     /// Returns the requested parcel (identified by its Bindle ID and SHA) as a stream of bytes.
     /// This is useful for when you don't want to read it into memory but are instead writing to a
     /// file or other location
+    #[instrument(level = "trace", skip(self, bindle_id), fields(invoice_id))]
     pub async fn get_parcel_stream<I>(
         &self,
         bindle_id: I,
@@ -325,22 +348,23 @@ impl Client {
         I::Error: Into<ClientError>,
     {
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let resp = self.get_parcel_request(&parsed_id, sha).await?;
         Ok(resp.bytes_stream().map(|r| r.map_err(|e| e.into())))
     }
 
     async fn get_parcel_request(&self, bindle_id: &Id, sha: &str) -> Result<reqwest::Response> {
         // Override the default accept header
-        let resp = self
+        let req = self
             .client
             .get(
                 self.base_url
                     .join(&format!("{}/{}@{}", INVOICE_ENDPOINT, bindle_id, sha))
                     .unwrap(),
             )
-            .header(header::ACCEPT, "*/*")
-            .send()
-            .await?;
+            .header(header::ACCEPT, "*/*");
+        trace!(?req);
+        let resp = req.send().await?;
         unwrap_status(resp, Endpoint::Parcel).await
     }
 
@@ -348,18 +372,21 @@ impl Client {
 
     /// Gets the labels of missing parcels, if any, of the specified bindle. If the bindle is
     /// yanked, this will fail
+    #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
     pub async fn get_missing_parcels<I>(&self, id: I) -> Result<Vec<crate::Label>>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
+        tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let req = self.client.get(self.base_url.join(&format!(
             "{}/{}/{}",
             RELATIONSHIP_ENDPOINT,
             "missing",
             parsed_id.to_string()
         ))?);
+        trace!(?req);
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(toml::from_slice::<crate::MissingParcelsResponse>(&resp.bytes().await?)?.missing)

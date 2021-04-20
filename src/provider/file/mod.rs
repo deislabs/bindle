@@ -267,7 +267,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         I::Error: Into<ProviderError>,
     {
         let parsed_id: Id = id.try_into().map_err(|e| e.into())?;
-        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        tracing::Span::current().record("id", &tracing::field::display(&parsed_id));
 
         if let Some(inv) = self.invoice_cache.lock().await.get(&parsed_id) {
             debug!("Found invoice in cache, returning");
@@ -309,7 +309,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         I::Error: Into<ProviderError>,
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
-        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        tracing::Span::current().record("id", &tracing::field::display(&parsed_id));
         trace!("Fetching invoice from storage");
         let mut inv = self.get_yanked_invoice(&parsed_id).await?;
         inv.yanked = Some(true);
@@ -354,7 +354,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     {
         debug!("Validating bindle -> parcel relationship");
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
-        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        tracing::Span::current().record("id", &tracing::field::display(&parsed_id));
         self.validate_parcel(parsed_id, parcel_id).await?;
 
         // Test if a dir with that SHA exists. If so, this is an error.
@@ -433,7 +433,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     {
         debug!("Validating bindle -> parcel relationship");
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
-        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        tracing::Span::current().record("id", &tracing::field::display(&parsed_id));
         self.validate_parcel(parsed_id, parcel_id).await?;
 
         let name = self.parcel_data_path(parcel_id);
@@ -453,7 +453,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
     {
         debug!("Validating bindle -> parcel relationship");
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
-        tracing::Span::current().record("id", &parsed_id.to_string().as_str());
+        tracing::Span::current().record("id", &tracing::field::display(&parsed_id));
         self.validate_parcel(parsed_id, parcel_id).await?;
 
         let label_path = self.parcel_data_path(parcel_id);
