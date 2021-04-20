@@ -51,6 +51,23 @@ impl VerificationStrategy {
             .verify_strict(cleartext, &ed_sig)
             .map_err(|_| SignatureError::Unverified(sig.key.clone()))
     }
+    /// Verify that every signature on this invoice is correct.
+    ///
+    /// The verification strategy will determine how this verification is performed.
+    /// Depending on the selected strategy, the `[[signature]]` blocks will be evaluated
+    /// for the following:
+    ///
+    /// - Is the key in the keyring?
+    /// - Can the signature be verified?
+    ///
+    /// Note that the purpose of the keyring is to ensure that we know about the
+    /// entity that claims to have signed the invoice.
+    ///
+    /// If no signatures are on the invoice, this will succeed.
+    ///
+    /// A strategy will determine success or failure based on whether the signature is verified,
+    /// whether the keys are known, whether the requisite number/roles are satisfied, and
+    /// so on.
     pub fn verify(&self, inv: &Invoice, keyring: &Vec<PublicKey>) -> Result<(), SignatureError> {
         let (roles, all_valid, all_verified, all_roles) = match self {
             VerificationStrategy::GreedyVerification => {

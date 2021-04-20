@@ -27,13 +27,12 @@ pub use signature::{SecretKeyEntry, Signature, SignatureError, SignatureRole};
 #[doc(inline)]
 pub use verification::VerificationStrategy;
 
-use ed25519_dalek::{PublicKey, Signature as EdSignature, Signer};
+use ed25519_dalek::{Signature as EdSignature, Signer};
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Alias for feature map in an Invoice's parcel
@@ -198,76 +197,6 @@ impl Invoice {
 
         Ok(())
     }
-
-    /// Verify that every signature on this invoice is correct.
-    ///
-    /// The signature block is considered safe iff:
-    /// - All of the signatures are verified
-    /// - At least one of the signatures is made with a key on the keyring
-    ///
-    /// To verify a signature, the keyring is loaded, and then for each
-    /// `[[signature]]` object on an invoice, the ciphertext is verified.
-    /// The cleartext can be reconstructed from the invoice itself.
-    ///
-    /// Note that the purpose of the keyring is to ensure that we know about the
-    /// entity that claims to have signed the invoice.
-    ///
-    /// If no signatures are on the invoice, this will succeed.
-    ///
-    /// If _any_ signature fails, this should be considered a fatal error.
-    pub fn verify(&self, keyring: Vec<PublicKey>) -> Result<(), SignatureError> {
-        match self.signature.as_ref() {
-            None => Ok(()),
-            Some(signatures) => {
-                let mut known_key = false;
-                for s in signatures {
-                    let cleartext = self.cleartext(s.by.clone(), s.role.clone());
-
-                    // Verify the signature
-                    // TODO: This would allow a trivial DOS attack in which an attacker
-                    // would only need to attach a known-bad signature, and that would
-                    // prevent the module from ever being usable. This is marginally
-                    // better if we only verify signatures on known keys.
-                    self.verify_signature(&s, cleartext.as_bytes())?;
-
-                    // See if the public key is known to us
-                    let pubkey = base64::decode(s.key.clone())
-                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-                    let pko = PublicKey::from_bytes(pubkey.as_slice())
-                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-                    if keyring.contains(&pko) {
-                        known_key = true;
-                    }
-                }
-                if !known_key {
-                    // If we get here, then the none of the signatures were created with
-                    // a key from the keyring. This means the package is untrusted.
-                    Err(SignatureError::NoKnownKey)
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    fn verify_signature(&self, sig: &Signature, cleartext: &[u8]) -> Result<(), SignatureError> {
-        let pk = base64::decode(sig.key.as_bytes())
-            .map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let sig_block = base64::decode(sig.signature.as_bytes())
-            .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
-
-        let pubkey =
-            PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let ed_sig = EdSignature::new(
-            sig_block
-                .as_slice()
-                .try_into()
-                .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?,
-        );
-        pubkey
-            .verify_strict(cleartext, &ed_sig)
-            .map_err(|_| SignatureError::Unverified(sig.key.clone()))
-    }
 }
 
 /// Check whether the given version is within the legal range.
@@ -306,6 +235,7 @@ fn version_compare(version: &Version, requirement: &str) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
+    use ed25519_dalek::PublicKey;
     use std::fs::read_to_string;
     use std::path::Path;
 
@@ -357,8 +287,9 @@ mod test {
 
         // Base case: No signature, no keyring should pass.
         assert!(invoice.signature.is_none());
-        invoice
-            .verify(vec![])
+        let nokeys = vec![];
+        VerificationStrategy::default()
+            .verify(&invoice, &nokeys)
             .expect("If no signature, then this should verify fine");
 
         // Create two signing keys.
@@ -368,8 +299,9 @@ mod test {
         let keypair1 = SecretKeyEntry::new(signer_name1.clone(), vec![SignatureRole::Creator]);
         let keypair2 = SecretKeyEntry::new(signer_name2.clone(), vec![SignatureRole::Proxy]);
 
-        // Put one of the two keys on the keyring
-        let keyring = vec![keypair2.key().expect("generated key exists").public];
+        // Put one of the two keys on the keyring. Since the proxy key is not used in
+        // CreativeIntegrity, it can be omitted from keyring.
+        let keyring = vec![keypair1.key().expect("generated key exists").public];
 
         // Add two signatures
         invoice
@@ -389,12 +321,16 @@ mod test {
         assert_eq!(2, invoice.signature.as_ref().unwrap().len());
 
         // With the keyring, the signature should work
-        invoice
-            .verify(keyring)
+        VerificationStrategy::CreativeIntegrity
+            .verify(&invoice, &keyring)
             .expect("with keys on the keyring, this should pass");
 
-        // This should fail because at least one key must be present in the keyring
-        assert!(invoice.verify(vec![]).is_err());
+        // If we switch the keys in the keyring, this should fail because the Creator
+        // key is not on the ring.
+        let keyring = vec![keypair2.key().expect("generated key exists").public];
+        VerificationStrategy::CreativeIntegrity
+            .verify(&invoice, &keyring)
+            .expect_err("missing the creator key, so verification should fail");
     }
     #[test]
     fn invalid_signatures_should_fail() {
@@ -437,7 +373,7 @@ mod test {
         // Set up a keyring
         let keyring = vec![pubkey];
 
-        match invoice.verify(keyring) {
+        match VerificationStrategy::default().verify(&invoice, &keyring) {
             Err(SignatureError::CorruptSignature(s)) => {
                 assert_eq!("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=", s)
             }
@@ -487,7 +423,7 @@ mod test {
         // Set up a keyring
         let keyring = vec![pubkey];
 
-        match invoice.verify(keyring) {
+        match VerificationStrategy::default().verify(&invoice, &keyring) {
             Err(SignatureError::CorruptKey(s)) => assert_eq!("T0JWSU9VU0xZIEZBS0UK", s),
             Err(e) => panic!("Unexpected error {:?}", e),
             Ok(_) => panic!("Verification should have failed"),
