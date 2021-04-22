@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
-use bindle::invoice::signature::{Keypair, SecretKeyEntry, SecretKeyFile, SignatureRole};
+use bindle::invoice::signature::{KeyRing, SecretKeyEntry, SecretKeyFile, SignatureRole};
 use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
@@ -39,6 +39,9 @@ async fn main() -> std::result::Result<(), ClientError> {
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
         bindle::search::NoopEngine::default(),
+        load_keyring(opts.keyring)
+            .await
+            .unwrap_or_else(|_| KeyRing::default()),
     )
     .await;
     let proxy = bindle::proxy::Proxy::new(bindle_client.clone());
@@ -334,6 +337,17 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
     }
 
     Ok(())
+}
+
+async fn load_keyring(keyring: Option<PathBuf>) -> anyhow::Result<KeyRing> {
+    // This takes an Option<PathBuf> because we want to wrap all of the flag handling in this
+    // function, including setting the default if the kyering is None.
+    let dir = keyring
+        .clone()
+        .unwrap_or_else(|| default_config_dir().unwrap_or_else(|| PathBuf::from(".bindle")))
+        .join("keyring.toml");
+    let kr = bindle::client::load::toml(dir).await?;
+    Ok(kr)
 }
 
 fn map_storage_error(e: ProviderError) -> ClientError {

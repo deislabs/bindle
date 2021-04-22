@@ -10,7 +10,7 @@ use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
 use crate::{
     client::{Client, ClientError},
-    signature::SignatureRole,
+    signature::{KeyRing, SignatureRole},
     SecretKeyEntry, VerificationStrategy,
 };
 
@@ -35,7 +35,7 @@ impl Provider for Proxy {
         strategy: VerificationStrategy,
     ) -> Result<Vec<crate::Label>> {
         // TODO: Need a way to load the local public keyring
-        let keyring = vec![];
+        let keyring = KeyRing::default();
         strategy.verify(inv, &keyring)?;
 
         let mut inv2 = inv.to_owned();

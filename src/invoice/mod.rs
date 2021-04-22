@@ -235,7 +235,8 @@ fn version_compare(version: &Version, requirement: &str) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ed25519_dalek::PublicKey;
+    use crate::invoice::signature::{KeyEntry, KeyRing};
+    use std::convert::TryInto;
     use std::fs::read_to_string;
     use std::path::Path;
 
@@ -287,7 +288,7 @@ mod test {
 
         // Base case: No signature, no keyring should pass.
         assert!(invoice.signature.is_none());
-        let nokeys = vec![];
+        let nokeys = KeyRing::default();
         VerificationStrategy::default()
             .verify(&invoice, &nokeys)
             .expect("If no signature, then this should verify fine");
@@ -301,7 +302,7 @@ mod test {
 
         // Put one of the two keys on the keyring. Since the proxy key is not used in
         // CreativeIntegrity, it can be omitted from keyring.
-        let keyring = vec![keypair1.key().expect("generated key exists").public];
+        let keyring = KeyRing::new(vec![(&keypair1).try_into().expect("convert to public key")]);
 
         // Add two signatures
         invoice
@@ -321,13 +322,15 @@ mod test {
         assert_eq!(2, invoice.signature.as_ref().unwrap().len());
 
         // With the keyring, the signature should work
+        println!("==== IN");
         VerificationStrategy::CreativeIntegrity
             .verify(&invoice, &keyring)
             .expect("with keys on the keyring, this should pass");
+        println!("==== OUT");
 
         // If we switch the keys in the keyring, this should fail because the Creator
         // key is not on the ring.
-        let keyring = vec![keypair2.key().expect("generated key exists").public];
+        let keyring = KeyRing::new(vec![keypair2.try_into().expect("convert to public key")]);
         VerificationStrategy::CreativeIntegrity
             .verify(&invoice, &keyring)
             .expect_err("missing the creator key, so verification should fail");
@@ -368,10 +371,15 @@ mod test {
         // Parse the key from the above example, and put it into the keyring.
         let rawkey =
             base64::decode("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=").expect("key decoded");
-        let pubkey = PublicKey::from_bytes(rawkey.as_slice()).expect("key converted");
+        let pubkey = KeyEntry {
+            key: "jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=".to_owned(),
+            label: "Test Key".to_owned(),
+            roles: vec![SignatureRole::Host],
+            label_signature: None,
+        };
 
         // Set up a keyring
-        let keyring = vec![pubkey];
+        let keyring = KeyRing::new(vec![pubkey]);
 
         match VerificationStrategy::default().verify(&invoice, &keyring) {
             Err(SignatureError::CorruptSignature(s)) => {
@@ -418,10 +426,15 @@ mod test {
         // This is a valid key. We just need something to have on the keyring.
         let rawkey =
             base64::decode("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=").expect("key decoded");
-        let pubkey = PublicKey::from_bytes(rawkey.as_slice()).expect("key converted");
+        //let pubkey = PublicKey::from_bytes(rawkey.as_slice()).expect("key converted");
 
         // Set up a keyring
-        let keyring = vec![pubkey];
+        let keyring = KeyRing::new(vec![KeyEntry {
+            key: "jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=".to_owned(),
+            label: "Test Key".to_owned(),
+            roles: vec![SignatureRole::Creator],
+            label_signature: None,
+        }]);
 
         match VerificationStrategy::default().verify(&invoice, &keyring) {
             Err(SignatureError::CorruptKey(s)) => assert_eq!("T0JWSU9VU0xZIEZBS0UK", s),

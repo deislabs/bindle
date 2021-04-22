@@ -1,5 +1,7 @@
+use super::signature::KeyRing;
 use super::{Invoice, Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{PublicKey, Signature as EdSignature};
+use log::debug;
 
 use std::convert::TryInto;
 
@@ -68,7 +70,7 @@ impl VerificationStrategy {
     /// A strategy will determine success or failure based on whether the signature is verified,
     /// whether the keys are known, whether the requisite number/roles are satisfied, and
     /// so on.
-    pub fn verify(&self, inv: &Invoice, keyring: &Vec<PublicKey>) -> Result<(), SignatureError> {
+    pub fn verify(&self, inv: &Invoice, keyring: &KeyRing) -> Result<(), SignatureError> {
         let (roles, all_valid, all_verified, all_roles) = match self {
             VerificationStrategy::GreedyVerification => {
                 (vec![SignatureRole::Creator], true, true, true)
@@ -104,6 +106,7 @@ impl VerificationStrategy {
                 let mut filled_roles: Vec<SignatureRole> = vec![];
                 for s in signatures {
                     log::debug!("Checking signature for {}", s.by.clone());
+                    debug!("Checking signature for {}", s.by.clone());
                     let target_role = roles.contains(&s.role);
 
                     // If we're not validating all, and this role isn't one we're interested in,
@@ -122,6 +125,7 @@ impl VerificationStrategy {
                     // prevent the module from ever being usable. This is marginally
                     // better if we only verify signatures on known keys.
                     self.verify_signature(&s, cleartext.as_bytes())?;
+                    debug!("Signature verified");
 
                     if !target_role && !all_verified {
                         log::debug!("Not a target role, not checking for verification");
@@ -135,9 +139,10 @@ impl VerificationStrategy {
                     let pko = PublicKey::from_bytes(pubkey.as_slice())
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
 
+                    debug!("Looking for key");
                     // If the keyring contains PKO, then we are successful for this round.
                     if keyring.contains(&pko) {
-                        log::debug!("Found key {}", s.by.clone());
+                        debug!("Found key {}", s.by.clone());
                         known_key = true;
                     } else if all_verified {
                         // If the keyring does not contain pko AND every key must be known,
@@ -149,6 +154,7 @@ impl VerificationStrategy {
                     }
                 }
                 if !known_key {
+                    debug!("No known key");
                     // If we get here, then the none of the signatures were created with
                     // a key from the keyring. This means the package is untrusted.
                     return Err(SignatureError::NoKnownKey);
@@ -207,12 +213,13 @@ mod test {
             SecretKeyEntry::new("Test Approver".to_owned(), vec![SignatureRole::Approver]);
         let key_host = SecretKeyEntry::new("Test Host".to_owned(), vec![SignatureRole::Host]);
         let key_proxy = SecretKeyEntry::new("Test Proxy".to_owned(), vec![SignatureRole::Proxy]);
-        let keyring = vec![
-            key_approver.key().expect("fetch key").public,
-            key_host.key().expect("fetch key").public,
-            key_creator.key().expect("fetch key").public,
-            key_proxy.key().expect("fetch key").public,
+        let keyring_keys = vec![
+            key_approver.clone().try_into().expect("convert to pubkey"),
+            key_host.clone().try_into().expect("convert to pubkey"),
+            key_creator.clone().try_into().expect("convert to pubkey"),
+            key_proxy.clone().try_into().expect("convert to pubkey"),
         ];
+        let keyring = KeyRing::new(keyring_keys);
 
         // Only signed by host
         {

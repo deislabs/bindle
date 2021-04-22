@@ -72,13 +72,14 @@ pub trait Provider {
         Ok(())
     }
 
+    // TODO: This can probably be removed.
     fn verify_invoice(
         &self,
         inv: &super::Invoice,
         strategy: VerificationStrategy,
-        keys: Vec<super::signature::PublicKey>,
+        keys: &super::signature::KeyRing,
     ) -> Result<()> {
-        strategy.verify(inv, &keys)?;
+        strategy.verify(inv, keys)?;
         Ok(())
     }
 

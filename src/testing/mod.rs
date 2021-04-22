@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::invoice::signature::KeyRing;
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
 
@@ -155,7 +156,7 @@ impl From<RawScaffold> for Scaffold {
 pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
-    let store = FileProvider::new(temp.path().to_owned(), index.clone()).await;
+    let store = FileProvider::new(temp.path().to_owned(), index.clone(), KeyRing::default()).await;
     (store, index)
 }
 

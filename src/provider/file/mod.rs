@@ -21,7 +21,9 @@ use tokio_util::io::StreamReader;
 use tracing::{debug, error, info, instrument, trace, warn};
 use tracing_futures::Instrument;
 
-use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
+use crate::invoice::{
+    signature::KeyRing, signature::SecretKeyEntry, SignatureRole, VerificationStrategy,
+};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::search::Search;
 use crate::Id;
@@ -46,6 +48,7 @@ pub struct FileProvider<T> {
     root: PathBuf,
     index: T,
     invoice_cache: Arc<TokioMutex<LruCache<Id, crate::Invoice>>>,
+    keyring: KeyRing,
 }
 
 impl<T: Clone> Clone for FileProvider<T> {
@@ -54,17 +57,19 @@ impl<T: Clone> Clone for FileProvider<T> {
             root: self.root.clone(),
             index: self.index.clone(),
             invoice_cache: Arc::clone(&self.invoice_cache),
+            keyring: self.keyring.clone(),
         }
     }
 }
 
 impl<T: Search + Send + Sync> FileProvider<T> {
-    pub async fn new<P: AsRef<Path>>(path: P, index: T) -> Self {
+    pub async fn new<P: AsRef<Path>>(path: P, index: T, keyring: KeyRing) -> Self {
         debug!(path = %path.as_ref().display(), cache_size = CACHE_SIZE, "Creating new file provider");
         let fs = FileProvider {
             root: path.as_ref().to_owned(),
             index,
             invoice_cache: Arc::new(TokioMutex::new(LruCache::new(CACHE_SIZE))),
+            keyring,
         };
         debug!("warming index");
         if let Err(e) = fs.warm_index().await {
@@ -165,12 +170,9 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             return Err(ProviderError::CreateYanked);
         }
 
-        // Currently this will always fail.
-        // We need a way of getting the public keyring into this context. Probably,
-        // it should be a field hanging of the FileProvider struct, since this
-        // is persistent over time.
-        self.verify_invoice(inv, strategy, vec![])?;
-
+        // Verify that the invoice's existing signatures meet the required strategy.
+        // If they do, then sign the invoice with the host key (or whatever role is given).
+        strategy.verify(inv, &self.keyring)?;
         self.sign_invoice(inv, role, secret_key)?;
 
         let invoice_id = inv.canonical_name();
@@ -638,7 +640,12 @@ mod test {
 
     #[tokio::test]
     async fn test_should_generate_paths() {
-        let f = FileProvider::new("test", crate::search::StrictEngine::default()).await;
+        let f = FileProvider::new(
+            "test",
+            crate::search::StrictEngine::default(),
+            KeyRing::default(),
+        )
+        .await;
         assert_eq!(PathBuf::from("test/invoices/123"), f.invoice_path("123"));
         assert_eq!(
             PathBuf::from("test/invoices/123/invoice.toml"),
@@ -670,6 +677,7 @@ mod test {
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
+            KeyRing::default(),
         )
         .await;
         let inv_name = scaffold.invoice.canonical_name();
@@ -713,9 +721,11 @@ mod test {
         let root = tempdir().unwrap();
         let mut scaffold = testing::Scaffold::load("valid_v1").await;
         scaffold.invoice.yanked = Some(true);
+        let empty_keyring = KeyRing::new(vec![]);
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
+            empty_keyring,
         )
         .await;
 
@@ -739,6 +749,7 @@ mod test {
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
+            KeyRing::default(),
         )
         .await;
 
@@ -794,6 +805,7 @@ mod test {
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
+            KeyRing::default(),
         )
         .await;
 
