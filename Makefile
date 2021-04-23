@@ -3,6 +3,8 @@ SERVER_BIN := bindle-server
 CLIENT_FEATURES ?= --features=cli
 CLIENT_BIN := bindle
 BINDLE_LOG_LEVEL ?= debug
+BINDLE_ID ?= enterprise.com/warpcore/1.0.0
+MIME ?= "application/toml"
 
 export RUST_LOG=error,warp=info,bindle=${BINDLE_LOG_LEVEL}
 
@@ -30,3 +32,4 @@ build-server:
 .PHONY: build-client
 build-client:
 	cargo build ${CLIENT_FEATURES} --bin ${CLIENT_BIN}
+

@@ -21,7 +21,8 @@ where
         .untuple_one()
         .and(
             v1::invoice::query(index)
-                .or(v1::invoice::create(store.clone()))
+                .or(v1::invoice::create_toml(store.clone()))
+                .or(v1::invoice::create_json(store.clone()))
                 .or(v1::invoice::get(store.clone()))
                 .or(v1::invoice::head(store.clone()))
                 .or(v1::invoice::yank(store.clone()))
@@ -57,10 +58,11 @@ pub mod v1 {
                 .and(warp::get())
                 .and(warp::query::<crate::QueryOptions>())
                 .and(warp::any().map(move || index.clone()))
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(query_invoices)
         }
 
-        pub fn create<P>(
+        pub fn create_toml<P>(
             store: P,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
@@ -71,6 +73,22 @@ pub mod v1 {
                 .and(warp::post())
                 .and(with_store(store))
                 .and(filters::toml())
+                .and(warp::header::optional::<String>("accept"))
+                .and_then(create_invoice)
+                .recover(filters::handle_deserialize_rejection)
+        }
+        pub fn create_json<P>(
+            store: P,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        where
+            P: Provider + Clone + Send + Sync,
+        {
+            warp::path("_i")
+                .and(warp::path::end())
+                .and(warp::post())
+                .and(with_store(store))
+                .and(filters::json())
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(create_invoice)
                 .recover(filters::handle_deserialize_rejection)
         }
@@ -86,6 +104,7 @@ pub mod v1 {
                 .and(warp::get())
                 .and(warp::query::<filters::InvoiceQuery>())
                 .and(with_store(store))
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(get_invoice)
         }
 
@@ -99,6 +118,7 @@ pub mod v1 {
                 .and(warp::head())
                 .and(warp::query::<filters::InvoiceQuery>())
                 .and(with_store(store))
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(head_invoice)
         }
 
@@ -112,6 +132,7 @@ pub mod v1 {
                 .and(warp::path::tail())
                 .and(warp::delete())
                 .and(with_store(store))
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(yank_invoice)
         }
     }
@@ -129,6 +150,7 @@ pub mod v1 {
                 .and(warp::post())
                 .and(warp::body::stream())
                 .and(with_store(store))
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(create_parcel)
         }
 
@@ -172,6 +194,7 @@ pub mod v1 {
                 .and(warp::path::tail())
                 .and(warp::get())
                 .and(with_store(store))
+                .and(warp::header::optional::<String>("accept"))
                 .and_then(get_missing)
         }
     }

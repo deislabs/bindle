@@ -20,9 +20,15 @@ pub mod v1 {
     pub async fn query_invoices<S: Search>(
         options: QueryOptions,
         index: S,
+        accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let term = options.query.clone().unwrap_or_default();
         let version = options.version.clone().unwrap_or_default();
+        debug!(
+            "Querying with term {} and version{}",
+            term.clone(),
+            version.clone()
+        );
         let matches = match index.query(&term, &version, options.into()).await {
             Ok(m) => m,
             Err(e) => {
@@ -37,7 +43,7 @@ pub mod v1 {
         trace!(?matches, "Index query successful");
 
         Ok(warp::reply::with_status(
-            reply::toml(&matches),
+            reply::serialized_data(&matches, accept_header.unwrap_or_default()),
             warp::http::StatusCode::OK,
         ))
     }
@@ -46,7 +52,9 @@ pub mod v1 {
     pub async fn create_invoice<P: Provider>(
         store: P,
         inv: crate::Invoice,
+        accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
+        let accept = accept_header.unwrap_or_default();
         let labels = match store.create_invoice(&inv).await {
             Ok(l) => l,
             Err(e) => {
@@ -62,10 +70,13 @@ pub mod v1 {
                 "Newly created invoice is missing parcels",
             );
             Ok(warp::reply::with_status(
-                reply::toml(&crate::InvoiceCreateResponse {
-                    invoice: inv,
-                    missing: Some(labels),
-                }),
+                reply::serialized_data(
+                    &crate::InvoiceCreateResponse {
+                        invoice: inv,
+                        missing: Some(labels),
+                    },
+                    accept,
+                ),
                 warp::http::StatusCode::ACCEPTED,
             ))
         } else {
@@ -74,10 +85,13 @@ pub mod v1 {
                 "Newly created invoice has all existing parcels",
             );
             Ok(warp::reply::with_status(
-                reply::toml(&crate::InvoiceCreateResponse {
-                    invoice: inv,
-                    missing: None,
-                }),
+                reply::serialized_data(
+                    &crate::InvoiceCreateResponse {
+                        invoice: inv,
+                        missing: None,
+                    },
+                    accept,
+                ),
                 warp::http::StatusCode::CREATED,
             ))
         }
@@ -88,7 +102,11 @@ pub mod v1 {
         id: String,
         query: InvoiceQuery,
         store: P,
+        accept_header: Option<String>,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
+        let accept = accept_header.unwrap_or_default();
+
+        debug!("Accept header is {}", accept.clone());
         let res = if query.yanked.unwrap_or_default() {
             store.get_yanked_invoice(id)
         } else {
@@ -101,16 +119,18 @@ pub mod v1 {
                 return Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(reply::into_reply(e)));
             }
         };
-        Ok::<Box<dyn warp::Reply>, Infallible>(Box::new(warp::reply::with_status(
-            reply::toml(&inv),
+        let res = Box::new(warp::reply::with_status(
+            reply::serialized_data(&inv, accept),
             warp::http::StatusCode::OK,
-        )))
+        ));
+        Ok::<Box<dyn warp::Reply>, Infallible>(res)
     }
 
     #[instrument(level = "trace", skip(store), fields(id = tail.as_str()))]
     pub async fn yank_invoice<P: Provider>(
         tail: warp::path::Tail,
         store: P,
+        accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
         if let Err(e) = store.yank_invoice(id).await {
@@ -121,7 +141,7 @@ pub mod v1 {
         let mut resp = std::collections::HashMap::new();
         resp.insert("message", "invoice yanked");
         Ok(warp::reply::with_status(
-            reply::toml(&resp),
+            reply::serialized_data(&resp, accept_header.unwrap_or_default()),
             warp::http::StatusCode::OK,
         ))
     }
@@ -131,9 +151,10 @@ pub mod v1 {
         id: String,
         query: InvoiceQuery,
         store: P,
+        accept_header: Option<String>,
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         trace!("Getting invoice data");
-        let inv = get_invoice(id, query, store).await?;
+        let inv = get_invoice(id, query, store, accept_header).await?;
 
         // Consume the response to we can take the headers
         let (parts, _) = inv.into_response().into_parts();
@@ -149,6 +170,7 @@ pub mod v1 {
         (bindle_id, sha): (String, String),
         body: B,
         store: P,
+        accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible>
     where
         P: Provider + Sync,
@@ -179,7 +201,7 @@ pub mod v1 {
         let mut resp = std::collections::HashMap::new();
         resp.insert("message", "parcel created");
         Ok(warp::reply::with_status(
-            reply::toml(&resp),
+            reply::serialized_data(&resp, accept_header.unwrap_or_default()),
             warp::http::StatusCode::OK,
         ))
     }
@@ -240,6 +262,7 @@ pub mod v1 {
     pub async fn get_missing<P: Provider + Sync + Clone>(
         tail: warp::path::Tail,
         store: P,
+        accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
 
@@ -286,7 +309,10 @@ pub mod v1 {
             }
         };
         Ok(warp::reply::with_status(
-            reply::toml(&crate::MissingParcelsResponse { missing }),
+            reply::serialized_data(
+                &crate::MissingParcelsResponse { missing },
+                accept_header.unwrap_or_default(),
+            ),
             warp::http::StatusCode::OK,
         ))
     }
@@ -300,8 +326,10 @@ pub mod v1 {
         store: &P,
         bindle_id: &str,
         sha: &str,
-    ) -> std::result::Result<crate::Label, warp::reply::WithStatus<crate::server::reply::Toml>>
-    {
+    ) -> std::result::Result<
+        crate::Label,
+        warp::reply::WithStatus<crate::server::reply::SerializedData>,
+    > {
         trace!("fetching invoice data");
         let inv = match store.get_invoice(bindle_id).await {
             Ok(i) => i,
