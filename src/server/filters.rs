@@ -4,7 +4,7 @@ use std::io::Read;
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use tracing::{debug, instrument, trace};
+use tracing::{debug, instrument, trace, warn};
 use tracing_futures::Instrument;
 use warp::reject::{custom, Reject, Rejection};
 use warp::Filter;
@@ -200,7 +200,10 @@ async fn parse_toml<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T
     buf.reader()
         .read_to_end(&mut raw)
         .map_err(|err| custom(BodyDeserializeError { cause: err.into() }))?;
-    toml::from_slice(&raw).map_err(|err| custom(BodyDeserializeError { cause: err.into() }))
+    toml::from_slice(&raw).map_err(|err| {
+        warn!("Failed to deserialize TOML file: {}", err);
+        custom(BodyDeserializeError { cause: err.into() })
+    })
 }
 
 #[instrument(level = "trace", skip(err))]
