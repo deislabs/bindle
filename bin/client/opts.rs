@@ -161,7 +161,7 @@ pub struct Search {
     #[clap(
         short = 'q',
         long = "query",
-        about = "name of the bindle to search for, an empty query means all bindles"
+        about = "filter bindles by this query. Typically, the query is a bindle name or part of a name"
     )]
     pub query: Option<String>,
     #[clap(short = 'b', long = "bindle-version", about = "version constraint of the bindle to search for", long_about = VERSION_QUERY)]
