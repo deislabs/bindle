@@ -42,9 +42,11 @@ impl Search for StrictEngine {
             .await
             .iter()
             .filter(|(_, i)| {
-                // Term and version have to be exact matches.
-                // TODO: Version should have matching turned on.
-                i.bindle.id.name() == term && i.version_in_range(filter)
+                // Per the spec:
+                // - if `term` is present, then it must be contained within the name field of the bindle.
+                // - if a version filter is present, then the version of the bindle must abide by the filter.
+                debug!(term, filter, "comparing term and filter");
+                i.bindle.id.name().contains(term) && (filter == "" || i.version_in_range(filter))
             })
             .map(|(_, v)| (*v).clone())
             .collect();

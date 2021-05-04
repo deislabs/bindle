@@ -12,7 +12,7 @@ test:
 
 .PHONY: serve
 serve:
-	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN}
+	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN} -- --directory ${HOME}/.bindle/bindles
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client
@@ -30,4 +30,3 @@ build-server:
 .PHONY: build-client
 build-client:
 	cargo build ${CLIENT_FEATURES} --bin ${CLIENT_BIN}
-	
