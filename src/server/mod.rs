@@ -17,6 +17,7 @@ use super::provider::Provider;
 use crate::search::Search;
 
 pub(crate) const TOML_MIME_TYPE: &str = "application/toml";
+pub(crate) const JSON_MIME_TYPE: &str = "application/json";
 
 /// The configuration required for running with TLS enabled
 pub struct TlsConfig {

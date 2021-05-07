@@ -1,29 +1,84 @@
 use serde::Serialize;
+use warp::http::header::HeaderValue;
 use warp::http::status::StatusCode;
 use warp::reply::Response;
 use warp::Reply;
 
-use super::TOML_MIME_TYPE;
+use tracing::debug;
+
+use super::{JSON_MIME_TYPE, TOML_MIME_TYPE};
 use crate::provider::ProviderError;
 
-// Borrowed and modified from https://docs.rs/warp/0.2.5/src/warp/reply.rs.html#102
-pub fn toml<T>(val: &T) -> Toml
+const SUPPORTED_SERIALIZERS: &[&str] = &[TOML_MIME_TYPE, JSON_MIME_TYPE, "text/json"];
+
+/// Use an accept header to determine how to serialize content.
+///
+/// This will examine the Accept header, looking for the best match, and then it will
+/// use the appropriate serializer to serialize the data.
+///
+/// The current implementation ignores `q=` annotations, assigning preference based on
+/// the first MIME type to match.
+///
+/// For example, `Accept: text/json, application/toml;q=0.9` will cause encoding to be in JSON.
+/// If no suitable content type is found, this will encode in application/toml, as that
+/// is the behavior described in the spec.
+pub fn serialized_data<T>(val: &T, accept: String) -> SerializedData
 where
     T: Serialize,
 {
-    Toml {
-        inner: toml::to_vec(val).map_err(|e| {
+    let default_mime = "*/*".to_owned();
+    let accept_items = parse_accept(accept.as_str());
+    debug!(
+        %accept,
+        ?accept_items,
+        "Parsed accept header into list",
+    );
+    let best_fit = accept_items
+        .iter()
+        .find(|i| SUPPORTED_SERIALIZERS.contains(&i.as_str()))
+        .unwrap_or(&default_mime);
+    debug!(%best_fit, "Selected a best-fit MIME");
+    let mut final_mime = TOML_MIME_TYPE;
+    let inner = match (*best_fit).as_str() {
+        JSON_MIME_TYPE | "text/json" => {
+            final_mime = JSON_MIME_TYPE;
+            serde_json::to_vec(val).map_err(|e| {
+                tracing::log::error!("Error while serializing TOML: {:?}", e);
+            })
+        }
+        // TOML is default
+        _ => toml::to_vec(val).map_err(|e| {
             tracing::log::error!("Error while serializing TOML: {:?}", e);
         }),
+    };
+    debug!(%final_mime, "negotiated MIME");
+    SerializedData {
+        inner,
+        mime: final_mime.to_owned(),
     }
 }
 
-/// A JSON formatted reply.
-pub struct Toml {
-    inner: Result<Vec<u8>, ()>,
+fn parse_accept(header: &str) -> Vec<String> {
+    header
+        .split(',')
+        .map(|h| {
+            let normalized = h.trim().to_lowercase();
+            let parts: Vec<&str> = normalized.split(";").collect();
+            let mime = parts[0].clone();
+            mime.to_owned()
+        })
+        .collect()
 }
 
-impl Reply for Toml {
+/// A serialized body.
+///
+/// Currently, this may be JSON or TOML.
+pub struct SerializedData {
+    inner: Result<Vec<u8>, ()>,
+    mime: String,
+}
+
+impl Reply for SerializedData {
     #[inline]
     fn into_response(self) -> Response {
         match self.inner {
@@ -31,7 +86,8 @@ impl Reply for Toml {
                 let mut res = Response::new(body.into());
                 res.headers_mut().insert(
                     warp::http::header::CONTENT_TYPE,
-                    warp::http::header::HeaderValue::from_static(TOML_MIME_TYPE),
+                    HeaderValue::from_str(self.mime.as_str())
+                        .unwrap_or(HeaderValue::from_static(TOML_MIME_TYPE)),
                 );
                 res
             }
@@ -45,7 +101,7 @@ impl Reply for Toml {
 /// ```toml
 /// error = "bindle is yanked"
 /// ```
-pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<Toml> {
+pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<SerializedData> {
     let mut error = error;
     let status_code = match &error {
         ProviderError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
@@ -74,11 +130,30 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<Toml> {
 pub fn reply_from_error(
     error: impl std::string::ToString,
     status_code: warp::http::StatusCode,
-) -> warp::reply::WithStatus<Toml> {
+) -> warp::reply::WithStatus<SerializedData> {
     warp::reply::with_status(
-        toml(&crate::ErrorResponse {
-            error: error.to_string(),
-        }),
+        serialized_data(
+            &crate::ErrorResponse {
+                error: error.to_string(),
+            },
+            TOML_MIME_TYPE.to_owned(),
+        ),
         status_code,
     )
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_parse_accept() {
+        assert_eq!(vec!["application/toml"], parse_accept("application/toml"));
+
+        assert_eq!(vec!["application/toml"], parse_accept("application/TOML"));
+
+        assert_eq!(
+            vec!["text/json", "application/json"],
+            parse_accept("text/json, application/json;q=0.9")
+        );
+    }
 }

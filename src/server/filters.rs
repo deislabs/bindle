@@ -216,6 +216,14 @@ pub(crate) async fn handle_deserialize_rejection(
             e,
             warp::http::StatusCode::BAD_REQUEST,
         ))
+    } else if let Some(e) = err.find::<warp::body::BodyDeserializeError>() {
+        // Because we are handling the built in JSON filter, we need to handle the error here as it
+        // is different from ours
+        debug!("Handling rejection as built in deserialize rejection");
+        Ok(crate::server::reply::reply_from_error(
+            e,
+            warp::http::StatusCode::BAD_REQUEST,
+        ))
     } else {
         Err(err)
     }
