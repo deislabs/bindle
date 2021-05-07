@@ -18,7 +18,7 @@ In addition to the Bindle terminology (invoice, parcel, bindle, label), the foll
 
 ## Overview
 
-This document explains how we can combine nanoprocesses, Tainyan beaming, and bindles as ways to represent, store, and deploy _aggregate applications._
+This document explains how we can combine nanoprocesses, Tianyan beaming, and bindles as ways to represent, store, and deploy _aggregate applications._
 
 An aggregate application is an set of programs (modules) that together behave as a cohesive individual program, though they are comprised of separate binaries that each runs in its own runtime.
 Sometimes these runtimes may execute on the same host, and other times the runtimes may be spread across multiple hosts.
@@ -50,8 +50,8 @@ For its part, the runtime performs the following functions:
 - During execution, the runtime is responsible for delegating user interactions. (This may mean running a UI, or may mean determining what does run the UI)
 - Finally, when the aggregate application hits its stopping condition (program completes, user exits, fatal error, etc), it is the runtime's job to clean up
 
-This document focuses on how the runtime makes the decisions about how to fetch and load the constituent parts of an aggregated application.
-That is, this document describes how an application is described as a bindle, and how a Stargazer runtime should interpret the information in that bindle.
+This document focuses on how the runtime makes decisions about how to fetch and load the constituent parts of an aggregated application.
+That is, this document explains how an application is described as a bindle, and how a Stargazer runtime should interpret the information in that bindle.
 
 ## Stargazer Application Structure: Wasm, Tianyan, Nanoprocesses, and Bindle
 
@@ -69,7 +69,7 @@ For example, it may take a three-part application, Tianyan may choose to execute
 
 *Nanoprocesses:* We used to refer to this as "tianyan" as well, but have since adopted the language used by BCA.
 We believe our usage of the term is the same as BCAs: A nanoprocess is a Wasm module that can execute on its
-own, but communicate to other Wasm modules via the component architecture (Module Linking, Type Interfaces) and WASI (IO Streams, IO Arrays).
+own, but communicate to other Wasm modules via the component architecture (Module Linking, Interface Types) and WASI (IO Streams, IO Arrays).
 
 *Bindle:* In this context, we use Bindle as a _specific part_ of the overall Stargazer architecture.
 To that end, we do not talk about any potential general applications of Bindle,
@@ -83,7 +83,7 @@ and orchestrates its execution as one or more nanoprocesses running on one or mo
 
 In this document, we will walk through multiple examples of how Stargazer Applications are described, structured,constructed, read, and executed.
 
-> A core principal of Bindle is that all members of a package must be referenced as parcels.
+> A core principle of Bindle is that all members of a package must be referenced as parcels.
 > In this model, there is no "runtime dependency resolution" in the sense where a nondeterministic process must resolve an identifier to an external package.
 > Parcels are referenced by SHA and signed cryptographically.
 > Only the parcels attached to an invoice may be used to construct the application.
@@ -390,7 +390,7 @@ Upon producing the `example/weather/0.1.0` invoice, the developer included the `
 It is up to tools which parcels are placed into the invoice. So, for example, tooling may also include the `libalmanac.witx` file as well.
 The important criterion is that the invoice should contain all of the parcels required to run the application.
 
-A WITX file may be valuable in some cases, and thus may be included. However, it may prover superfluous, as
+A WITX file may be valuable in some cases, and thus may be included. However, it may prove superfluous, as
 (a) the Invoice itself is a statement of compatibility, and the runtime does not need to ensure that the included parcels are compatible, and
 (b) the information present in the WITX may be compiled into the module itself.
 But a decision as to what is best is left to runtime implementations, and makes no practical difference in the guidance offered in this document.
