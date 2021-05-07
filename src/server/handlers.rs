@@ -25,9 +25,9 @@ pub mod v1 {
         let term = options.query.clone().unwrap_or_default();
         let version = options.version.clone().unwrap_or_default();
         debug!(
-            "Querying with term {} and version{}",
-            term.clone(),
-            version.clone()
+            %term,
+            %version,
+            "Querying invoice index",
         );
         let matches = match index.query(&term, &version, options.into()).await {
             Ok(m) => m,
@@ -106,7 +106,6 @@ pub mod v1 {
     ) -> Result<Box<dyn warp::Reply>, Infallible> {
         let accept = accept_header.unwrap_or_default();
 
-        debug!("Accept header is {}", accept.clone());
         let res = if query.yanked.unwrap_or_default() {
             store.get_yanked_invoice(id)
         } else {
