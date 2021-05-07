@@ -18,31 +18,85 @@ In addition to the Bindle terminology (invoice, parcel, bindle, label), the foll
 
 ## Overview
 
-This document explains how the concept of beaming in the Stargazer/Tianyan platform works with the concept of bindles and parcels, and how the two can be combined to create _aggregate applications_ - applications that behave like a single program, though they are comprised of pieces that execute in separate runtimes. Sometimes these runtimes may execute on the same host, and other times the runtimes may be spread across multiple hosts.
+This document explains how we can combine nanoprocesses, Tianyan beaming, and bindles as ways to represent, store, and deploy _aggregate applications._
 
-When it comes to Bindle storage, the basic idea is that an aggregated application is stored as a single bindle with multiple parcels. The parcels contain the WebAssembly modules that compose that application. Parcels may also store additional data used by these aggregated applications.
+An aggregate application is an set of programs (modules) that together behave as a cohesive individual program, though they are comprised of separate binaries that each runs in its own runtime.
+Sometimes these runtimes may execute on the same host, and other times the runtimes may be spread across multiple hosts.
 
-The bindle describes not just all the necessary parts of an aggregated application, but all the possible parts. So an application may require one parcel, and have another optional parcel. Or it may require one of several parcels. This configuration could (in theory) get even more complicated, where if one particular optional parcel is selected, than another parcel of a set of parcels must also be selected, and so on. The examples later in this document illustrate such cases.
+When it comes to Bindle storage, the basic idea is that an aggregated application is stored as a single bindle with multiple parcels.
+The parcels contain the WebAssembly modules that compose that application.
+Parcels may also store additional data used by these aggregated applications.
+Not all of the parcels on a bindle are required.
+For example, a single bindle may represent multiple different configurations for running the same app.
+This document explains how groups and features are used to choose which modules will be used in a specific instance of an application.
+
+The bindle describes not just all the necessary parts of an aggregated application, but all the possible parts.
+So an application may require one parcel, and have another optional parcel.
+Or it may require one of several parcels.
+This configuration could (in theory) get even more complicated, where if one particular optional parcel is selected, than another parcel of a set of parcels must also be selected, and so on.
+The examples later in this document illustrate such cases.
 
 Regardless of the complexity of the selection, the end result is that the runtime selects the set of parcels that it needs to successfully run the application in its given context.
 
+This document explains how a particular runtime should perform in order to use bindles for an aggregate application.
 For its part, the runtime performs the following functions:
 
 - It accepts a request to execute an application
 - It fetches the application description from a bindle server. The description is stored in the form of a bindle invoice.
 - Upon examining the invoice, it determines which set of parcels it needs in order to execute the aggregate application
+    - This may involve input by a user or other external agent (e.g. CI)
 - Importantly, it also determines _where_ these parcels will be run. It need not be the case that all parcels run on the same host.
 - Once such decisions are made, the runtime executes the aggregate application
 - During execution, the runtime is responsible for delegating user interactions. (This may mean running a UI, or may mean determining what does run the UI)
 - Finally, when the aggregate application hits its stopping condition (program completes, user exits, fatal error, etc), it is the runtime's job to clean up
 
-The focus of this document is not the details of how the runtime performs these. Instead, the document focuses on how the runtime makes the decisions about how to fetch and load the constituent parts of an aggregated application. That is, this document describes how an application is described as a bindle, and how a Stargazer runtime should interpret the information in that bindle.
+This document focuses on how the runtime makes decisions about how to fetch and load the constituent parts of an aggregated application.
+That is, this document explains how an application is described as a bindle, and how a Stargazer runtime should interpret the information in that bindle.
 
-The following example describe the aggregated application bindle, and show increasingly complicated models of applications.
+## Stargazer Application Structure: Wasm, Tianyan, Nanoprocesses, and Bindle
+
+We use the term "Stargazer Application" to describe aggregate Wasm applications written according to a specified model.
+While this document does not describe the model in detail, it outlines the main features.
+
+This discussion is oriented around WebAssembly applications that can execute in environments in and beyond the browser.
+Edge, datacenter, Kubernetes, Nomad, and CLI runtimes are all considered "in bounds."
+
+*Tianyan:* Tianyan is a runtime that selects and executes modules in an aggregate application.
+It can distribute the execution of these modules over a variety of runtimes, and orchestrate their communication.
+For example, it may take a three-part application, Tianyan may choose to execute two modules locally, and the third in the cloud.
+
+*Beaming:* This term refers to the Tianyan process of sending a module or module reference to another trusted Tianyan runtime to execute the module on its behalf.
+
+*Nanoprocesses:* We used to refer to this as "tianyan" as well, but have since adopted the language used by BCA.
+We believe our usage of the term is the same as BCAs: A nanoprocess is a Wasm module that can execute on its
+own, but communicate to other Wasm modules via the component architecture (Module Linking, Interface Types) and WASI (IO Streams, IO Arrays).
+
+*Bindle:* In this context, we use Bindle as a _specific part_ of the overall Stargazer architecture.
+To that end, we do not talk about any potential general applications of Bindle,
+just the specific application of Bindle to Stargazer.
+
+The Stargazer model says, essentially, that Stargazer Applications are organized into Nanoprocesses.
+The developer tooling captures possible configurations of a Stargazer Application into a bindle,
+where each modules is represented as a parcel.
+A Tianyan-capable runtime reads the bindle invoice, constructs an appropriate representation of the application,
+and orchestrates its execution as one or more nanoprocesses running on one or more trusted hosts.
+
+In this document, we will walk through multiple examples of how Stargazer Applications are described, structured,constructed, read, and executed.
+
+> A core principle of Bindle is that all members of a package must be referenced as parcels.
+> In this model, there is no "runtime dependency resolution" in the sense where a nondeterministic process must resolve an identifier to an external package.
+> Parcels are referenced by SHA and signed cryptographically.
+> Only the parcels attached to an invoice may be used to construct the application.
+> Groups and features may be used to swap implementations or toggle features.
+> But this resolution process is intrinsic: Only parcels on the invoice are used in constructing the application.
+> For this reason, an application never includes parts that the invoice signer did not explicitly attest.
+
+The following example describe a Stargazer Application bindle. We will begin with this base application and show increasingly complicated models of applications.
 
 ## Example 1: A one-piece aggregate application
 
-There is no requirement that an aggregate application has more than one WebAssembly module. Given this, we can start with a simple example.
+There is no requirement that an aggregate application has more than one WebAssembly module.
+Given this, we can start with a simple example.
 
 In this example, a single module runs as a simple program that prints the plain text output "Hello World"
 
@@ -95,6 +149,123 @@ In the example above, here's how SG1 executed the program:
     - In this case, this may only entail shutting down the runtime
 
 This example is the simplest case for an aggregate. In a moment, we will start to look at more advanced cases. But before that, here is a brief example of an error case.
+
+### Example 1.a: A library and its "interface"
+
+While the other examples in this document focus on runnable applications, it is also desirable that Bindle can store libraries.
+Developers may then select these libraries from a Bindle server during the development process, and include them in their applications.
+
+For example, while building a weather application, the developer may look for an available "weather almanac" module.
+This module may publish both a binary and an interface specification.
+Therefore, a bindle would need a parcel for the module, and a parcel for the interface definition.
+
+```toml=
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "example/libalmanac"
+version = "5.1.13"
+authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+description = "A weather predicting library based on historical data"
+
+[[parcel]]
+label.sha256 = "3287d35386474cb048264cef43e4fead1701e48f"
+label.mediaType = "application/wasm"
+label.name = "hello.wasm"
+label.size = 1710256
+
+[[parcel]]
+[parcel.label]
+sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
+mediaType = "application/wasm"
+name = "libalmanac.wasm"
+size = 2561710
+
+[[parcel]]
+[parcel.label]
+sha256 = "cef43e4fead1701e48f3287d35386474cb048264"
+mediaType = "application/witx+wat"
+name = "libalmanac.witx"
+size = 2561710
+```
+
+In the example above there are two parcels:
+
+- `libalmanac.wasm` is a WebAssembly module, as indicated by its `mediaType`
+- `libalmanac.witx` is a WITX file (`mediaType: application/witx+wat`)
+
+A user agent that wanted to know what definitions were exported by this module could retrieve the WITX file parcel alone.
+But an agent that wanted to use the module could import both.
+
+While WITX files could be included in any of the examples that follow, we will omit them for brevity.
+It is a safe assumption that any Wasm file could have an accompanying WITX file.
+
+> Note that most packages would also include license documents and other auxiliary documents required for legal reasons or usability reasons. These can be modeled as parcels, and are omitted from this document for brevity.
+
+#### Libraries vs. Applications In Practice
+
+This example illustrates an early stage of how Stargazer applications are built.
+A library, such as the `libalmanac` library, may be served as a stand-alone bindle.
+However, the intention in doing this is to make it available for developers, not to make it available to end users.
+
+Applications, in contrast, will contain a complete manifest of all of the Wasm modules required to run the application.
+See Example 3 for an illustration of how the `libalmanac` library is included.
+Because Bindle uses the SHA256 (and other metadata, including signature) for identification, any host that has already pulled the `libalmanac` library will not need to re-pull it.
+
+A library may have dependencies on other libraries, in which case those are presented in the parcel list (See example 3).
+When a developer agent pulls in a library that itself has dependencies, the agent also pulls in the relevant dependency parcels.
+Agents may decide whether to pull in all such parcels or only a subset, as it is incumbent on that tooling to ensure that the end result functions as intended.
+
+For example, a library called `keyval-storage` might bring in a `redis` parcel and a `memcached` parcel.
+In the library invoice, those may be selectable use groups or features.
+A developer agent may determine that only `redis` is supported and remove `memcached`.
+Or the agent may include both.
+
+When the developer agent removes that dependency the application agent no longer has access to it as a possible configuration.
+Therefore, an application runtime should never attempt to walk back up to the `keyvalue-storage` module and attempt to build an alternate dependency tree.
+In other words, once a developer has indicated exclusion of a library, an application runtime must not override it.
+
+It may be useful to compare this strategy to those in other systems:
+
+- Assume everything is executable: OCI (Docker) does not differentiate between a container that is runnable and one that is not. It is a presumption of the system that all images are executable. In practice, this is not necessarily the case.
+- Make no assumptions: NPM supports both executable and library packages, and does not distinguish. User-facing documentation is the only source of information.
+- Use convention: Apt/DPkg typically uses naming conventions to distinguish between libraries and applications. Furthermore, Apt has a concept of unbuilt source as well, and source code packages are distinguished by convention.
+- Assume everything is source: Go's package system assumes that it is always dealing with source code.
+
+Other considered systems (Cargo, Composer, etc) fell into one of these categories.
+
+Bindle is closer to the `Use convention` strategy employed by Apt.
+We could make it explicit by adding a top-level metadata field such as `library: true`.
+
+### Example 1.b: Pure Interface Libraries
+
+It is possible to create a library that is just an interface specification.
+Such a library might, for example, only have a WITX parcel.
+These libraries are useful for developers during application composition.
+
+For example, one might create a bindle that just defines a `keyvalue-storage` interface in WITX.
+Other developer agents may use that bindle as a reference point for compatibility, making statements such as "this bindle implements the WITX supplied in `example/keyvalue-storage/1.2.3`.
+
+```toml=
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "example/keyvalue-storage"
+version = "1.2.3"
+authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+description = "An interface specifying key/value storage"
+
+[[parcel]]
+[parcel.label]
+sha256 = "cef43e4fead1701e48f3287d35386474cb048264"
+mediaType = "application/witx+wat"
+name = "keyvalue-storage.witx"
+size = 561710
+```
+
+An application bindle would never include a parcel that defines an interface without also including at least one parcel that implements the interface.
+Application bindles must supply parcels that implement any necessary interfaces,
+as an application bindle is always self contained and never has to resort to external reference resolution.
 
 ## Example 2: An un-runnable aggregate application
 
@@ -178,6 +349,7 @@ sha256 = "4cb048264cef43e4fead1701e48f3287d3538647"
 mediaType = "application/wasm"
 name = "libalmanac.wasm"
 size = 2561710
+origin = "example/libalmanac/5.1.13"
 [parcel.label.feature.wasm]
 library = "true"
 ```
@@ -206,6 +378,26 @@ Here we do not go into any detail about the interchange between the two modules.
 The most important detail of this example is that the Bindle invoice provided sufficient information for the runtime to determine how to execute this.
 
 > This design does not dictate that an aggregate application can have only one entrypoint. When there are multiple entrypoints, the runtime is free to choose which to execute.
+
+### How `example/weather` uses `example/libalmanac`
+
+In this example, the `libalmanac.wasm` file comes from `example/libalmanac/5.1.31`.
+In example 1.a, we covered how library modules are declared.
+Here, the `origin` label points to the upstream library module so that an auditing agent has a way of tracing provenance.
+
+In the behind-the-scenes process, the `example/weather` developer fetched the `example/libalmanac` module, including it in their application.
+Upon producing the `example/weather/0.1.0` invoice, the developer included the `libalmanac.wasm` parcel into this invoice.
+It is up to tools which parcels are placed into the invoice. So, for example, tooling may also include the `libalmanac.witx` file as well.
+The important criterion is that the invoice should contain all of the parcels required to run the application.
+
+A WITX file may be valuable in some cases, and thus may be included. However, it may prove superfluous, as
+(a) the Invoice itself is a statement of compatibility, and the runtime does not need to ensure that the included parcels are compatible, and
+(b) the information present in the WITX may be compiled into the module itself.
+But a decision as to what is best is left to runtime implementations, and makes no practical difference in the guidance offered in this document.
+
+> Note that because of signing and hashing, `origin` cannot be forged to point to the wrong origin.
+See the [label specification](./label-spec.md) and the [invoice specification](./invoice-spec.md)
+for details on how this functions.
 
 ## Example 4: Remote execution of a library
 
