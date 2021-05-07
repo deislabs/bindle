@@ -4,10 +4,12 @@ use warp::http::status::StatusCode;
 use warp::reply::Response;
 use warp::Reply;
 
-use tracing::log::debug;
+use tracing::debug;
 
 use super::{JSON_MIME_TYPE, TOML_MIME_TYPE};
 use crate::provider::ProviderError;
+
+const SUPPORTED_SERIALIZERS: &[&str] = &[TOML_MIME_TYPE, JSON_MIME_TYPE, "text/json"];
 
 /// Use an accept header to determine how to serialize content.
 ///
@@ -24,22 +26,18 @@ pub fn serialized_data<T>(val: &T, accept: String) -> SerializedData
 where
     T: Serialize,
 {
-    let supported = vec![
-        TOML_MIME_TYPE.to_owned(),
-        JSON_MIME_TYPE.to_owned(),
-        "text/json".to_owned(),
-    ];
     let default_mime = "*/*".to_owned();
-    let accept_items = parse_accept(accept.clone());
+    let accept_items = parse_accept(accept.as_str());
     debug!(
-        "Parsed accept header '{}' into items: {:?}",
-        accept, accept_items
+        %accept,
+        ?accept_items,
+        "Parsed accept header into list",
     );
     let best_fit = accept_items
         .iter()
-        .find(|i| supported.contains(*i))
+        .find(|i| SUPPORTED_SERIALIZERS.contains(&i.as_str()))
         .unwrap_or(&default_mime);
-    debug!("Best fit MIME is {}", best_fit);
+    debug!(%best_fit, "Selected a best-fit MIME");
     let mut final_mime = TOML_MIME_TYPE;
     let inner = match (*best_fit).as_str() {
         JSON_MIME_TYPE | "text/json" => {
@@ -53,14 +51,14 @@ where
             tracing::log::error!("Error while serializing TOML: {:?}", e);
         }),
     };
-    debug!("negotiated MIME is '{}'", final_mime);
+    debug!(%final_mime, "negotiated MIME");
     SerializedData {
         inner,
         mime: final_mime.to_owned(),
     }
 }
 
-fn parse_accept<'a>(header: String) -> Vec<String> {
+fn parse_accept(header: &str) -> Vec<String> {
     header
         .split(',')
         .map(|h| {
@@ -149,19 +147,13 @@ mod test {
     use super::*;
     #[test]
     fn test_parse_accept() {
-        assert_eq!(
-            vec!["application/toml"],
-            parse_accept("application/toml".to_owned())
-        );
+        assert_eq!(vec!["application/toml"], parse_accept("application/toml"));
 
-        assert_eq!(
-            vec!["application/toml"],
-            parse_accept("application/TOML".to_owned())
-        );
+        assert_eq!(vec!["application/toml"], parse_accept("application/TOML"));
 
         assert_eq!(
             vec!["text/json", "application/json"],
-            parse_accept("text/json, application/json;q=0.9".to_owned())
+            parse_accept("text/json, application/json;q=0.9")
         );
     }
 }

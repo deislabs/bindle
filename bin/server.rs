@@ -63,7 +63,9 @@ struct Opts {
 async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
 
     // load config file if it exists
     let config_file_path = match opts.config_file {

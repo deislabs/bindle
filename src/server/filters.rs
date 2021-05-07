@@ -9,7 +9,7 @@ use tracing_futures::Instrument;
 use warp::reject::{custom, Reject, Rejection};
 use warp::Filter;
 
-use super::{JSON_MIME_TYPE, TOML_MIME_TYPE};
+use super::TOML_MIME_TYPE;
 use crate::authn::Authenticator;
 use crate::authz::Authorizer;
 
@@ -206,27 +206,20 @@ async fn parse_toml<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T
     })
 }
 
-pub fn json<T: DeserializeOwned + Send>() -> impl Filter<Extract = (T,), Error = Rejection> + Copy {
-    warp::filters::header::exact_ignore_case("Content-Type", JSON_MIME_TYPE)
-        .and(warp::body::aggregate())
-        .and_then(parse_json)
-}
-
-async fn parse_json<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T, Rejection> {
-    debug!("Parsing as JSON");
-    let mut raw = Vec::new();
-    buf.reader()
-        .read_to_end(&mut raw)
-        .map_err(|err| custom(BodyDeserializeError { cause: err.into() }))?;
-    serde_json::from_slice(&raw).map_err(|err| custom(BodyDeserializeError { cause: err.into() }))
-}
-
 #[instrument(level = "trace", skip(err))]
 pub(crate) async fn handle_deserialize_rejection(
     err: warp::Rejection,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if let Some(e) = err.find::<BodyDeserializeError>() {
         debug!("Handling rejection as deserialize rejection");
+        Ok(crate::server::reply::reply_from_error(
+            e,
+            warp::http::StatusCode::BAD_REQUEST,
+        ))
+    } else if let Some(e) = err.find::<warp::body::BodyDeserializeError>() {
+        // Because we are handling the built in JSON filter, we need to handle the error here as it
+        // is different from ours
+        debug!("Handling rejection as built in deserialize rejection");
         Ok(crate::server::reply::reply_from_error(
             e,
             warp::http::StatusCode::BAD_REQUEST,

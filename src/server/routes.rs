@@ -87,7 +87,7 @@ pub mod v1 {
                 .and(warp::path::end())
                 .and(warp::post())
                 .and(with_store(store))
-                .and(filters::json())
+                .and(warp::body::json())
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(create_invoice)
                 .recover(filters::handle_deserialize_rejection)
