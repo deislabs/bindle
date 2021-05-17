@@ -1,11 +1,12 @@
 use super::signature::KeyRing;
 use super::{Invoice, Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{PublicKey, Signature as EdSignature};
-use log::debug;
+use tracing::debug;
 
 use std::convert::TryInto;
 
 /// This enumerates the verifications strategies described in the signing spec.
+#[derive(Debug)]
 pub enum VerificationStrategy {
     /// CreativeIntegrity verifies that (a) the key that signs as Creator is a known key,
     /// and that the signature is valid.
@@ -105,14 +106,13 @@ impl VerificationStrategy {
                 let mut known_key = false;
                 let mut filled_roles: Vec<SignatureRole> = vec![];
                 for s in signatures {
-                    log::debug!("Checking signature for {}", s.by.clone());
-                    debug!("Checking signature for {}", s.by.clone());
+                    debug!(by = %s.by, "Checking signature");
                     let target_role = roles.contains(&s.role);
 
                     // If we're not validating all, and this role isn't one we're interested in,
                     // skip it.
                     if !all_valid && !target_role {
-                        log::debug!("Not a target role, and not running all_valid");
+                        debug!("Not a target role, and not running all_valid");
                         continue;
                     }
 
@@ -128,7 +128,7 @@ impl VerificationStrategy {
                     debug!("Signature verified");
 
                     if !target_role && !all_verified {
-                        log::debug!("Not a target role, not checking for verification");
+                        debug!("Not a target role, not checking for verification");
                         continue;
                     } else if all_roles {
                         filled_roles.push(role);

@@ -3,6 +3,7 @@
 pub use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::error;
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter, Result as FmtResult};
@@ -196,7 +197,7 @@ impl KeyEntry {
             SignatureError::CorruptKey("Base64 decoding of the public key failed".to_owned())
         })?;
         let pk = PublicKey::from_bytes(rawbytes.as_slice()).map_err(|e| {
-            log::error!("Error loading public key: {}", e);
+            error!(%e, "Error loading public key");
             // Don't leak information about the key, because this could be sent to
             // a remote. A generic error is all the user should see.
             SignatureError::CorruptKey("Could not load keypair".to_owned())
