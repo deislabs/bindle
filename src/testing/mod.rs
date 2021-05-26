@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::invoice::signature::KeyRing;
+use crate::invoice::signature::{KeyRing, SecretKeyEntry, SecretKeyStorage, SignatureRole};
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
 
@@ -153,11 +153,12 @@ impl From<RawScaffold> for Scaffold {
 
 /// Returns a file `Store` implementation configured with a temporary directory and strict Search
 /// implementation for use in testing API endpoints
-pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine) {
+pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine, MockKeyStore) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
     let store = FileProvider::new(temp.path().to_owned(), index.clone(), KeyRing::default()).await;
-    (store, index)
+    let kstore = MockKeyStore::new();
+    (store, index, kstore)
 }
 
 /// Loads all scaffolds in the scaffolds directory, returning them as a hashmap with the directory
@@ -224,4 +225,26 @@ async fn bindle_dirs() -> Vec<PathBuf> {
     }
 
     directories
+}
+
+#[derive(Clone)]
+pub struct MockKeyStore {
+    mock_secret_key: SecretKeyEntry,
+}
+
+impl MockKeyStore {
+    pub fn new() -> Self {
+        MockKeyStore {
+            mock_secret_key: SecretKeyEntry::new(
+                "Test <test@example.com>".to_owned(),
+                vec![SignatureRole::Host],
+            ),
+        }
+    }
+}
+
+impl SecretKeyStorage for MockKeyStore {
+    fn get_first_matching(&self, _role: &SignatureRole) -> Option<&SecretKeyEntry> {
+        Some(&self.mock_secret_key)
+    }
 }

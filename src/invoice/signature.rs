@@ -55,6 +55,8 @@ pub enum SignatureError {
     NoKnownKey,
     #[error("cannot sign the data again with a key that has already signed the data")]
     DuplicateSignature,
+    #[error("no suitable key for signing data")]
+    NoSuitableKey,
 }
 
 /// The role of a signer in a signature block.
@@ -279,8 +281,38 @@ impl SecretKeyEntry {
     }
 }
 
-// pub trait KeyLoader {
-//     fn load(&self) -> anyhow::Result<SecretKeyFile>;
+/// Storage for secret keys
+///
+/// Any possible number of key storage systems may be used for key storage, but
+/// all of them must provide a way for the system to fetch a key matching the
+/// desired role.
+pub trait SecretKeyStorage {
+    /// Get a key appropriate for signing with the given role.
+    ///
+    /// If no key is found, this will return a None.
+    /// In general, if multiple keys match, the implementation chooses the "best fit"
+    /// and returns that key.
+    fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry>;
+}
+
+/// This is a speciality wrapper for loading secrets files at the last moment each time a key is accessed.
+///
+/// Note that this logs and swallows errors, but is more secure than loading keys once.
+// #[derive(Debug, Clone)]
+// pub struct LazySecretKeyLoader {
+//     file: PathBuf,
+// }
+
+// impl SecretKeyStorage for LazySecretKeyLoader {
+//     fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
+//         match SecretKeyFile::load_file(self.file).await {
+//             Err(e) => {
+//                 error!(secret_key_file = %self.file, "Failed to load secret key file");
+//                 None
+//             }
+//             Ok(h) => h.get_first_matching(role),
+//         }
+//     }
 // }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -312,8 +344,10 @@ impl SecretKeyFile {
         tokio::fs::write(dest, out).await?;
         Ok(())
     }
+}
 
-    pub fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
+impl SecretKeyStorage for SecretKeyFile {
+    fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
         self.key.iter().find(|k| k.roles.contains(role)).clone()
     }
 }

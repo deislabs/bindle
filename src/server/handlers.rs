@@ -5,14 +5,14 @@ use warp::Reply;
 
 use super::filters::InvoiceQuery;
 use super::reply;
-use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
-use crate::provider::Provider;
+use crate::invoice::{SignatureRole, VerificationStrategy};
+use crate::provider::{Provider, ProviderError};
 use crate::search::Search;
 
 pub mod v1 {
     use super::*;
 
-    use crate::QueryOptions;
+    use crate::{signature::SecretKeyStorage, QueryOptions, SignatureError};
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
 
@@ -49,9 +49,10 @@ pub mod v1 {
         ))
     }
 
-    #[instrument(level = "trace", skip(store))]
-    pub async fn create_invoice<P: Provider>(
+    #[instrument(level = "trace", skip(store, secret_store))]
+    pub async fn create_invoice<P: Provider, S: SecretKeyStorage>(
         store: P,
+        secret_store: S,
         inv: crate::Invoice,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
@@ -65,8 +66,14 @@ pub mod v1 {
         // FIXME: Allow other strategies
         let strategy = VerificationStrategy::default();
         let role = SignatureRole::Host;
-        // FIXME: Load the keyfile
-        let sk = SecretKeyEntry::new("TEMPORARY".to_owned(), vec![SignatureRole::Host]);
+        let sk = match secret_store.get_first_matching(&role) {
+            None => {
+                return Ok(reply::into_reply(ProviderError::FailedSigning(
+                    SignatureError::NoSuitableKey,
+                )))
+            }
+            Some(k) => k,
+        };
 
         let labels = match store
             .create_invoice(&mut inv.clone(), role, &sk, strategy)

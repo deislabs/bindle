@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
-use bindle::invoice::signature::{KeyRing, SecretKeyEntry, SecretKeyFile, SignatureRole};
+use bindle::invoice::signature::{
+    KeyRing, SecretKeyEntry, SecretKeyFile, SecretKeyStorage, SignatureRole,
+};
 use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};

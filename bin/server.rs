@@ -7,6 +7,7 @@ use bindle::{
     invoice::signature::KeyRing,
     provider, search,
     server::{server, TlsConfig},
+    signature::SecretKeyFile,
 };
 
 const DESCRIPTION: &str = r#"
@@ -65,6 +66,14 @@ struct Opts {
         about = "the path to the keyring file"
     )]
     keyring_file: Option<PathBuf>,
+
+    #[clap(
+        name = "signing_keys",
+        long = "signing-keys",
+        env = "BINDLE_SIGNING_KEYS",
+        about = "location of the TOML file that holds the signing keys"
+    )]
+    signing_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -157,6 +166,19 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => anyhow::bail!("failed to read file {}: {}", keyring_file.display(), e),
     };
 
+    let signing_keys: PathBuf = opts
+        .signing_file
+        .or_else(|| {
+            config
+                .get("signing-keys")
+                .map(|v| v.to_string().parse().unwrap())
+        })
+        .unwrap_or(PathBuf::from(
+            default_config_dir()
+                .unwrap_or_else(|| PathBuf::from("./bindle"))
+                .join("signing-keys.toml"),
+        ));
+
     let cert_path = opts.cert_path.or_else(|| {
         config
             .get("cert-path")
@@ -180,6 +202,15 @@ async fn main() -> anyhow::Result<()> {
 
     let index = search::StrictEngine::default();
     let store = provider::file::FileProvider::new(&bindle_directory, index.clone(), keyring).await;
+    let secret_store = SecretKeyFile::load_file(signing_keys.clone())
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load secret key file from {}: {}",
+                signing_keys.display(),
+                e
+            )
+        })?;
 
     tracing::log::info!(
         "Starting server at {}, and serving bindles from {}",
@@ -194,6 +225,7 @@ async fn main() -> anyhow::Result<()> {
         bindle::authz::always::AlwaysAuthorize,
         addr,
         tls,
+        secret_store,
     )
     .await
 }

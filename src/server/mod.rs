@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use tracing::debug;
 
 use super::provider::Provider;
-use crate::search::Search;
+use crate::{search::Search, signature::SecretKeyStorage};
 
 pub(crate) const TOML_MIME_TYPE: &str = "application/toml";
 pub(crate) const JSON_MIME_TYPE: &str = "application/json";
@@ -28,22 +28,24 @@ pub struct TlsConfig {
 /// Returns a future that runs a server until it receives a SIGINT to stop. If optional TLS
 /// configuration is given, the server will be configured to use TLS. Otherwise it will use plain
 /// HTTP
-pub async fn server<P, I, Authn, Authz>(
+pub async fn server<P, I, Authn, Authz, S>(
     store: P,
     index: I,
     authn: Authn,
     authz: Authz,
     addr: impl Into<SocketAddr> + 'static,
     tls: Option<TlsConfig>,
+    keystore: S,
 ) -> anyhow::Result<()>
 where
     P: Provider + Clone + Send + Sync + 'static,
     I: Search + Clone + Send + Sync + 'static,
+    S: SecretKeyStorage + Clone + Send + Sync + 'static,
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
-    let api = routes::api(store, index, authn, authz);
+    let api = routes::api(store, index, authn, authz, keystore);
 
     let server = warp::serve(api);
     match tls {
@@ -94,9 +96,9 @@ mod test {
     #[tokio::test]
     async fn test_successful_workflow() {
         let bindles = testing::load_all_files().await;
-        let (store, index) = testing::setup().await;
+        let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize);
+        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize, ks);
 
         // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
 
@@ -249,9 +251,15 @@ mod test {
 
     #[tokio::test]
     async fn test_yank() {
-        let (store, index) = testing::setup().await;
+        let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
+        let api = super::routes::api(
+            store.clone(),
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            ks,
+        );
 
         let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
 
@@ -312,9 +320,15 @@ mod test {
     // test for storage), just the main validation failures from the API
     async fn test_invoice_validation() {
         let bindles = testing::load_all_files().await;
-        let (store, index) = testing::setup().await;
+        let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
+        let api = super::routes::api(
+            store.clone(),
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            ks,
+        );
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
         let mut valid = testing::Scaffold::from(valid_raw.clone());
         store
@@ -347,9 +361,15 @@ mod test {
     // This isn't meant to test all of the possible validation failures (that should be done in a unit
     // test for storage), just the main validation failures from the API
     async fn test_parcel_validation() {
-        let (store, index) = testing::setup().await;
+        let (store, index, keystore) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
+        let api = super::routes::api(
+            store.clone(),
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            keystore.clone(),
+        );
         // Insert a parcel
         let mut scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
@@ -429,9 +449,15 @@ mod test {
     // functions properly
     async fn test_queries() {
         // Insert data into store
-        let (store, index) = testing::setup().await;
+        let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
+        let api = super::routes::api(
+            store.clone(),
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            ks,
+        );
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
         for b in bindles_to_insert.into_iter() {
@@ -528,9 +554,15 @@ mod test {
 
     #[tokio::test]
     async fn test_missing() {
-        let (store, index) = testing::setup().await;
+        let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store.clone(), index, AlwaysAuthenticate, AlwaysAuthorize);
+        let api = super::routes::api(
+            store.clone(),
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            ks,
+        );
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
         store
