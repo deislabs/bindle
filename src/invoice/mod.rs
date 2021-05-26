@@ -369,8 +369,6 @@ mod test {
         let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
 
         // Parse the key from the above example, and put it into the keyring.
-        let rawkey =
-            base64::decode("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=").expect("key decoded");
         let pubkey = KeyEntry {
             key: "jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=".to_owned(),
             label: "Test Key".to_owned(),
@@ -422,10 +420,6 @@ mod test {
         "#;
 
         let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
-
-        // This is a valid key. We just need something to have on the keyring.
-        //let rawkey = base64::decode("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=").expect("key decoded");
-        //let pubkey = PublicKey::from_bytes(rawkey.as_slice()).expect("key converted");
 
         // Set up a keyring
         let keyring = KeyRing::new(vec![KeyEntry {

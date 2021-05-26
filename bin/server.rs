@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use clap::Clap;
 
 use bindle::{
-    invoice::signature::KeyRing,
+    invoice::signature::{KeyRing, SignatureRole},
     provider, search,
     server::{server, TlsConfig},
     signature::SecretKeyFile,
+    SecretKeyEntry,
 };
 
 const DESCRIPTION: &str = r#"
@@ -166,18 +167,20 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => anyhow::bail!("failed to read file {}: {}", keyring_file.display(), e),
     };
 
-    let signing_keys: PathBuf = opts
-        .signing_file
-        .or_else(|| {
-            config
-                .get("signing-keys")
-                .map(|v| v.to_string().parse().unwrap())
-        })
-        .unwrap_or(PathBuf::from(
-            default_config_dir()
-                .unwrap_or_else(|| PathBuf::from("./bindle"))
-                .join("signing-keys.toml"),
-        ));
+    // Load the signing keys from...
+    // - --signing-keys filename
+    // - or config file signing-keys entry
+    // - or $XDG_DATA/bindle/signing-keys.toml
+    let signing_keys_config: Option<PathBuf> = opts.signing_file.or_else(|| {
+        config
+            .get("signing-keys")
+            .map(|v| v.to_string().parse().unwrap())
+    });
+
+    let signing_keys = match signing_keys_config {
+        Some(keypath) => keypath,
+        None => ensure_signing_keys().await?,
+    };
 
     let cert_path = opts.cert_path.or_else(|| {
         config
@@ -206,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|e| {
             anyhow::anyhow!(
-                "Failed to load secret key file from {}: {}",
+                "Failed to load secret key file from {}: {} HINT: Try the flag --signing-keys",
                 signing_keys.display(),
                 e
             )
@@ -235,6 +238,40 @@ fn default_config_file() -> Option<PathBuf> {
 }
 fn default_config_dir() -> Option<PathBuf> {
     dirs::config_dir().map(|v| v.join("bindle/"))
+}
+
+async fn ensure_config_dir() -> anyhow::Result<PathBuf> {
+    let dir = default_config_dir().unwrap_or_else(|| PathBuf::from("./bindle"));
+    tokio::fs::create_dir_all(dir.clone()).await?;
+    Ok(dir)
+}
+
+async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
+    let base = ensure_config_dir().await?;
+    let signing_keyfile = base.join("signing-keys.toml");
+
+    // Stat it, and if it exists we are good.
+    match tokio::fs::metadata(&signing_keyfile).await {
+        Ok(info) if info.is_file() => Ok(signing_keyfile),
+        Ok(_info) => Err(anyhow::anyhow!("Not a file: {}", signing_keyfile.display())),
+        // If the file is not found, then drop through and create a default instance
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let mut default_keyfile = SecretKeyFile::default();
+            println!(
+                "Creating a default host signing key and storing it in {}",
+                signing_keyfile.display()
+            );
+            let key = SecretKeyEntry::new("Default host key".to_owned(), vec![SignatureRole::Host]);
+            default_keyfile.key.push(key);
+            default_keyfile.save_file(signing_keyfile.clone()).await?;
+            Ok(signing_keyfile)
+        }
+        Err(e) => Err(anyhow::anyhow!(
+            "Failed to load singing keys at {}: {}",
+            signing_keyfile.display(),
+            e
+        )),
+    }
 }
 
 async fn load_toml<T>(file: PathBuf) -> anyhow::Result<T>
