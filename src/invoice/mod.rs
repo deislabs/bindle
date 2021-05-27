@@ -96,6 +96,18 @@ impl Invoice {
         version_compare(self.bindle.id.version(), requirement)
     }
 
+    /// Get all of the parcels on the given group.
+    pub fn group_members(&self, name: &str) -> Vec<Parcel> {
+        // TODO: This does not enforce that there is actually a group entry.
+        self.parcel
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .filter(|p| p.member_of(name))
+            .map(|p| p.clone())
+            .collect()
+    }
+
     fn cleartext(&self, by: String, role: SignatureRole) -> String {
         let id = self.bindle.id.clone();
         let mut buf = vec![
@@ -579,5 +591,48 @@ mod test {
 
         assert!(txt.is_global_group());
         assert!(!txt.member_of("telescopes"));
+    }
+
+    #[test]
+    fn test_group_members() {
+        let invoice = r#"
+        bindleVersion = "1.0.0"
+
+        [bindle]
+        name = "aricebo"
+        version = "1.2.3"
+
+        [[group]]
+        name = "images"
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeefff"
+        name = "telescope.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        [parcel.conditions]
+        memberOf = ["telescopes"]
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeeggg"
+        name = "telescope2.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        [parcel.conditions]
+        memberOf = ["telescopes"]
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "111aaabbbcccdddeee"
+        name = "telescope.txt"
+        mediaType = "text/plain"
+        size = 123_456
+        "#;
+
+        let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
+        let members = invoice.group_members("telescopes");
+        assert_eq!(2, members.len());
     }
 }
