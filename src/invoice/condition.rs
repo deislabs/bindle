@@ -9,3 +9,9 @@ pub struct Condition {
     pub member_of: Option<Vec<String>>,
     pub requires: Option<Vec<String>>,
 }
+
+impl Condition {
+    pub fn in_default_group(&self) -> bool {
+        return self.member_of.is_none();
+    }
+}
