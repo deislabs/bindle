@@ -65,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     // load config file if it exists
