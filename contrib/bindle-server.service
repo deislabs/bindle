@@ -16,14 +16,14 @@
 ;
 ; Place your bindle configuration file ("bindle.toml") in the proper directory and give it appropriate ownership and permissions:
 ;
-;     $ mkdir /etc/bindle
-;     $ mv bindle.toml /etc/bindle/
-;     $ chown -R bindle:bindle /etc/bindle/
+;     $ mkdir /usr/local/etc/bindle
+;     $ mv bindle.toml /usr/local/etc/bindle/
+;     $ chown -R bindle:bindle /usr/local/etc/bindle/
 ;
-; Create /var/lib/bindle so bindle-server can store its bindles there:
+; Create /usr/local/lib/bindle so bindle-server can store its bindles there:
 ;
-;     $ mkdir /var/lib/bindle
-;     $ chown -R bindle:bindle /var/lib/bindle/
+;     $ mkdir /usr/local/lib/bindle
+;     $ chown -R bindle:bindle /usr/local/lib/bindle/
 ;
 ; Then install this systemd unit:
 ;
@@ -43,13 +43,13 @@ Wants=network-online.target systemd-networkd-wait-online.service
 Restart=on-abnormal
 User=bindle
 Group=bindle
-ExecStart=/usr/local/bin/bindle-server --config-path /etc/bindle/bindle.toml --directory /var/lib/bindle
+ExecStart=/usr/local/bin/bindle-server --config-path /usr/local/etc/bindle/bindle.toml --directory /usr/local/lib/bindle
 ; Hide /home, /root, and /run/user.
 ProtectHome=true
 ; Make /usr, /boot, /etc and possibly some more folders read-only.
 ProtectSystem=full
-; ...Except /var/lib/bindle, because we want to store bindles there.
-ReadWriteDirectories=/var/lib/bindle
+; ...Except /usr/local/lib/bindle, because we want to store bindles there.
+ReadWriteDirectories=/usr/local/lib/bindle
 ; The following additional security directives only work with systemd v229 or later.
 ; They further restrict privileges that can be gained by bindle. Uncomment if you like.
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
