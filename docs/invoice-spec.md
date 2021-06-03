@@ -144,7 +144,10 @@ Between groups and conditions, it is possible to build tree-like dependency stru
 
 By default, if no condition is provided, an item is a member of the "global" group, and is required.
 
-- `memberOf`: A list of groups that this parcel is a member of. When a `memberOf` clause is present, the parcel is removed from the default global group and placed into _just_ the groups listed in the `memberOf` clause. `memberOf = []` indicates that this parcel is a member of no groups (including the global group). It is an error if a parcel references a group that is undefined in the `[[group]]` list. (OPTIONAL)
+- `memberOf`: A list of groups that this parcel is a member of. When a `memberOf` clause is present, the parcel is removed from the default global group and placed into _just_ the groups listed in the `memberOf` clause.
+  - If `memberOf` is not present, or `memberOf = []`, the parcel is a member of the "global" group.
+  - It is an error if a parcel references a group that is undefined in the `[[group]]` list. (OPTIONAL)
+  - In Bindle, it is impossible for a parcel to be a member of no groups.
 - `requires`: A list of other groups that must be satisfied if this parcel is installed. This has the effect of setting `require = true` on a group. (OPTIONAL)
 
 Example:
@@ -197,7 +200,7 @@ conditions.memberOf = ["utility"]
 ```
 (Source)[../test/data/full-invoice.toml]
 
-IN the example above, three groups are declared:
+In the example above, three groups are declared:
 
 - server
 - cli
