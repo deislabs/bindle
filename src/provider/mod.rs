@@ -84,32 +84,33 @@ pub trait Provider {
         I::Error: Into<ProviderError>;
 
     // Checks if the given parcel ID exists within an invoice. The default implementation will fetch
-    // the parcel and check if the given parcel ID exists. Most providers should implement some sort
-    // of caching for `get_yanked_invoice` to avoid fetching the invoice every single time a parcel
-    // is requested. Provider implementations may also implement this function to include other
-    // validation logic if desired.
-    async fn validate_parcel<I>(&self, bindle_id: I, parcel_id: &str) -> Result<()>
+    // the parcel and check if the given parcel ID exists. Returns the parcel label if valid. Most
+    // providers should implement some sort of caching for `get_yanked_invoice` to avoid fetching
+    // the invoice every single time a parcel is requested. Provider implementations may also
+    // implement this function to include other validation logic if desired.
+    async fn validate_parcel<I>(&self, bindle_id: I, parcel_id: &str) -> Result<crate::Label>
     where
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>,
     {
         let inv = self.get_yanked_invoice(bindle_id).await?;
-        if !inv
+        match inv
             .parcel
             .unwrap_or_default()
             .into_iter()
-            .any(|p| p.label.sha256 == parcel_id)
+            .find(|p| p.label.sha256 == parcel_id)
         {
-            return Err(ProviderError::NotFound);
+            Some(p) => Ok(p.label),
+            None => Err(ProviderError::NotFound),
         }
-        Ok(())
     }
 
     /// Creates a parcel with the associated sha. The parcel can be anything that implements
     /// `Stream`
     ///
     /// For some terminal providers, the bindle ID may not be necessary, but it is always required
-    /// for an implementation
+    /// for an implementation. Implementors MUST validate that the length of the sent parcel is the
+    /// same as specified in the invoice
     async fn create_parcel<I, R, B>(&self, bindle_id: I, parcel_id: &str, data: R) -> Result<()>
     where
         I: TryInto<Id> + Send,
@@ -164,6 +165,8 @@ pub enum ProviderError {
     /// An uploaded parcel does not match the SHA-256 sum provided with its label
     #[error("digest does not match")]
     DigestMismatch,
+    #[error("parcel size does not match invoice")]
+    SizeMismatch,
     #[error(
         "a write operation is currently in progress for this resource and it cannot be accessed"
     )]

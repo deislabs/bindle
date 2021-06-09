@@ -256,7 +256,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             .instrument(tracing::trace_span!("lookup_missing"))
             .await
             .into_iter()
-            .filter_map(|x| x)
+            .flatten()
             .collect())
     }
 
@@ -355,7 +355,7 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         debug!("Validating bindle -> parcel relationship");
         let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
         tracing::Span::current().record("id", &tracing::field::display(&parsed_id));
-        self.validate_parcel(parsed_id, parcel_id).await?;
+        let label = self.validate_parcel(parsed_id, parcel_id).await?;
 
         // Test if a dir with that SHA exists. If so, this is an error.
         let par_path = self.parcel_path(parcel_id);
@@ -372,53 +372,9 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         create_dir_all(par_path).await?;
 
         // Write data
-        let data_file = self.parcel_data_path(parcel_id);
-        let part = part_path(&data_file).await?;
-        {
-            // Create the part file to indicate that we are currently writing
-            debug!(
-                path = %part.display(),
-                "Storing parcel data in part file"
-            );
-            let mut out = OpenOptions::new()
-                // TODO: Right now, if we write the file and then sha validation fails, the user
-                // will not be able to create this parcel again because the file already exists
-                .create_new(true)
-                .write(true)
-                .read(true)
-                .open(&part)
-                .await?;
-            trace!("Copying data to open file");
-            tokio::io::copy(
-                &mut StreamReader::new(
-                    data.map(|res| {
-                        res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-                    }),
-                ),
-                &mut out,
-            )
-            .instrument(tracing::trace_span!("parcel_data_write"))
-            .await?;
-            // Verify parcel by rewinding the parcel and then hashing it.
-            // This MUST be after the last write to out, otherwise the results will
-            // not be correct.
-            out.flush().await?;
-            out.seek(std::io::SeekFrom::Start(0)).await?;
-            trace!("Validating data for parcel");
-            validate_sha256(&mut out, parcel_id)
-                .instrument(tracing::trace_span!("parcel_data_validation"))
-                .await?;
-            trace!("SHA data validated");
-            // TODO: Should we also validate length? We use it for returning the proper content length
-        }
-
-        debug!(
-            renamed_path = %data_file.display(),
-            "Renaming part file for parcel"
-        );
-        tokio::fs::rename(part, data_file).await?;
-
-        Ok(())
+        let part = PartFile::new(self.parcel_data_path(parcel_id)).await?;
+        part.write_data(data, parcel_id, label.size).await?;
+        part.finalize().await
     }
 
     #[instrument(level = "trace", skip(self, bindle_id), fields(id))]
@@ -575,6 +531,109 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// A helper struct for a part file that will clean up the file on drop if it still exists. Also
+/// contains functionality for writing to the file and finalizing it (i.e moving it to the correct
+/// location)
+struct PartFile {
+    path: PathBuf,
+    final_location: PathBuf,
+}
+
+impl PartFile {
+    async fn new(final_location: PathBuf) -> Result<Self> {
+        let extension = match final_location.extension() {
+            Some(s) => {
+                let mut ext = s.to_owned();
+                ext.push(".");
+                ext.push(PART_EXTENSION);
+                ext
+            }
+            None => OsString::from(PART_EXTENSION),
+        };
+        let part = final_location.with_extension(extension);
+        // Make sure we aren't already writing
+        if tokio::fs::metadata(&part)
+            .await
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            return Err(ProviderError::WriteInProgress);
+        }
+        Ok(PartFile {
+            path: part,
+            final_location,
+        })
+    }
+
+    async fn write_data<R, B>(&self, data: R, parcel_id: &str, expected_length: u64) -> Result<()>
+    where
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
+        B: bytes::Buf + Send,
+    {
+        // Create the part file to indicate that we are currently writing
+        debug!(
+            path = %self.path.display(),
+            parcel_id,
+            "Storing parcel data in part file"
+        );
+        let mut out = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .read(true)
+            .open(&self.path)
+            .await?;
+        trace!("Copying data to open file");
+        let written = tokio::io::copy(
+            &mut StreamReader::new(
+                data.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+            ),
+            &mut out,
+        )
+        .instrument(tracing::trace_span!("parcel_data_write"))
+        .await?;
+
+        // Make sure the right amount of data was sent
+        trace!(bytes_written = written, "Wrote data to part file");
+        if written != expected_length {
+            return Err(ProviderError::SizeMismatch);
+        }
+        // Verify parcel by rewinding the parcel and then hashing it.
+        // This MUST be after the last write to out, otherwise the results will
+        // not be correct.
+        out.flush().await?;
+        out.seek(std::io::SeekFrom::Start(0)).await?;
+        trace!("Validating data for parcel");
+        validate_sha256(&mut out, parcel_id)
+            .instrument(tracing::trace_span!("parcel_data_validation"))
+            .await?;
+        trace!("SHA data validated");
+        Ok(())
+    }
+
+    /// Moves the file to the configured final location, consuming the part file
+    async fn finalize(self) -> Result<()> {
+        debug!(
+            renamed_path = %self.final_location.display(),
+            "Renaming part file for parcel"
+        );
+        tokio::fs::rename(&self.path, &self.final_location)
+            .await
+            .map_err(|e| e.into())
+    }
+}
+
+impl Drop for PartFile {
+    fn drop(&mut self) {
+        // Attempt to delete the file, logging an error if the delete failed
+        if let Err(e) = std::fs::remove_file(&self.path) {
+            // If it is any other error besides NotFound, log the error
+            if !matches!(e.kind(), std::io::ErrorKind::NotFound) {
+                error!(error = %e, "Unable to clean up part file, this could lead to conflicts");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -740,5 +799,40 @@ mod test {
             .pop()
             .expect("got a parcel");
         assert_eq!(first_parcel.label.sha256, parcel.sha)
+    }
+
+    #[tokio::test]
+    async fn test_should_reject_invalid_length() {
+        // Create a temporary directory
+        let root = tempdir().unwrap();
+        let mut scaffold = testing::Scaffold::load("valid_v1").await;
+        let mut parcels = scaffold.invoice.parcel.take().unwrap();
+        // Completely invalid size
+        parcels[0].label.size = 100000;
+        scaffold.invoice.parcel = Some(parcels);
+        let store = FileProvider::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        )
+        .await;
+
+        store
+            .create_invoice(&scaffold.invoice)
+            .await
+            .expect("Invoice should be created");
+
+        let parcel = scaffold.parcel_files.get("parcel").unwrap();
+        let err = store
+            .create_parcel(
+                &scaffold.invoice.bindle.id,
+                &parcel.sha,
+                FramedRead::new(std::io::Cursor::new(parcel.data.clone()), BytesCodec::new()),
+            )
+            .await
+            .expect_err("Creating a parcel with invalid length should fail");
+        assert!(
+            matches!(err, ProviderError::SizeMismatch),
+            "Error should be of type SizeMismatch"
+        )
     }
 }

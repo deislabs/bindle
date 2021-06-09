@@ -46,7 +46,8 @@ impl Search for StrictEngine {
                 // - if `term` is present, then it must be contained within the name field of the bindle.
                 // - if a version filter is present, then the version of the bindle must abide by the filter.
                 debug!(term, filter, "comparing term and filter");
-                i.bindle.id.name().contains(term) && (filter == "" || i.version_in_range(filter))
+                i.bindle.id.name().contains(term)
+                    && (filter.is_empty() || i.version_in_range(filter))
             })
             .map(|(_, v)| (*v).clone())
             .collect();

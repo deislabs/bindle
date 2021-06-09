@@ -63,9 +63,8 @@ fn parse_accept(header: &str) -> Vec<String> {
         .split(',')
         .map(|h| {
             let normalized = h.trim().to_lowercase();
-            let parts: Vec<&str> = normalized.split(";").collect();
-            let mime = parts[0].clone();
-            mime.to_owned()
+            let parts: Vec<&str> = normalized.split(';').collect();
+            parts[0].to_string()
         })
         .collect()
 }
@@ -87,7 +86,7 @@ impl Reply for SerializedData {
                 res.headers_mut().insert(
                     warp::http::header::CONTENT_TYPE,
                     HeaderValue::from_str(self.mime.as_str())
-                        .unwrap_or(HeaderValue::from_static(TOML_MIME_TYPE)),
+                        .unwrap_or_else(|_| HeaderValue::from_static(TOML_MIME_TYPE)),
                 );
                 res
             }
@@ -115,7 +114,8 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<SerializedDat
         ProviderError::Malformed(_)
         | ProviderError::Unserializable(_)
         | ProviderError::DigestMismatch
-        | ProviderError::InvalidId => StatusCode::BAD_REQUEST,
+        | ProviderError::InvalidId
+        | ProviderError::SizeMismatch => StatusCode::BAD_REQUEST,
         ProviderError::Yanked => StatusCode::FORBIDDEN,
         #[cfg(feature = "client")]
         ProviderError::ProxyError(_) => StatusCode::INTERNAL_SERVER_ERROR,

@@ -23,8 +23,8 @@ pub struct Label {
 impl Label {
     pub fn new(name: String, sha256: String) -> Self {
         Label {
-            name,
             sha256,
+            name,
             ..Label::default()
         }
     }
