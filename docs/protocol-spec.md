@@ -10,7 +10,7 @@ HTTP Endpoints:
     - `HEAD`: Send just the headers of a GET request
     - `DELETE`: Yank a bindle. This will set the `yank` field on a bindle to `true`. This is the only mutation allowed on a Bindle.
 - `/_i`
-    - `POST`: Create a new bindle, optionally also sending some or all of the parcels. If all of the parcels specified in the bindle exist, a 201 status will be returned. If 1 or more of the parcels are missing, a 202 status will be returned with a reference to the missing parcels
+    - `POST`: Create a new bindle. If all of the parcels specified in the bindle exist, a 201 status will be returned. If 1 or more of the parcels are missing, a 202 status will be returned with a reference to the missing parcels
 - `/_i/{bindle-name}@{parcel-id}`: The path to a Bindle name and parcel ID, where `{parcel-id}` is an exact SHA of a parcel and `{bindle-name}` follows the same rules as outlined above. Parcels can only be accessed if the client has the proper permissions to access the given bindle and, as such, cannot be accessed directly
     - `GET`: Directly fetch a parcel's opaque data.
     - `HEAD`: Send just the headers of a GET request
@@ -21,6 +21,54 @@ HTTP Endpoints:
         - `GET`: Returns a list of label objects for missing parcels (i.e. parcels that haven't been uploaded). Yanked bindles are not supported by this endpoint as parcels for yanked bindles should not be uploaded
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_p` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
+
+## Missing parcels
+
+When creating a new invoice, a response body will be returned containing two keys: `invoice` and `missing`. The `invoice` will always contain the newly created invoice object. The `missing` key will have a list of missing parcels set if a 202 status code is returned and will be empty otherwise. An example response body is below:
+
+```toml
+[invoice]
+bindleVersion = "1.0.0"
+
+[invoice.bindle]
+name = "enterprise.com/cargobay"
+version = "1.0.0"
+description = "The cargo bay manifest"
+authors = ["Miles O'Brien <chief@ufp.com>"]
+
+[[invoice.parcel]]
+[invoice.parcel.label]
+sha256 = "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5"
+mediaType = "text/plain"
+name = "isolinear_chip.txt"
+size = 9
+
+[[invoice.parcel]]
+[invoice.parcel.label]
+sha256 = "51534027079925942fdea13d4d088c7126f3e456364525b67d6ca0858d6587bc"
+mediaType = "text/plain"
+name = "barrel.txt"
+size = 15
+
+[[invoice.parcel]]
+[invoice.parcel.label]
+sha256 = "a6e41416c2bee47e9b97900ba57de696cccc1920e331f5a0d490726a7938d8c6"
+mediaType = "text/plain"
+name = "crate.txt"
+size = 14
+
+[[missing]]
+sha256 = "51534027079925942fdea13d4d088c7126f3e456364525b67d6ca0858d6587bc"
+mediaType = "text/plain"
+name = "barrel.txt"
+size = 15
+
+[[missing]]
+sha256 = "a6e41416c2bee47e9b97900ba57de696cccc1920e331f5a0d490726a7938d8c6"
+mediaType = "text/plain"
+name = "crate.txt"
+size = 14
+```
 
 ## Errors
 Any errors should reply with the proper HTTP status code for the problem and a TOML body containing a single `error` key with a string value containing additional information like so:
