@@ -30,7 +30,7 @@ struct Opts {
         short = 'd',
         long = "directory",
         env = "BINDLE_DIRECTORY",
-        about = "the path to the directory in which bindles will be stored [default: /tmp]"
+        about = "the path to the directory in which bindles will be stored [default: $XDG_DATA_HOME/bindle]"
     )]
     bindle_directory: Option<PathBuf>,
     #[clap(
@@ -105,7 +105,11 @@ async fn main() -> anyhow::Result<()> {
                 .get("bindle-directory")
                 .map(|v| v.as_str().unwrap().parse().unwrap())
         })
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+        .unwrap_or_else(|| {
+            dirs::data_dir()
+                .expect("Unable to infer data directory")
+                .join("bindle")
+        });
 
     let cert_path = opts.cert_path.or_else(|| {
         config

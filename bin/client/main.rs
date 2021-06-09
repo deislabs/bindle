@@ -30,9 +30,11 @@ async fn main() -> std::result::Result<(), ClientError> {
     tracing_subscriber::fmt::init();
 
     let bindle_client = Client::new(&opts.server_url)?;
-    let bindle_dir = opts
-        .bindle_dir
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".bindle/bindles"));
+    let bindle_dir = opts.bindle_dir.unwrap_or_else(|| {
+        dirs::cache_dir()
+            .expect("Unable to infer cache directory")
+            .join("bindle")
+    });
     tokio::fs::create_dir_all(&bindle_dir).await?;
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
