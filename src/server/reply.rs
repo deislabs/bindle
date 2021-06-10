@@ -26,6 +26,7 @@ pub fn serialized_data<T>(val: &T, accept: String) -> SerializedData
 where
     T: Serialize,
 {
+    // TODO: replace with the mime::Mime type
     let default_mime = "*/*".to_owned();
     let accept_items = parse_accept(accept.as_str());
     debug!(
