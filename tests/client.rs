@@ -211,3 +211,25 @@ async fn test_missing() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_charset() {
+    let controller = TestController::new().await;
+
+    let scaffold = testing::RawScaffold::load("valid_v1").await;
+
+    // Manually assemble a request
+    let client = reqwest::Client::builder()
+        .http2_prior_knowledge()
+        .build()
+        .unwrap();
+
+    let url = format!("{}/_i", controller.base_url);
+    client
+        .post(&url)
+        .header("Content-Type", "application/toml; charset=utf-8")
+        .body(scaffold.parcel_files.get("parcel").unwrap().data.clone())
+        .send()
+        .await
+        .expect("Content-Type with charset shouldn't fail");
+}

@@ -190,12 +190,25 @@ pub(crate) async fn handle_authz_rejection(
 pub fn toml<T: DeserializeOwned + Send>() -> impl Filter<Extract = (T,), Error = Rejection> + Copy {
     // We can't use the http type constant here because clippy is warning about it having internal
     // mutability.
-    warp::filters::header::exact_ignore_case("Content-Type", TOML_MIME_TYPE)
+    warp::filters::header::header::<String>("Content-Type")
         .and(warp::body::aggregate())
         .and_then(parse_toml)
 }
 
-async fn parse_toml<T: DeserializeOwned + Send>(buf: impl warp::Buf) -> Result<T, Rejection> {
+async fn parse_toml<T: DeserializeOwned + Send>(
+    raw_header: String,
+    buf: impl warp::Buf,
+) -> Result<T, Rejection> {
+    let mime: mime::Mime = raw_header
+        .parse()
+        .map_err(|err: mime::FromStrError| custom(BodyDeserializeError { cause: err.into() }))?;
+    // As far as I can tell from the code, essence_str is lowercased, so we shouldn't need to
+    // do it here
+    if mime.essence_str() != TOML_MIME_TYPE {
+        return Err(custom(BodyDeserializeError {
+            cause: "content-type is not TOML".into(),
+        }));
+    }
     let mut raw = Vec::new();
     buf.reader()
         .read_to_end(&mut raw)
