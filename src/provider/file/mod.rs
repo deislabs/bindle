@@ -187,39 +187,11 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
             debug!("Invoice being created already exists in storage");
             return Err(ProviderError::Exists);
         }
+
         // Create the part file to indicate that we are currently writing
-        let part = part_path(&dest).await?;
-        trace!(path = %part.display(), "Checking that a write is not currently in progress");
-        // Make sure we aren't already writing
-        if tokio::fs::metadata(&part)
-            .await
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-        {
-            return Err(ProviderError::WriteInProgress);
-        }
-        debug!(
-            path = %part.display(),
-            "Storing invoice in part file"
-        );
-        let mut out = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .read(true)
-            .open(&part)
-            .await?;
-
-        trace!("Encoding invoice to TOML");
-        // Encode the invoice into a TOML object
-        let data = toml::to_vec(inv)?;
-        out.write_all(data.as_slice()).await?;
-
-        // Now that it is written, move the part file to the actual file name
-        debug!(
-            renamed_path = %dest.display(),
-            "Renaming part file for invoice"
-        );
-        tokio::fs::rename(part, dest).await?;
+        let mut part = PartFile::new(dest).await?;
+        part.write_invoice(inv).await?;
+        part.finalize().await?;
 
         // Attempt to update the index. Right now, we log an error if the index update
         // fails.
@@ -372,8 +344,8 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         create_dir_all(par_path).await?;
 
         // Write data
-        let part = PartFile::new(self.parcel_data_path(parcel_id)).await?;
-        part.write_data(data, parcel_id, label.size).await?;
+        let mut part = PartFile::new(self.parcel_data_path(parcel_id)).await?;
+        part.write_parcel(data, parcel_id, label.size).await?;
         part.finalize().await
     }
 
@@ -427,30 +399,6 @@ fn map_io_error(e: std::io::Error) -> ProviderError {
         return ProviderError::NotFound;
     }
     ProviderError::from(e)
-}
-
-/// Given the path, generates a new part path for it, returning a `WriteInProgress` error if it
-/// already exists
-async fn part_path(dest: &Path) -> Result<PathBuf> {
-    let extension = match dest.extension() {
-        Some(s) => {
-            let mut ext = s.to_owned();
-            ext.push(".");
-            ext.push(PART_EXTENSION);
-            ext
-        }
-        None => OsString::from(PART_EXTENSION),
-    };
-    let part = dest.with_extension(extension);
-    // Make sure we aren't already writing
-    if tokio::fs::metadata(&part)
-        .await
-        .map(|m| m.is_file())
-        .unwrap_or(false)
-    {
-        return Err(ProviderError::WriteInProgress);
-    }
-    Ok(part)
 }
 
 /// An internal wrapper to implement `AsyncWrite` on Sha256
@@ -539,9 +487,12 @@ async fn validate_sha256(file: &mut File, sha: &str) -> Result<()> {
 struct PartFile {
     path: PathBuf,
     final_location: PathBuf,
+    file: File,
 }
 
 impl PartFile {
+    /// Creates a new PartFile that will eventually be located at the given `final_location`. This
+    /// will attempt to create a new part file and return an error if one already exists
     async fn new(final_location: PathBuf) -> Result<Self> {
         let extension = match final_location.extension() {
             Some(s) => {
@@ -553,6 +504,7 @@ impl PartFile {
             None => OsString::from(PART_EXTENSION),
         };
         let part = final_location.with_extension(extension);
+        trace!(path = %part.display(), "Checking that a write is not currently in progress");
         // Make sure we aren't already writing
         if tokio::fs::metadata(&part)
             .await
@@ -561,13 +513,40 @@ impl PartFile {
         {
             return Err(ProviderError::WriteInProgress);
         }
+        let file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .read(true)
+            .open(&part)
+            .await?;
         Ok(PartFile {
             path: part,
             final_location,
+            file,
         })
     }
 
-    async fn write_data<R, B>(&self, data: R, parcel_id: &str, expected_length: u64) -> Result<()>
+    async fn write_invoice(&mut self, inv: &crate::Invoice) -> Result<()> {
+        debug!(
+            path = %self.path.display(),
+            "Storing invoice in part file"
+        );
+
+        trace!("Encoding invoice to TOML");
+        // Encode the invoice into a TOML object
+        let data = toml::to_vec(inv)?;
+        self.file
+            .write_all(data.as_slice())
+            .await
+            .map_err(|e| e.into())
+    }
+
+    async fn write_parcel<R, B>(
+        &mut self,
+        data: R,
+        parcel_id: &str,
+        expected_length: u64,
+    ) -> Result<()>
     where
         R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
         B: bytes::Buf + Send,
@@ -578,18 +557,12 @@ impl PartFile {
             parcel_id,
             "Storing parcel data in part file"
         );
-        let mut out = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .read(true)
-            .open(&self.path)
-            .await?;
         trace!("Copying data to open file");
         let written = tokio::io::copy(
             &mut StreamReader::new(
                 data.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
             ),
-            &mut out,
+            &mut self.file,
         )
         .instrument(tracing::trace_span!("parcel_data_write"))
         .await?;
@@ -602,10 +575,10 @@ impl PartFile {
         // Verify parcel by rewinding the parcel and then hashing it.
         // This MUST be after the last write to out, otherwise the results will
         // not be correct.
-        out.flush().await?;
-        out.seek(std::io::SeekFrom::Start(0)).await?;
+        self.file.flush().await?;
+        self.file.seek(std::io::SeekFrom::Start(0)).await?;
         trace!("Validating data for parcel");
-        validate_sha256(&mut out, parcel_id)
+        validate_sha256(&mut self.file, parcel_id)
             .instrument(tracing::trace_span!("parcel_data_validation"))
             .await?;
         trace!("SHA data validated");
@@ -613,11 +586,15 @@ impl PartFile {
     }
 
     /// Moves the file to the configured final location, consuming the part file
-    async fn finalize(self) -> Result<()> {
+    async fn finalize(mut self) -> Result<()> {
         debug!(
             renamed_path = %self.final_location.display(),
             "Renaming part file for parcel"
         );
+
+        // Close the file handle to avoid any problems with unfinished IO operations
+        self.file.shutdown().await?;
+
         tokio::fs::rename(&self.path, &self.final_location)
             .await
             .map_err(|e| e.into())
@@ -834,5 +811,60 @@ mod test {
             matches!(err, ProviderError::SizeMismatch),
             "Error should be of type SizeMismatch"
         )
+    }
+
+    // Running this as multi thread to make sure both processes run simultaneously
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_double_write() {
+        // Create a temporary directory
+        let root = tempdir().unwrap();
+        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let store = FileProvider::new(
+            root.path().to_owned(),
+            crate::search::StrictEngine::default(),
+        )
+        .await;
+
+        let (first, second) = tokio::join!(
+            store.create_invoice(&scaffold.invoice),
+            store.create_invoice(&scaffold.invoice)
+        );
+
+        // At least one should fail
+        assert!(
+            !(first.is_ok() && second.is_ok()),
+            "One of the create invoice tasks should fail"
+        );
+        // At least one should succeed
+        assert!(
+            first.is_ok() || second.is_ok(),
+            "One of the create invoice tasks should succeed"
+        );
+
+        // Now for sanity sake, try the same thing with the parcel
+        let parcel = scaffold.parcel_files.get("parcel").unwrap();
+        let (firstp, secondp) = tokio::join!(
+            store.create_parcel(
+                &scaffold.invoice.bindle.id,
+                &parcel.sha,
+                FramedRead::new(std::io::Cursor::new(parcel.data.clone()), BytesCodec::new()),
+            ),
+            store.create_parcel(
+                &scaffold.invoice.bindle.id,
+                &parcel.sha,
+                FramedRead::new(std::io::Cursor::new(parcel.data.clone()), BytesCodec::new()),
+            ),
+        );
+
+        // At least one should fail
+        assert!(
+            !(firstp.is_ok() && secondp.is_ok()),
+            "One of the create parcel tasks should fail"
+        );
+        // At least one should succeed
+        assert!(
+            firstp.is_ok() || secondp.is_ok(),
+            "One of the create parcel tasks should succeed"
+        );
     }
 }
