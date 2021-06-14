@@ -7,6 +7,7 @@ pub mod load;
 use std::convert::TryInto;
 use std::path::Path;
 
+use reqwest::ClientBuilder;
 use reqwest::header;
 use reqwest::Client as HttpClient;
 use reqwest::{Body, RequestBuilder, StatusCode};
@@ -33,12 +34,40 @@ pub struct Client {
     base_url: Url,
 }
 
+/// Options for setting up a `Client`
+pub struct ClientOptions {
+    /// Controls whether the client assumes HTTP/2 or attempts to negotiate it.
+    /// The default is to assume HTTP/2, bypassing the negotiation step, because
+    /// the Bindle server always offers HTTP/2. However, it can be useful to negotiate
+    /// if the server may be behind a proxy or tunnelling service. Set
+    /// `http2_prior_knowledge` to `false` to negotiate.
+    pub http2_prior_knowledge: bool,
+}
+
+impl Default for ClientOptions {
+    fn default() -> Self {
+        Self {
+            http2_prior_knowledge: true,
+        }
+    }
+}
+
 impl Client {
-    /// Returns a new Client with the given URL. This URL should be the FQDN plus any namespacing
+    /// Returns a new Client with the given URL, configured using the default options.
+    /// This URL should be the FQDN plus any namespacing
     /// (like `v1`). So if you were running a bindle server mounted at the v1 endpoint, your URL
     /// would look something like `http://my.bindle.com/v1/`. Will return an error if the URL is not
     /// valid
     pub fn new(base_url: &str) -> Result<Self> {
+        Self::new_with_options(base_url, ClientOptions::default())
+    }
+
+    /// Returns a new Client with the given URL, configured using the given options.
+    /// This URL should be the FQDN plus any namespacing
+    /// (like `v1`). So if you were running a bindle server mounted at the v1 endpoint, your URL
+    /// would look something like `http://my.bindle.com/v1/`. Will return an error if the URL is not
+    /// valid
+    pub fn new_with_options(base_url: &str, options: ClientOptions) -> Result<Self> {
         // Note that the trailing slash is important, otherwise the URL parser will treat is as a
         // "file" component of the URL. So we need to check that it is added before parsing
         let mut base = base_url.to_owned();
@@ -52,7 +81,7 @@ impl Client {
         // TODO: As this evolves, we might want to allow for setting time outs and accepting
         // self-signed certs
         let client = HttpClient::builder()
-            .http2_prior_knowledge()
+            .and_if(options.http2_prior_knowledge, |b| b.http2_prior_knowledge())
             .default_headers(headers)
             .build()
             .map_err(|e| ClientError::Other(e.to_string()))?;
@@ -439,3 +468,18 @@ async fn parse_error_from_body(resp: reqwest::Response) -> Option<String> {
         Err(_) => None,
     }
 }
+
+trait ConditionalBuilder {
+    fn and_if(self, condition: bool, build_method: impl Fn(Self) -> Self) -> Self
+    where
+        Self: Sized
+    {
+        if condition {
+            build_method(self)
+        } else {
+            self
+        }
+    }
+}
+
+impl ConditionalBuilder for ClientBuilder {}
