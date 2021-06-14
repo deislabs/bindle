@@ -42,12 +42,18 @@ pub struct ClientOptions {
     /// if the server may be behind a proxy or tunnelling service. Set
     /// `http2_prior_knowledge` to `false` to negotiate.
     pub http2_prior_knowledge: bool,
+    /// Controls whether the client accepts invalid certificates. The default is
+    /// to reject invalid certificates. It is sometimes necessary to set this
+    /// option in dev-test situations where you may be working with self-signed
+    /// certificates or the like.
+    pub danger_accept_invalid_certs: bool,
 }
 
 impl Default for ClientOptions {
     fn default() -> Self {
         Self {
             http2_prior_knowledge: true,
+            danger_accept_invalid_certs: false,
         }
     }
 }
@@ -82,6 +88,7 @@ impl Client {
         // self-signed certs
         let client = HttpClient::builder()
             .and_if(options.http2_prior_knowledge, |b| b.http2_prior_knowledge())
+            .and_if(options.danger_accept_invalid_certs, |b| b.danger_accept_invalid_certs(true))
             .default_headers(headers)
             .build()
             .map_err(|e| ClientError::Other(e.to_string()))?;
