@@ -27,6 +27,7 @@ pub use signature::{Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use std::collections::BTreeMap;
 use std::convert::TryInto;
@@ -96,9 +97,24 @@ impl Invoice {
         version_compare(self.bindle.id.version(), requirement)
     }
 
+    /// Check whether a group by this name is present.
+    pub fn has_group(&self, name: &str) -> bool {
+        self.group
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .find(|g| g.name == name)
+            .is_some()
+    }
+
     /// Get all of the parcels on the given group.
     pub fn group_members(&self, name: &str) -> Vec<Parcel> {
-        // TODO: This does not enforce that there is actually a group entry.
+        // If there is no such group, return early.
+        if self.has_group(name) {
+            info!(name, "no such group");
+            return vec![];
+        }
+
         self.parcel
             .clone()
             .unwrap_or_default()
