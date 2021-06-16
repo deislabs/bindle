@@ -99,7 +99,7 @@ impl Invoice {
 
     /// Check whether a group by this name is present.
     pub fn has_group(&self, name: &str) -> bool {
-        let empty = vec![];
+        let empty = Vec::with_capacity(0);
         self.group
             .as_ref()
             .unwrap_or(&empty)
