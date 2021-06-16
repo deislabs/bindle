@@ -10,7 +10,7 @@ use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
 use crate::{
     client::{Client, ClientError},
-    signature::{KeyRing, SignatureRole},
+    signature::SignatureRole,
     SecretKeyEntry, VerificationStrategy,
 };
 

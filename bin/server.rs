@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Clap;
+use tracing::warn;
 
 use bindle::{
     invoice::signature::{KeyRing, SignatureRole},
@@ -94,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let config: toml::Value = load_toml(config_file_path).await.unwrap_or_else(|_| {
-        println!("No server.toml file loaded");
+        warn!("No server.toml file loaded");
         toml::Value::Table(toml::value::Table::new())
     });
 
@@ -157,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
             keyring_file.display()
         ))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("No keyring.toml found. Using default keyring.");
+            warn!("No keyring.toml found. Using default keyring.");
             KeyRing::default()
         }
         Err(e) => anyhow::bail!("failed to read file {}: {}", keyring_file.display(), e),
@@ -255,7 +256,7 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
         // If the file is not found, then drop through and create a default instance
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let mut default_keyfile = SecretKeyFile::default();
-            println!(
+            warn!(
                 "Creating a default host signing key and storing it in {}",
                 signing_keyfile.display()
             );
