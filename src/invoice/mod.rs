@@ -99,18 +99,18 @@ impl Invoice {
 
     /// Check whether a group by this name is present.
     pub fn has_group(&self, name: &str) -> bool {
+        let empty = vec![];
         self.group
-            .clone()
-            .unwrap_or_default()
+            .as_ref()
+            .unwrap_or(&empty)
             .iter()
-            .find(|g| g.name == name)
-            .is_some()
+            .any(|g| g.name == name)
     }
 
     /// Get all of the parcels on the given group.
     pub fn group_members(&self, name: &str) -> Vec<Parcel> {
         // If there is no such group, return early.
-        if self.has_group(name) {
+        if !self.has_group(name) {
             info!(name, "no such group");
             return vec![];
         }
@@ -619,7 +619,7 @@ mod test {
         version = "1.2.3"
 
         [[group]]
-        name = "images"
+        name = "telescopes"
 
         [[parcel]]
         [parcel.label]
