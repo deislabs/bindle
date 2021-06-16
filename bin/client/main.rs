@@ -345,8 +345,7 @@ async fn load_keyring(keyring: Option<PathBuf>) -> anyhow::Result<KeyRing> {
     // This takes an Option<PathBuf> because we want to wrap all of the flag handling in this
     // function, including setting the default if the kyering is None.
     let dir = keyring
-        .clone()
-        .unwrap_or_else(|| default_config_dir().unwrap_or_else(|| PathBuf::from(".bindle")))
+        .unwrap_or_else(|| default_config_dir())
         .join("keyring.toml");
     let kr = bindle::client::load::toml(dir).await?;
     Ok(kr)
@@ -360,8 +359,10 @@ fn map_storage_error(e: ProviderError) -> ClientError {
     }
 }
 
-fn default_config_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|v| v.join("bindle"))
+fn default_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .map(|v| v.join("bindle/"))
+        .unwrap_or_else(|| "./bindle".into())
 }
 
 /// Get the config dir, ensuring that it exists.
@@ -374,7 +375,7 @@ fn default_config_dir() -> Option<PathBuf> {
 ///
 /// This will return an error
 async fn ensure_config_dir() -> Result<PathBuf> {
-    let dir = default_config_dir().unwrap_or_else(|| PathBuf::from("./bindle"));
+    let dir = default_config_dir();
     tokio::fs::create_dir_all(dir.clone()).await?;
     Ok(dir)
 }

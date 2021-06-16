@@ -142,11 +142,7 @@ async fn main() -> anyhow::Result<()> {
                 .get("keyring")
                 .map(|v| v.as_str().unwrap().parse().unwrap())
         })
-        .unwrap_or(PathBuf::from(
-            default_config_dir()
-                .unwrap_or_else(|| PathBuf::from("./bindle"))
-                .join("keyring.toml"),
-        ));
+        .unwrap_or(PathBuf::from(default_config_dir().join("keyring.toml")));
 
     // We might want to do something different in the future. But what we do here is
     // load the file if we can find it. If the file just doesn't exist, we print a
@@ -236,12 +232,14 @@ async fn main() -> anyhow::Result<()> {
 fn default_config_file() -> Option<PathBuf> {
     dirs::config_dir().map(|v| v.join("bindle/server.toml"))
 }
-fn default_config_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|v| v.join("bindle/"))
+fn default_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .map(|v| v.join("bindle/"))
+        .unwrap_or_else(|| "./bindle".into())
 }
 
 async fn ensure_config_dir() -> anyhow::Result<PathBuf> {
-    let dir = default_config_dir().unwrap_or_else(|| PathBuf::from("./bindle"));
+    let dir = default_config_dir();
     tokio::fs::create_dir_all(dir.clone()).await?;
     Ok(dir)
 }

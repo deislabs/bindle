@@ -322,11 +322,9 @@ mod test {
         assert_eq!(2, invoice.signature.as_ref().unwrap().len());
 
         // With the keyring, the signature should work
-        println!("==== IN");
         VerificationStrategy::CreativeIntegrity
             .verify(&invoice, &keyring)
             .expect("with keys on the keyring, this should pass");
-        println!("==== OUT");
 
         // If we switch the keys in the keyring, this should fail because the Creator
         // key is not on the ring.

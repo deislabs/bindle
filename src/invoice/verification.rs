@@ -1,7 +1,7 @@
 use super::signature::KeyRing;
 use super::{Invoice, Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{PublicKey, Signature as EdSignature};
-use tracing::debug;
+use tracing::{debug, info};
 
 use std::convert::TryInto;
 
@@ -20,10 +20,10 @@ pub enum VerificationStrategy {
     GreedyVerification,
     /// Verify that every key on the invoice is known, and that every signature is valid.
     ExhaustiveVerification,
-    /// Verifies that all signatures of the given roles are valid and signed by know keys.
+    /// Verifies that all signatures of the given roles are valid and signed by known keys.
     ///
     /// If the bool is true, unknown signers will also be valdidated.
-    /// Be aware that doing so may make the validation subject to a special for of
+    /// Be aware that doing so may make the validation subject to a special form of
     /// DOS attack in which someone can generate a known-bad signature.
     MultipleAttestation(Vec<SignatureRole>, bool),
 }
@@ -96,12 +96,15 @@ impl VerificationStrategy {
                 true,
                 false,
             ),
-            VerificationStrategy::MultipleAttestation(a, b) => (a.clone(), b.clone(), true, true),
+            VerificationStrategy::MultipleAttestation(a, b) => (a.clone(), *b, true, true),
         };
 
         // Either the Creator or an Approver must be in the keyring
         match inv.signature.as_ref() {
-            None => Ok(()),
+            None => {
+                info!(id = %inv.bindle.id, "No signatures on invoice");
+                Ok(())
+            }
             Some(signatures) => {
                 let mut known_key = false;
                 let mut filled_roles: Vec<SignatureRole> = vec![];
@@ -188,7 +191,7 @@ mod test {
         bindleVersion = "1.0.0"
 
         [bindle]
-        name = "aricebo"
+        name = "arecebo"
         version = "1.2.3"
 
         [[parcel]]

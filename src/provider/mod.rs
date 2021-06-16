@@ -72,17 +72,6 @@ pub trait Provider {
         Ok(())
     }
 
-    // TODO: This can probably be removed.
-    fn verify_invoice(
-        &self,
-        inv: &super::Invoice,
-        strategy: VerificationStrategy,
-        keys: &super::signature::KeyRing,
-    ) -> Result<()> {
-        strategy.verify(inv, keys)?;
-        Ok(())
-    }
-
     /// Load an invoice and return it
     ///
     /// This will return an invoice if the bindle exists and is not yanked. The default

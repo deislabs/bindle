@@ -123,14 +123,14 @@ impl KeyRing {
             // when doing a contains(). If they key is malformed, it definitely
             // is not the key we are looking for.
             match k.public_key() {
-                Err(e) => println!("Error parsing key: {}", e),
+                Err(e) => tracing::warn!(%e, "Error parsing key"),
                 Ok(pk) if pk == *key => return true,
                 _ => {}
             }
 
-            println!("No match. Moving on.");
+            tracing::debug!("No match. Moving on.");
         }
-        println!("No more keys to check");
+        tracing::debug!("No more keys to check");
         false
     }
 }
@@ -295,26 +295,6 @@ pub trait SecretKeyStorage {
     fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry>;
 }
 
-/// This is a speciality wrapper for loading secrets files at the last moment each time a key is accessed.
-///
-/// Note that this logs and swallows errors, but is more secure than loading keys once.
-// #[derive(Debug, Clone)]
-// pub struct LazySecretKeyLoader {
-//     file: PathBuf,
-// }
-
-// impl SecretKeyStorage for LazySecretKeyLoader {
-//     fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
-//         match SecretKeyFile::load_file(self.file).await {
-//             Err(e) => {
-//                 error!(secret_key_file = %self.file, "Failed to load secret key file");
-//                 None
-//             }
-//             Ok(h) => h.get_first_matching(role),
-//         }
-//     }
-// }
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretKeyFile {
@@ -349,25 +329,6 @@ impl SecretKeyFile {
 impl SecretKeyStorage for SecretKeyFile {
     fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
         self.key.iter().find(|k| k.roles.contains(role)).clone()
-    }
-}
-
-pub struct SecretKeyFileLoader {
-    path: PathBuf,
-}
-
-impl SecretKeyFileLoader {
-    pub async fn load_file(&self) -> anyhow::Result<SecretKeyFile> {
-        let s = tokio::fs::read_to_string(self.path.clone()).await?;
-        let t = toml::from_str(s.as_str())?;
-        Ok(t)
-    }
-
-    /// Save the present keyfile to the named path.
-    pub async fn save_file(&self, keyfile: &SecretKeyFile) -> anyhow::Result<()> {
-        let out = toml::to_vec(keyfile)?;
-        tokio::fs::write(self.path.clone(), out).await?;
-        Ok(())
     }
 }
 
