@@ -32,11 +32,15 @@ impl Provider for Proxy {
         inv: &mut crate::Invoice,
         _role: SignatureRole,
         secret_key: &SecretKeyEntry,
-        strategy: VerificationStrategy,
+        _strategy: VerificationStrategy,
     ) -> Result<Vec<crate::Label>> {
-        // TODO: Need a way to load the local public keyring
-        let keyring = KeyRing::default();
-        strategy.verify(inv, &keyring)?;
+        // TODO: When we add proxy support as part of #141, we need to also add
+        // proxy verification here. We'll need to get the keyring and then do
+        // the verification using the official keyring. But we might need to
+        // add logic to ensure that the upstream proxy is remote, because if it is
+        // local we don't need to verify here.
+        // let keyring = KeyRing::default();
+        // strategy.verify(inv, &keyring)?;
 
         let mut inv2 = inv.to_owned();
         self.sign_invoice(&mut inv2, SignatureRole::Proxy, secret_key)?;
