@@ -27,6 +27,7 @@ pub use signature::{Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use std::collections::BTreeMap;
 use std::convert::TryInto;
@@ -94,6 +95,33 @@ impl Invoice {
     /// And if it fails to satisfy the requirement, this returns false.
     pub(crate) fn version_in_range(&self, requirement: &str) -> bool {
         version_compare(self.bindle.id.version(), requirement)
+    }
+
+    /// Check whether a group by this name is present.
+    pub fn has_group(&self, name: &str) -> bool {
+        let empty = Vec::with_capacity(0);
+        self.group
+            .as_ref()
+            .unwrap_or(&empty)
+            .iter()
+            .any(|g| g.name == name)
+    }
+
+    /// Get all of the parcels on the given group.
+    pub fn group_members(&self, name: &str) -> Vec<Parcel> {
+        // If there is no such group, return early.
+        if !self.has_group(name) {
+            info!(name, "no such group");
+            return vec![];
+        }
+
+        self.parcel
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .filter(|p| p.member_of(name))
+            .map(|p| p.clone())
+            .collect()
     }
 
     fn cleartext(&self, by: String, role: SignatureRole) -> String {
@@ -579,5 +607,48 @@ mod test {
 
         assert!(txt.is_global_group());
         assert!(!txt.member_of("telescopes"));
+    }
+
+    #[test]
+    fn test_group_members() {
+        let invoice = r#"
+        bindleVersion = "1.0.0"
+
+        [bindle]
+        name = "aricebo"
+        version = "1.2.3"
+
+        [[group]]
+        name = "telescopes"
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeefff"
+        name = "telescope.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        [parcel.conditions]
+        memberOf = ["telescopes"]
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "aaabbbcccdddeeeggg"
+        name = "telescope2.gif"
+        mediaType = "image/gif"
+        size = 123_456
+        [parcel.conditions]
+        memberOf = ["telescopes"]
+
+        [[parcel]]
+        [parcel.label]
+        sha256 = "111aaabbbcccdddeee"
+        name = "telescope.txt"
+        mediaType = "text/plain"
+        size = 123_456
+        "#;
+
+        let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
+        let members = invoice.group_members("telescopes");
+        assert_eq!(2, members.len());
     }
 }

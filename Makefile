@@ -4,6 +4,7 @@ CLIENT_FEATURES ?= --features=cli
 CLIENT_BIN := bindle
 BINDLE_LOG_LEVEL ?= debug
 BINDLE_ID ?= enterprise.com/warpcore/1.0.0
+BINDLE_IFACE ?= 127.0.0.1:8080
 MIME ?= "application/toml"
 
 export RUST_LOG=error,warp=info,bindle=${BINDLE_LOG_LEVEL}
@@ -14,7 +15,7 @@ test:
 
 .PHONY: serve
 serve:
-	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN} -- --directory ${HOME}/.bindle/bindles
+	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN} -- --directory ${HOME}/.bindle/bindles --address ${BINDLE_IFACE}
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client
