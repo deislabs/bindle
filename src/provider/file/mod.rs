@@ -860,11 +860,18 @@ mod test {
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
+            KeyRing::default(),
         )
         .await;
 
+        let sk = mock_secret_key();
         store
-            .create_invoice(&scaffold.invoice)
+            .create_invoice(
+                &mut scaffold.invoice,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            )
             .await
             .expect("Invoice should be created");
 
@@ -892,12 +899,29 @@ mod test {
         let store = FileProvider::new(
             root.path().to_owned(),
             crate::search::StrictEngine::default(),
+            KeyRing::default(),
         )
         .await;
 
+        let sk = mock_secret_key();
+
+        // We want two copies, since they will each get signed, and we don't want
+        // an error that they are already signed.
+        let mut inv1 = scaffold.invoice.clone();
+        let mut inv2 = scaffold.invoice.clone();
         let (first, second) = tokio::join!(
-            store.create_invoice(&scaffold.invoice),
-            store.create_invoice(&scaffold.invoice)
+            store.create_invoice(
+                &mut inv1,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            ),
+            store.create_invoice(
+                &mut inv2,
+                SignatureRole::Host,
+                &sk,
+                VerificationStrategy::MultipleAttestation(vec![], false),
+            )
         );
 
         // At least one should fail
