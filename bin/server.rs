@@ -157,7 +157,7 @@ async fn main() -> anyhow::Result<()> {
             keyring_file.display()
         ))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("No keyring.toml found.");
+            println!("No keyring.toml found. Using default keyring.");
             KeyRing::default()
         }
         Err(e) => anyhow::bail!("failed to read file {}: {}", keyring_file.display(), e),
