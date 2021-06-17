@@ -110,10 +110,10 @@ impl<T: Search + Send + Sync> FileProvider<T> {
             let inv_path = self.invoice_toml_path(&sha);
             info!(path = %inv_path.display(), "Loading invoice into search index");
             // Open file
-            let inv_toml = std::fs::read_to_string(inv_path)?;
+            let inv_toml = tokio::fs::read(inv_path).await?;
 
             // Parse
-            let invoice: crate::Invoice = toml::from_str(inv_toml.as_str())?;
+            let invoice: crate::Invoice = toml::from_slice(&inv_toml)?;
             let digest = invoice.canonical_name();
             if sha != digest {
                 return Err(anyhow::anyhow!(

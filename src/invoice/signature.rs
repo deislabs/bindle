@@ -313,8 +313,8 @@ impl Default for SecretKeyFile {
 
 impl SecretKeyFile {
     pub async fn load_file(path: impl AsRef<Path>) -> anyhow::Result<SecretKeyFile> {
-        let s = tokio::fs::read_to_string(path).await?;
-        let t = toml::from_str(s.as_str())?;
+        let raw = tokio::fs::read(path).await?;
+        let t = toml::from_slice(&raw)?;
         Ok(t)
     }
 

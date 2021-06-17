@@ -281,9 +281,9 @@ where
     // MPB: The original version did an unwrap_or_default() on the read_to_string.
     // I removed this because I think we want an error to propogate if the file
     // cannot be read.
-    let raw_data = tokio::fs::read_to_string(&file)
+    let raw_data = tokio::fs::read(&file)
         .await
         .map_err(|e| anyhow::anyhow!("failed to read TOML file {}: {}", file.display(), e))?;
-    let res = toml::from_str::<T>(&raw_data)?;
+    let res = toml::from_slice::<T>(&raw_data)?;
     Ok(res)
 }

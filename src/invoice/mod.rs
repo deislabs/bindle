@@ -237,7 +237,7 @@ mod test {
     use super::*;
     use crate::invoice::signature::{KeyEntry, KeyRing};
     use std::convert::TryInto;
-    use std::fs::read_to_string;
+    use std::fs::read;
     use std::path::Path;
 
     #[test]
@@ -498,9 +498,9 @@ mod test {
 
     fn test_parsing_a_file(filename: &str) {
         let invoice_path = Path::new(filename);
-        let raw = read_to_string(invoice_path).expect("read file contents");
+        let raw = read(invoice_path).expect("read file contents");
 
-        let invoice = toml::from_str::<Invoice>(raw.as_str()).expect("clean parse of invoice");
+        let invoice = toml::from_slice::<Invoice>(&raw).expect("clean parse of invoice");
 
         // Now we serialize it and compare it to the original version
         let _raw2 = toml::to_string_pretty(&invoice).expect("clean serialization of TOML");
