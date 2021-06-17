@@ -234,6 +234,12 @@ pub struct MockKeyStore {
 
 impl MockKeyStore {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for MockKeyStore {
+    fn default() -> Self {
         MockKeyStore {
             mock_secret_key: SecretKeyEntry::new(
                 "Test <test@example.com>".to_owned(),

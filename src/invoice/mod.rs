@@ -117,21 +117,21 @@ impl Invoice {
             return vec![];
         }
 
+        let zero_vec = Vec::with_capacity(0);
         self.parcel
-            .clone()
-            .unwrap_or_default()
+            .as_ref()
+            .unwrap_or(&zero_vec)
             .iter()
             .filter(|p| p.member_of(name))
-            .map(|p| p.clone())
+            .cloned()
             .collect()
     }
 
-    fn cleartext(&self, by: String, role: SignatureRole) -> String {
-        let id = self.bindle.id.clone();
+    fn cleartext(&self, by: &str, role: &SignatureRole) -> String {
         let mut buf = vec![
-            by,
-            id.name().to_owned(),
-            id.version_string(),
+            by.to_owned(),
+            self.bindle.id.name().to_owned(),
+            self.bindle.id.version_string(),
             role.to_string(),
             '~'.to_string(),
         ];
@@ -174,7 +174,7 @@ impl Invoice {
             }
         }
 
-        let cleartext = self.cleartext(signer_name.clone(), signer_role.clone());
+        let cleartext = self.cleartext(&signer_name, &signer_role);
         let signature: EdSignature = key.sign(cleartext.as_bytes());
 
         // Timestamp should be generated at this moment.
@@ -297,8 +297,8 @@ mod test {
         let signer_name1 = "Matt Butcher <matt@example.com>".to_owned();
         let signer_name2 = "Not Matt Butcher <not.matt@example.com>".to_owned();
 
-        let keypair1 = SecretKeyEntry::new(signer_name1.clone(), vec![SignatureRole::Creator]);
-        let keypair2 = SecretKeyEntry::new(signer_name2.clone(), vec![SignatureRole::Proxy]);
+        let keypair1 = SecretKeyEntry::new(signer_name1, vec![SignatureRole::Creator]);
+        let keypair2 = SecretKeyEntry::new(signer_name2, vec![SignatureRole::Proxy]);
 
         // Put one of the two keys on the keyring. Since the proxy key is not used in
         // CreativeIntegrity, it can be omitted from keyring.

@@ -504,7 +504,6 @@ mod test {
         let matches: crate::Matches =
             toml::from_slice(res.body()).expect("Unable to deserialize response");
 
-        // NOTE: This is currently broken in the code. It is being fixed and this should be uncommented
         assert_eq!(
             matches.invoices.len(),
             2,

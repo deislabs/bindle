@@ -268,12 +268,13 @@ impl BindleFilter {
 
         // Build a list of parcels that are enabled by default, or enabled because a group
         // is enabled.
+        let zero_vec = Vec::with_capacity(0);
         let mut parcels: HashSet<Parcel> = self
             .invoice
             .parcel
-            .clone()
-            .unwrap_or_else(Vec::new)
-            .into_iter()
+            .as_ref()
+            .unwrap_or(&zero_vec)
+            .iter()
             .filter(|p| {
                 // Filter out any parcels that are not part of the global group or one
                 // of the enabled groups.
@@ -292,6 +293,7 @@ impl BindleFilter {
                     .unwrap_or(true) // No conditions means parcel is in global group
             })
             .filter(|p| !self.is_disabled(p))
+            .cloned()
             .collect();
 
         // Loop through the parcels and see if any of them require in more groups.

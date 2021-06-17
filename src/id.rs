@@ -125,7 +125,7 @@ impl FromStr for Id {
 
 impl From<&Id> for Id {
     fn from(id: &Id) -> Self {
-        id.clone()
+        id.to_owned()
     }
 }
 

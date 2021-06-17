@@ -120,7 +120,7 @@ impl VerificationStrategy {
                     }
 
                     let role = s.role.clone();
-                    let cleartext = inv.cleartext(s.by.clone(), role.clone());
+                    let cleartext = inv.cleartext(&s.by, &role);
 
                     // Verify the signature
                     // TODO: This would allow a trivial DOS attack in which an attacker
@@ -137,7 +137,7 @@ impl VerificationStrategy {
                         filled_roles.push(role);
                     }
                     // See if the public key is known to us
-                    let pubkey = base64::decode(s.key.clone())
+                    let pubkey = base64::decode(&s.key)
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
                     let pko = PublicKey::from_bytes(pubkey.as_slice())
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
@@ -145,7 +145,7 @@ impl VerificationStrategy {
                     debug!("Looking for key");
                     // If the keyring contains PKO, then we are successful for this round.
                     if keyring.contains(&pko) {
-                        debug!("Found key {}", s.by.clone());
+                        debug!("Found key {}", s.by);
                         known_key = true;
                     } else if all_verified {
                         // If the keyring does not contain pko AND every key must be known,
@@ -350,7 +350,7 @@ mod test {
         }
         println!("Signed by creator, host, and unknown key");
         {
-            let mut inv = invoice.clone();
+            let mut inv = invoice;
             inv.sign(SignatureRole::Host, &key_host)
                 .expect("signed as host");
             inv.sign(SignatureRole::Creator, &key_creator)
