@@ -621,4 +621,40 @@ mod test {
             resp.missing
         );
     }
+
+    #[tokio::test]
+    async fn test_host_signed() {
+        let (store, index, ks) = testing::setup().await;
+
+        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize, ks);
+
+        let scaffold = testing::RawScaffold::load("valid_v1").await;
+        // Create a valid invoice and make sure the returned invoice is signed
+        let res = warp::test::request()
+            .method("POST")
+            .header("Content-Type", "application/toml")
+            .path("/v1/_i")
+            .body(&scaffold.invoice)
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::ACCEPTED,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+        let create_res: crate::InvoiceCreateResponse =
+            toml::from_slice(res.body()).expect("should be valid invoice response TOML");
+
+        assert!(
+            create_res
+                .invoice
+                .signature
+                .unwrap_or_default()
+                .into_iter()
+                .any(|sig| matches!(sig.role, crate::SignatureRole::Host)),
+            "Newly created invoice should be signed by the host"
+        );
+    }
 }
