@@ -2,10 +2,14 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Clap;
+use tracing::warn;
 
 use bindle::{
+    invoice::signature::{KeyRing, SignatureRole},
     provider, search,
     server::{server, TlsConfig},
+    signature::SecretKeyFile,
+    SecretKeyEntry,
 };
 
 const DESCRIPTION: &str = r#"
@@ -57,6 +61,21 @@ struct Opts {
         about = "the path to a configuration file"
     )]
     config_file: Option<PathBuf>,
+    #[clap(
+        name = "keyring",
+        short = 'r',
+        long = "keyring",
+        about = "the path to the keyring file"
+    )]
+    keyring_file: Option<PathBuf>,
+
+    #[clap(
+        name = "signing_keys",
+        long = "signing-keys",
+        env = "BINDLE_SIGNING_KEYS",
+        about = "location of the TOML file that holds the signing keys"
+    )]
+    signing_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -75,10 +94,10 @@ async fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("could not find a default config path"))?,
     };
 
-    let config_file = tokio::fs::read_to_string(config_file_path)
-        .await
-        .unwrap_or_default();
-    let config: toml::Value = toml::from_str(&config_file)?;
+    let config: toml::Value = load_toml(config_file_path).await.unwrap_or_else(|_| {
+        warn!("No server.toml file loaded");
+        toml::Value::Table(toml::value::Table::new())
+    });
 
     // find socket address
     //   1. cli options if set
@@ -111,6 +130,55 @@ async fn main() -> anyhow::Result<()> {
                 .join("bindle")
         });
 
+    // find bindle directory
+    //   1. cli options if set
+    //   2. config file if set
+    //   3. default
+    //   4. hardcoded `./.bindle/keyring.toml`
+    // TODO: Should we ensure a keyring?
+    let keyring_file: PathBuf = opts
+        .keyring_file
+        .or_else(|| {
+            config
+                .get("keyring")
+                .map(|v| v.as_str().unwrap().parse().unwrap())
+        })
+        .unwrap_or(PathBuf::from(default_config_dir().join("keyring.toml")));
+
+    // We might want to do something different in the future. But what we do here is
+    // load the file if we can find it. If the file just doesn't exist, we print a
+    // warning and load a placeholder. This prevents the program from failing when
+    // a keyring does not exist.
+    //
+    // All other cases are considered errors worthy of failing.
+    let keyring: KeyRing = match std::fs::metadata(&keyring_file) {
+        Ok(md) if md.is_file() => load_toml(keyring_file).await?,
+        Ok(_) => Err(anyhow::anyhow!(
+            "Expected {} to be a regular file",
+            keyring_file.display()
+        ))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            warn!("No keyring.toml found. Using default keyring.");
+            KeyRing::default()
+        }
+        Err(e) => anyhow::bail!("failed to read file {}: {}", keyring_file.display(), e),
+    };
+
+    // Load the signing keys from...
+    // - --signing-keys filename
+    // - or config file signing-keys entry
+    // - or $XDG_DATA/bindle/signing-keys.toml
+    let signing_keys_config: Option<PathBuf> = opts.signing_file.or_else(|| {
+        config
+            .get("signing-keys")
+            .map(|v| v.to_string().parse().unwrap())
+    });
+
+    let signing_keys = match signing_keys_config {
+        Some(keypath) => keypath,
+        None => ensure_signing_keys().await?,
+    };
+
     let cert_path = opts.cert_path.or_else(|| {
         config
             .get("cert-path")
@@ -133,7 +201,16 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let index = search::StrictEngine::default();
-    let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
+    let store = provider::file::FileProvider::new(&bindle_directory, index.clone(), keyring).await;
+    let secret_store = SecretKeyFile::load_file(signing_keys.clone())
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load secret key file from {}: {} HINT: Try the flag --signing-keys",
+                signing_keys.display(),
+                e
+            )
+        })?;
 
     tracing::log::info!(
         "Starting server at {}, and serving bindles from {}",
@@ -148,10 +225,64 @@ async fn main() -> anyhow::Result<()> {
         bindle::authz::always::AlwaysAuthorize,
         addr,
         tls,
+        secret_store,
     )
     .await
 }
 
 fn default_config_file() -> Option<PathBuf> {
     dirs::config_dir().map(|v| v.join("bindle/server.toml"))
+}
+fn default_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .map(|v| v.join("bindle/"))
+        .unwrap_or_else(|| "./bindle".into())
+}
+
+async fn ensure_config_dir() -> anyhow::Result<PathBuf> {
+    let dir = default_config_dir();
+    tokio::fs::create_dir_all(dir.clone()).await?;
+    Ok(dir)
+}
+
+async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
+    let base = ensure_config_dir().await?;
+    let signing_keyfile = base.join("signing-keys.toml");
+
+    // Stat it, and if it exists we are good.
+    match tokio::fs::metadata(&signing_keyfile).await {
+        Ok(info) if info.is_file() => Ok(signing_keyfile),
+        Ok(_info) => Err(anyhow::anyhow!("Not a file: {}", signing_keyfile.display())),
+        // If the file is not found, then drop through and create a default instance
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let mut default_keyfile = SecretKeyFile::default();
+            warn!(
+                "Creating a default host signing key and storing it in {}",
+                signing_keyfile.display()
+            );
+            let key = SecretKeyEntry::new("Default host key".to_owned(), vec![SignatureRole::Host]);
+            default_keyfile.key.push(key);
+            default_keyfile.save_file(signing_keyfile.clone()).await?;
+            Ok(signing_keyfile)
+        }
+        Err(e) => Err(anyhow::anyhow!(
+            "Failed to load singing keys at {}: {}",
+            signing_keyfile.display(),
+            e
+        )),
+    }
+}
+
+async fn load_toml<T>(file: PathBuf) -> anyhow::Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    // MPB: The original version did an unwrap_or_default() on the read_to_string.
+    // I removed this because I think we want an error to propogate if the file
+    // cannot be read.
+    let raw_data = tokio::fs::read_to_string(&file)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to read TOML file {}: {}", file.display(), e))?;
+    let res = toml::from_str::<T>(&raw_data)?;
+    Ok(res)
 }

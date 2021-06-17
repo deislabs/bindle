@@ -8,6 +8,7 @@ mod group;
 mod label;
 mod parcel;
 pub mod signature;
+pub mod verification;
 
 #[doc(inline)]
 pub use api::{ErrorResponse, InvoiceCreateResponse, MissingParcelsResponse, QueryOptions};
@@ -22,15 +23,16 @@ pub use label::Label;
 #[doc(inline)]
 pub use parcel::Parcel;
 #[doc(inline)]
-pub use signature::{Signature, SignatureError, SignatureRole};
+pub use signature::{SecretKeyEntry, Signature, SignatureError, SignatureRole};
+#[doc(inline)]
+pub use verification::VerificationStrategy;
 
-use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
+use ed25519_dalek::{Signature as EdSignature, Signer};
 use semver::{Compat, Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Alias for feature map in an Invoice's parcel
@@ -156,10 +158,11 @@ impl Invoice {
     /// to any invoice.
     pub fn sign(
         &mut self,
-        signer_name: String,
         signer_role: SignatureRole,
-        key: &Keypair,
+        keyfile: &SecretKeyEntry,
     ) -> Result<(), SignatureError> {
+        let signer_name = keyfile.label.clone();
+        let key = keyfile.key()?;
         // The spec says it is illegal for the a single key to sign the same invoice
         // more than once.
         let encoded_key = base64::encode(key.public.to_bytes());
@@ -193,76 +196,6 @@ impl Invoice {
         };
 
         Ok(())
-    }
-
-    /// Verify that every signature on this invoice is correct.
-    ///
-    /// The signature block is considered safe iff:
-    /// - All of the signatures are verified
-    /// - At least one of the signatures is made with a key on the keyring
-    ///
-    /// To verify a signature, the keyring is loaded, and then for each
-    /// `[[signature]]` object on an invoice, the ciphertext is verified.
-    /// The cleartext can be reconstructed from the invoice itself.
-    ///
-    /// Note that the purpose of the keyring is to ensure that we know about the
-    /// entity that claims to have signed the invoice.
-    ///
-    /// If no signatures are on the invoice, this will succeed.
-    ///
-    /// If _any_ signature fails, this should be considered a fatal error.
-    pub fn verify(&self, keyring: Vec<PublicKey>) -> Result<(), SignatureError> {
-        match self.signature.as_ref() {
-            None => Ok(()),
-            Some(signatures) => {
-                let mut known_key = false;
-                for s in signatures {
-                    let cleartext = self.cleartext(s.by.clone(), s.role.clone());
-
-                    // Verify the signature
-                    // TODO: This would allow a trivial DOS attack in which an attacker
-                    // would only need to attach a known-bad signature, and that would
-                    // prevent the module from ever being usable. This is marginally
-                    // better if we only verify signatures on known keys.
-                    self.verify_signature(&s, cleartext.as_bytes())?;
-
-                    // See if the public key is known to us
-                    let pubkey = base64::decode(s.key.clone())
-                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-                    let pko = PublicKey::from_bytes(pubkey.as_slice())
-                        .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-                    if keyring.contains(&pko) {
-                        known_key = true;
-                    }
-                }
-                if !known_key {
-                    // If we get here, then the none of the signatures were created with
-                    // a key from the keyring. This means the package is untrusted.
-                    Err(SignatureError::NoKnownKey)
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    fn verify_signature(&self, sig: &Signature, cleartext: &[u8]) -> Result<(), SignatureError> {
-        let pk = base64::decode(sig.key.as_bytes())
-            .map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let sig_block = base64::decode(sig.signature.as_bytes())
-            .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
-
-        let pubkey =
-            PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let ed_sig = EdSignature::new(
-            sig_block
-                .as_slice()
-                .try_into()
-                .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?,
-        );
-        pubkey
-            .verify_strict(cleartext, &ed_sig)
-            .map_err(|_| SignatureError::Unverified(sig.key.clone()))
     }
 }
 
@@ -302,6 +235,8 @@ fn version_compare(version: &Version, requirement: &str) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::invoice::signature::{KeyEntry, KeyRing};
+    use std::convert::TryInto;
     use std::fs::read_to_string;
     use std::path::Path;
 
@@ -353,34 +288,33 @@ mod test {
 
         // Base case: No signature, no keyring should pass.
         assert!(invoice.signature.is_none());
-        invoice
-            .verify(vec![])
+        let nokeys = KeyRing::default();
+        VerificationStrategy::default()
+            .verify(&invoice, &nokeys)
             .expect("If no signature, then this should verify fine");
 
         // Create two signing keys.
-        let mut rng = rand::rngs::OsRng {};
-        let keypair1 = Keypair::generate(&mut rng);
         let signer_name1 = "Matt Butcher <matt@example.com>".to_owned();
-
-        let keypair2 = Keypair::generate(&mut rng);
         let signer_name2 = "Not Matt Butcher <not.matt@example.com>".to_owned();
 
-        // Put one of the two keys on the keyring
-        let keyring = vec![keypair2.public];
+        let keypair1 = SecretKeyEntry::new(signer_name1.clone(), vec![SignatureRole::Creator]);
+        let keypair2 = SecretKeyEntry::new(signer_name2.clone(), vec![SignatureRole::Proxy]);
+
+        // Put one of the two keys on the keyring. Since the proxy key is not used in
+        // CreativeIntegrity, it can be omitted from keyring.
+        let keyring = KeyRing::new(vec![(&keypair1).try_into().expect("convert to public key")]);
 
         // Add two signatures
         invoice
-            .sign(signer_name1, SignatureRole::Creator, &keypair1)
+            .sign(SignatureRole::Creator, &keypair1)
             .expect("sign the parcel");
 
         invoice
-            .sign(signer_name2.clone(), SignatureRole::Proxy, &keypair2)
+            .sign(SignatureRole::Proxy, &keypair2)
             .expect("sign the parcel");
 
         // Should not be able to sign the same invoice again with the same key, even with a different role
-        assert!(invoice
-            .sign(signer_name2, SignatureRole::Host, &keypair2)
-            .is_err());
+        assert!(invoice.sign(SignatureRole::Host, &keypair2).is_err());
 
         println!("{}", toml::to_string(&invoice).unwrap());
 
@@ -388,12 +322,16 @@ mod test {
         assert_eq!(2, invoice.signature.as_ref().unwrap().len());
 
         // With the keyring, the signature should work
-        invoice
-            .verify(keyring)
+        VerificationStrategy::CreativeIntegrity
+            .verify(&invoice, &keyring)
             .expect("with keys on the keyring, this should pass");
 
-        // This should fail because at least one key must be present in the keyring
-        assert!(invoice.verify(vec![]).is_err());
+        // If we switch the keys in the keyring, this should fail because the Creator
+        // key is not on the ring.
+        let keyring = KeyRing::new(vec![keypair2.try_into().expect("convert to public key")]);
+        VerificationStrategy::CreativeIntegrity
+            .verify(&invoice, &keyring)
+            .expect_err("missing the creator key, so verification should fail");
     }
     #[test]
     fn invalid_signatures_should_fail() {
@@ -429,14 +367,17 @@ mod test {
         let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
 
         // Parse the key from the above example, and put it into the keyring.
-        let rawkey =
-            base64::decode("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=").expect("key decoded");
-        let pubkey = PublicKey::from_bytes(rawkey.as_slice()).expect("key converted");
+        let pubkey = KeyEntry {
+            key: "jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=".to_owned(),
+            label: "Test Key".to_owned(),
+            roles: vec![SignatureRole::Host],
+            label_signature: None,
+        };
 
         // Set up a keyring
-        let keyring = vec![pubkey];
+        let keyring = KeyRing::new(vec![pubkey]);
 
-        match invoice.verify(keyring) {
+        match VerificationStrategy::default().verify(&invoice, &keyring) {
             Err(SignatureError::CorruptSignature(s)) => {
                 assert_eq!("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=", s)
             }
@@ -478,15 +419,15 @@ mod test {
 
         let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
 
-        // This is a valid key. We just need something to have on the keyring.
-        let rawkey =
-            base64::decode("jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=").expect("key decoded");
-        let pubkey = PublicKey::from_bytes(rawkey.as_slice()).expect("key converted");
-
         // Set up a keyring
-        let keyring = vec![pubkey];
+        let keyring = KeyRing::new(vec![KeyEntry {
+            key: "jTtZIzQCfZh8xy6st40xxLwxVw++cf0C0cMH3nJBF+c=".to_owned(),
+            label: "Test Key".to_owned(),
+            roles: vec![SignatureRole::Creator],
+            label_signature: None,
+        }]);
 
-        match invoice.verify(keyring) {
+        match VerificationStrategy::default().verify(&invoice, &keyring) {
             Err(SignatureError::CorruptKey(s)) => assert_eq!("T0JWSU9VU0xZIEZBS0UK", s),
             Err(e) => panic!("Unexpected error {:?}", e),
             Ok(_) => panic!("Verification should have failed"),

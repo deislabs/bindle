@@ -5,13 +5,14 @@ use warp::Reply;
 
 use super::filters::InvoiceQuery;
 use super::reply;
-use crate::provider::Provider;
+use crate::invoice::{SignatureRole, VerificationStrategy};
+use crate::provider::{Provider, ProviderError};
 use crate::search::Search;
 
 pub mod v1 {
     use super::*;
 
-    use crate::QueryOptions;
+    use crate::{signature::SecretKeyStorage, QueryOptions, SignatureError};
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
 
@@ -48,14 +49,36 @@ pub mod v1 {
         ))
     }
 
-    #[instrument(level = "trace", skip(store))]
-    pub async fn create_invoice<P: Provider>(
+    #[instrument(level = "trace", skip(store, secret_store))]
+    pub async fn create_invoice<P: Provider, S: SecretKeyStorage>(
         store: P,
+        secret_store: S,
         inv: crate::Invoice,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let accept = accept_header.unwrap_or_default();
-        let labels = match store.create_invoice(&inv).await {
+        trace!("Create invoice request with invoice: {:?}", inv);
+
+        // Right here, I need to load one secret key and a ring of public keys.
+        // Then I need to validate the invoice against the public keys, sign the invoice
+        // with my private key, and THEN go on to store.create_invoice()
+
+        // FIXME: Allow other strategies
+        let strategy = VerificationStrategy::default();
+        let role = SignatureRole::Host;
+        let sk = match secret_store.get_first_matching(&role) {
+            None => {
+                return Ok(reply::into_reply(ProviderError::FailedSigning(
+                    SignatureError::NoSuitableKey,
+                )))
+            }
+            Some(k) => k,
+        };
+
+        let labels = match store
+            .create_invoice(&mut inv.clone(), role, &sk, strategy)
+            .await
+        {
             Ok(l) => l,
             Err(e) => {
                 return Ok(reply::into_reply(e));

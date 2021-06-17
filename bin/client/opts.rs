@@ -25,6 +25,14 @@ pub struct Opts {
         about = "The directory where bindles are stored/cached, defaults to $XDG_CACHE_HOME"
     )]
     pub bindle_dir: Option<PathBuf>,
+
+    #[clap(
+        short = 'r',
+        long = "keyring",
+        about = "The path to the keyring file. Defaults to $XDG_CONFIG/bindle/keyring.toml"
+    )]
+    pub keyring: Option<PathBuf>,
+
     #[clap(subcommand)]
     pub subcmd: SubCommand,
 }

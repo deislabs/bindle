@@ -6,9 +6,13 @@ use std::convert::TryInto;
 use reqwest::StatusCode;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::client::{Client, ClientError};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::Id;
+use crate::{
+    client::{Client, ClientError},
+    signature::SignatureRole,
+    SecretKeyEntry, VerificationStrategy,
+};
 
 #[derive(Clone)]
 pub struct Proxy {
@@ -23,7 +27,24 @@ impl Proxy {
 
 #[async_trait::async_trait]
 impl Provider for Proxy {
-    async fn create_invoice(&self, inv: &crate::Invoice) -> Result<Vec<crate::Label>> {
+    async fn create_invoice(
+        &self,
+        inv: &mut crate::Invoice,
+        _role: SignatureRole,
+        secret_key: &SecretKeyEntry,
+        _strategy: VerificationStrategy,
+    ) -> Result<Vec<crate::Label>> {
+        // TODO: When we add proxy support as part of #141, we need to also add
+        // proxy verification here. We'll need to get the keyring and then do
+        // the verification using the official keyring. But we might need to
+        // add logic to ensure that the upstream proxy is remote, because if it is
+        // local we don't need to verify here.
+        // let keyring = KeyRing::default();
+        // strategy.verify(inv, &keyring)?;
+
+        let mut inv2 = inv.to_owned();
+        self.sign_invoice(&mut inv2, SignatureRole::Proxy, secret_key)?;
+
         let res = self.client.create_invoice(inv.to_owned()).await?;
         Ok(res.missing.unwrap_or_default())
     }

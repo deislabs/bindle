@@ -28,8 +28,9 @@ use std::convert::TryInto;
 use thiserror::Error;
 use tokio_stream::Stream;
 
-use crate::id::ParseError;
+use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::Id;
+use crate::{id::ParseError, SignatureError};
 
 /// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
 pub type Result<T> = core::result::Result<T, ProviderError>;
@@ -51,7 +52,25 @@ pub trait Provider {
     ///
     /// It must verify that each referenced parcel is present in storage. Any parcel that is not
     /// present must be returned in the list of labels.
-    async fn create_invoice(&self, inv: &super::Invoice) -> Result<Vec<super::Label>>;
+    async fn create_invoice(
+        &self,
+        inv: &mut super::Invoice, // Signing requires mutability
+        signing_role: SignatureRole,
+        secret_key: &SecretKeyEntry,
+        verification_strategy: VerificationStrategy,
+    ) -> Result<Vec<super::Label>>;
+
+    /// This is the default implementation of the signing logic. All providers should call
+    /// this function to sign the invoice when creating a new invoice.
+    fn sign_invoice(
+        &self,
+        inv: &mut super::Invoice,
+        role: SignatureRole,
+        secret_key: &SecretKeyEntry,
+    ) -> Result<()> {
+        inv.sign(role, secret_key)?;
+        Ok(())
+    }
 
     /// Load an invoice and return it
     ///
@@ -183,6 +202,9 @@ pub enum ProviderError {
     /// The data cannot be properly serialized from TOML
     #[error("resource cannot be stored: {0:?}")]
     Unserializable(#[from] toml::ser::Error),
+
+    #[error("failed signature check invoice: {0:?}")]
+    FailedSigning(#[from] SignatureError),
 
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying
     /// issue

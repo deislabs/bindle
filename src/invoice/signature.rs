@@ -3,8 +3,9 @@
 pub use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::error;
 
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::path::PathBuf;
 
@@ -54,6 +55,8 @@ pub enum SignatureError {
     NoKnownKey,
     #[error("cannot sign the data again with a key that has already signed the data")]
     DuplicateSignature,
+    #[error("no suitable key for signing data")]
+    NoSuitableKey,
 }
 
 /// The role of a signer in a signature block.
@@ -106,6 +109,32 @@ impl Default for KeyRing {
     }
 }
 
+impl KeyRing {
+    pub fn new(keys: Vec<KeyEntry>) -> Self {
+        KeyRing {
+            version: KEY_RING_VERSION.to_owned(),
+            key: keys,
+        }
+    }
+    pub fn contains(&self, key: &PublicKey) -> bool {
+        // This could definitely be optimized.
+        for k in self.key.clone() {
+            // Note that we are skipping malformed keys because they don't matter
+            // when doing a contains(). If they key is malformed, it definitely
+            // is not the key we are looking for.
+            match k.public_key() {
+                Err(e) => tracing::warn!(%e, "Error parsing key"),
+                Ok(pk) if pk == *key => return true,
+                _ => {}
+            }
+
+            tracing::debug!("No match. Moving on.");
+        }
+        tracing::debug!("No more keys to check");
+        false
+    }
+}
+
 /// A KeyEntry describes an entry on a keyring.
 ///
 /// An entry has a key, an identifying label, a list of roles, and an optional signature of this data.
@@ -131,6 +160,20 @@ pub struct KeyEntry {
 }
 
 impl KeyEntry {
+    /// Create a new KeyEntry from a public key and related information.
+    ///
+    /// In most cases, it is fine to construct a KeyEntry struct manually. This
+    /// constructor merely encapsulates the logic to store the public key in its
+    /// canonical encoded format (as a String).
+    pub fn new(label: &str, roles: Vec<SignatureRole>, public_key: PublicKey) -> Self {
+        let key = base64::encode(public_key.to_bytes());
+        KeyEntry {
+            label: label.to_owned(),
+            roles,
+            key,
+            label_signature: None,
+        }
+    }
     pub fn sign_label(&mut self, key: Keypair) {
         let sig = key.sign(self.label.as_bytes());
         self.label_signature = Some(base64::encode(sig.to_bytes()));
@@ -148,6 +191,51 @@ impl KeyEntry {
                 Ok(())
             }
         }
+    }
+    pub(crate) fn public_key(&self) -> Result<PublicKey, SignatureError> {
+        let rawbytes = base64::decode(&self.key).map_err(|_e| {
+            // We swallow the source error because it could disclose information about
+            // the secret key.
+            SignatureError::CorruptKey("Base64 decoding of the public key failed".to_owned())
+        })?;
+        let pk = PublicKey::from_bytes(rawbytes.as_slice()).map_err(|e| {
+            error!(%e, "Error loading public key");
+            // Don't leak information about the key, because this could be sent to
+            // a remote. A generic error is all the user should see.
+            SignatureError::CorruptKey("Could not load keypair".to_owned())
+        })?;
+        Ok(pk)
+    }
+}
+
+/// Convert a secret key to a public key.
+impl TryFrom<SecretKeyEntry> for KeyEntry {
+    type Error = SignatureError;
+    fn try_from(secret: SecretKeyEntry) -> std::result::Result<Self, SignatureError> {
+        let skey = secret.key()?;
+        let mut s = Self {
+            label: secret.label,
+            roles: secret.roles,
+            key: base64::encode(skey.public.to_bytes()),
+            label_signature: None,
+        };
+        s.sign_label(skey);
+        Ok(s)
+    }
+}
+
+impl TryFrom<&SecretKeyEntry> for KeyEntry {
+    type Error = SignatureError;
+    fn try_from(secret: &SecretKeyEntry) -> std::result::Result<Self, SignatureError> {
+        let skey = secret.key()?;
+        let mut s = Self {
+            label: secret.label.clone(),
+            roles: secret.roles.clone(),
+            key: base64::encode(skey.public.to_bytes()),
+            label_signature: None,
+        };
+        s.sign_label(skey);
+        Ok(s)
     }
 }
 
@@ -177,7 +265,7 @@ impl SecretKeyEntry {
         }
     }
 
-    pub fn key(&self) -> Result<Keypair, SignatureError> {
+    pub(crate) fn key(&self) -> Result<Keypair, SignatureError> {
         let rawbytes = base64::decode(&self.keypair).map_err(|_e| {
             // We swallow the source error because it could disclose information about
             // the secret key.
@@ -191,6 +279,20 @@ impl SecretKeyEntry {
         })?;
         Ok(keypair)
     }
+}
+
+/// Storage for secret keys
+///
+/// Any possible number of key storage systems may be used for key storage, but
+/// all of them must provide a way for the system to fetch a key matching the
+/// desired role.
+pub trait SecretKeyStorage {
+    /// Get a key appropriate for signing with the given role.
+    ///
+    /// If no key is found, this will return a None.
+    /// In general, if multiple keys match, the implementation chooses the "best fit"
+    /// and returns that key.
+    fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry>;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -221,6 +323,12 @@ impl SecretKeyFile {
         let out = toml::to_vec(self)?;
         tokio::fs::write(dest, out).await?;
         Ok(())
+    }
+}
+
+impl SecretKeyStorage for SecretKeyFile {
+    fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
+        self.key.iter().find(|k| k.roles.contains(role)).clone()
     }
 }
 

@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bindle::client::{Client, ClientError, Result};
-use bindle::invoice::signature::{Keypair, SecretKeyEntry, SecretKeyFile, SignatureRole};
+use bindle::invoice::signature::{
+    KeyRing, SecretKeyEntry, SecretKeyFile, SecretKeyStorage, SignatureRole,
+};
 use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
@@ -39,6 +41,9 @@ async fn main() -> std::result::Result<(), ClientError> {
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
         bindle::search::NoopEngine::default(),
+        load_keyring(opts.keyring)
+            .await
+            .unwrap_or_else(|_| KeyRing::default()),
     )
     .await;
     let proxy = bindle::proxy::Proxy::new(bindle_client.clone());
@@ -108,11 +113,11 @@ async fn main() -> std::result::Result<(), ClientError> {
             };
 
             // Signing key
-            let (key, label) = first_matching_key(keyfile, &role).await?;
+            let key = first_matching_key(keyfile, &role).await?;
 
             // Load the invoice and sign it.
             let mut inv: Invoice = bindle::client::load::toml(sign_opts.invoice.as_str()).await?;
-            inv.sign(label, role.clone(), &key)?;
+            inv.sign(role.clone(), &key)?;
 
             // Write the signed invoice to a file.
             let outfile = sign_opts
@@ -336,6 +341,16 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
     Ok(())
 }
 
+async fn load_keyring(keyring: Option<PathBuf>) -> anyhow::Result<KeyRing> {
+    // This takes an Option<PathBuf> because we want to wrap all of the flag handling in this
+    // function, including setting the default if the kyering is None.
+    let dir = keyring
+        .unwrap_or_else(|| default_config_dir())
+        .join("keyring.toml");
+    let kr = bindle::client::load::toml(dir).await?;
+    Ok(kr)
+}
+
 fn map_storage_error(e: ProviderError) -> ClientError {
     match e {
         ProviderError::Io(e) => ClientError::Io(e),
@@ -344,8 +359,10 @@ fn map_storage_error(e: ProviderError) -> ClientError {
     }
 }
 
-fn default_config_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|v| v.join("bindle"))
+fn default_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .map(|v| v.join("bindle/"))
+        .unwrap_or_else(|| "./bindle".into())
 }
 
 /// Get the config dir, ensuring that it exists.
@@ -358,7 +375,7 @@ fn default_config_dir() -> Option<PathBuf> {
 ///
 /// This will return an error
 async fn ensure_config_dir() -> Result<PathBuf> {
-    let dir = default_config_dir().unwrap_or_else(|| PathBuf::from("./bindle"));
+    let dir = default_config_dir();
     tokio::fs::create_dir_all(dir.clone()).await?;
     Ok(dir)
 }
@@ -373,7 +390,7 @@ fn role_from_name(name: String) -> Result<SignatureRole> {
     }
 }
 
-async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<(Keypair, String)> {
+async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<SecretKeyEntry> {
     let keys = SecretKeyFile::load_file(fpath.clone()).await.map_err(|e| {
         ClientError::Other(format!(
             "Error loading file {}: {}",
@@ -381,11 +398,8 @@ async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<(Key
             e.to_string()
         ))
     })?;
-    for key in keys.key {
-        if key.roles.contains(role) {
-            let pair = key.key().map_err(|e| ClientError::Other(e.to_string()))?;
-            return Ok((pair, key.label));
-        }
-    }
-    Err(ClientError::Other("No satisfactory key found".to_owned()))
+
+    keys.get_first_matching(role)
+        .map(|k| k.to_owned())
+        .ok_or_else(|| ClientError::Other("No satisfactory key found".to_owned()))
 }
