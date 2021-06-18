@@ -10,8 +10,10 @@ MIME ?= "application/toml"
 export RUST_LOG=error,warp=info,bindle=${BINDLE_LOG_LEVEL}
 
 .PHONY: test
-test:
+test: build
+	cargo fmt --all -- --check
 	cargo test
+	cargo test --doc --all
 
 .PHONY: serve
 serve:

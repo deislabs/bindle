@@ -7,9 +7,9 @@ pub mod load;
 use std::convert::TryInto;
 use std::path::Path;
 
-use reqwest::ClientBuilder;
 use reqwest::header;
 use reqwest::Client as HttpClient;
+use reqwest::ClientBuilder;
 use reqwest::{Body, RequestBuilder, StatusCode};
 use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, info, instrument, trace};
@@ -88,7 +88,9 @@ impl Client {
         // self-signed certs
         let client = HttpClient::builder()
             .and_if(options.http2_prior_knowledge, |b| b.http2_prior_knowledge())
-            .and_if(options.danger_accept_invalid_certs, |b| b.danger_accept_invalid_certs(true))
+            .and_if(options.danger_accept_invalid_certs, |b| {
+                b.danger_accept_invalid_certs(true)
+            })
             .default_headers(headers)
             .build()
             .map_err(|e| ClientError::Other(e.to_string()))?;
@@ -479,7 +481,7 @@ async fn parse_error_from_body(resp: reqwest::Response) -> Option<String> {
 trait ConditionalBuilder {
     fn and_if(self, condition: bool, build_method: impl Fn(Self) -> Self) -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
         if condition {
             build_method(self)

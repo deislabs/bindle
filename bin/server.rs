@@ -143,7 +143,7 @@ async fn main() -> anyhow::Result<()> {
                 .get("keyring")
                 .map(|v| v.as_str().unwrap().parse().unwrap())
         })
-        .unwrap_or(PathBuf::from(default_config_dir().join("keyring.toml")));
+        .unwrap_or_else(|| default_config_dir().join("keyring.toml"));
 
     // We might want to do something different in the future. But what we do here is
     // load the file if we can find it. If the file just doesn't exist, we print a
@@ -153,10 +153,9 @@ async fn main() -> anyhow::Result<()> {
     // All other cases are considered errors worthy of failing.
     let keyring: KeyRing = match std::fs::metadata(&keyring_file) {
         Ok(md) if md.is_file() => load_toml(keyring_file).await?,
-        Ok(_) => Err(anyhow::anyhow!(
-            "Expected {} to be a regular file",
-            keyring_file.display()
-        ))?,
+        Ok(_) => {
+            anyhow::bail!("Expected {} to be a regular file", keyring_file.display());
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             warn!("No keyring.toml found. Using default keyring.");
             KeyRing::default()
@@ -192,6 +191,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Map doesn't work here because we've already moved data out of opts
+    #[allow(clippy::manual_map)]
     let tls = match cert_path {
         None => None,
         Some(p) => Some(TlsConfig {
@@ -202,15 +202,13 @@ async fn main() -> anyhow::Result<()> {
 
     let index = search::StrictEngine::default();
     let store = provider::file::FileProvider::new(&bindle_directory, index.clone(), keyring).await;
-    let secret_store = SecretKeyFile::load_file(signing_keys.clone())
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to load secret key file from {}: {} HINT: Try the flag --signing-keys",
-                signing_keys.display(),
-                e
-            )
-        })?;
+    let secret_store = SecretKeyFile::load_file(&signing_keys).await.map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to load secret key file from {}: {} HINT: Try the flag --signing-keys",
+            signing_keys.display(),
+            e
+        )
+    })?;
 
     tracing::log::info!(
         "Starting server at {}, and serving bindles from {}",
@@ -241,7 +239,7 @@ fn default_config_dir() -> PathBuf {
 
 async fn ensure_config_dir() -> anyhow::Result<PathBuf> {
     let dir = default_config_dir();
-    tokio::fs::create_dir_all(dir.clone()).await?;
+    tokio::fs::create_dir_all(&dir).await?;
     Ok(dir)
 }
 
@@ -262,7 +260,7 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
             );
             let key = SecretKeyEntry::new("Default host key".to_owned(), vec![SignatureRole::Host]);
             default_keyfile.key.push(key);
-            default_keyfile.save_file(signing_keyfile.clone()).await?;
+            default_keyfile.save_file(&signing_keyfile).await?;
             Ok(signing_keyfile)
         }
         Err(e) => Err(anyhow::anyhow!(
@@ -280,9 +278,9 @@ where
     // MPB: The original version did an unwrap_or_default() on the read_to_string.
     // I removed this because I think we want an error to propogate if the file
     // cannot be read.
-    let raw_data = tokio::fs::read_to_string(&file)
+    let raw_data = tokio::fs::read(&file)
         .await
         .map_err(|e| anyhow::anyhow!("failed to read TOML file {}: {}", file.display(), e))?;
-    let res = toml::from_str::<T>(&raw_data)?;
+    let res = toml::from_slice::<T>(&raw_data)?;
     Ok(res)
 }

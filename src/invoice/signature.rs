@@ -7,7 +7,7 @@ use tracing::error;
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// The latest key ring version supported by this library.
 pub const KEY_RING_VERSION: &str = "1.0";
@@ -118,7 +118,7 @@ impl KeyRing {
     }
     pub fn contains(&self, key: &PublicKey) -> bool {
         // This could definitely be optimized.
-        for k in self.key.clone() {
+        for k in self.key.iter() {
             // Note that we are skipping malformed keys because they don't matter
             // when doing a contains(). If they key is malformed, it definitely
             // is not the key we are looking for.
@@ -312,14 +312,14 @@ impl Default for SecretKeyFile {
 }
 
 impl SecretKeyFile {
-    pub async fn load_file(path: PathBuf) -> anyhow::Result<SecretKeyFile> {
-        let s = tokio::fs::read_to_string(path).await?;
-        let t = toml::from_str(s.as_str())?;
+    pub async fn load_file(path: impl AsRef<Path>) -> anyhow::Result<SecretKeyFile> {
+        let raw = tokio::fs::read(path).await?;
+        let t = toml::from_slice(&raw)?;
         Ok(t)
     }
 
     /// Save the present keyfile to the named path.
-    pub async fn save_file(&self, dest: PathBuf) -> anyhow::Result<()> {
+    pub async fn save_file(&self, dest: impl AsRef<Path>) -> anyhow::Result<()> {
         let out = toml::to_vec(self)?;
         tokio::fs::write(dest, out).await?;
         Ok(())
@@ -328,7 +328,7 @@ impl SecretKeyFile {
 
 impl SecretKeyStorage for SecretKeyFile {
     fn get_first_matching(&self, role: &SignatureRole) -> Option<&SecretKeyEntry> {
-        self.key.iter().find(|k| k.roles.contains(role)).clone()
+        self.key.iter().find(|k| k.roles.contains(role))
     }
 }
 
@@ -370,7 +370,7 @@ mod test {
         let outdir = tempfile::tempdir().expect("created a temp dir");
         let dest = outdir.path().join("testkey.toml");
 
-        kr.save_file(dest.clone())
+        kr.save_file(&dest)
             .await
             .expect("Should write new key to file");
         let newfile = SecretKeyFile::load_file(dest)

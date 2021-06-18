@@ -53,7 +53,7 @@ pub mod v1 {
     pub async fn create_invoice<P: Provider, S: SecretKeyStorage>(
         store: P,
         secret_store: S,
-        inv: crate::Invoice,
+        mut inv: crate::Invoice,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let accept = accept_header.unwrap_or_default();
@@ -75,10 +75,7 @@ pub mod v1 {
             Some(k) => k,
         };
 
-        let labels = match store
-            .create_invoice(&mut inv.clone(), role, &sk, strategy)
-            .await
-        {
+        let labels = match store.create_invoice(&mut inv, role, &sk, strategy).await {
             Ok(l) => l,
             Err(e) => {
                 return Ok(reply::into_reply(e));

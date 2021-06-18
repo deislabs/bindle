@@ -55,7 +55,7 @@
 //!    "#;
 //! let inv: bindle::Invoice = toml::from_str(toml).expect("test invoice parsed");
 //!
-//! let filter = BindleFilter::new(inv).filter();
+//! let filter = BindleFilter::new(&inv).filter();
 //! assert_eq!(1, filter.len());
 //! ```
 //!
@@ -98,7 +98,7 @@
 //! size = 321
 //! "#;
 //! let inv: bindle::Invoice = toml::from_str(toml).expect("test invoice parsed");
-//! let filter = BindleFilter::new(inv)
+//! let filter = BindleFilter::new(&inv)
 //!     .activate_feature("testing", "animal", "narwhal")
 //!     .filter();
 //! assert_eq!(2, filter.len());
@@ -126,17 +126,17 @@ struct FeatureReference {
 /// The filter can be used to retrieve the list of parcels that satisfies a set of
 /// requirements. For example, use this to activate or deactivate features. You can also
 /// include or exclude groups.
-pub struct BindleFilter {
+pub struct BindleFilter<'a> {
     // The invoice that we operate on.
-    invoice: Invoice,
+    invoice: &'a Invoice,
     groups: HashSet<String>,
     exclude_groups: HashSet<String>,
     features: Vec<FeatureReference>,
     exclude_features: Vec<FeatureReference>,
 }
 
-impl BindleFilter {
-    pub fn new(invoice: Invoice) -> Self {
+impl<'a> BindleFilter<'a> {
+    pub fn new(invoice: &'a Invoice) -> Self {
         Self {
             invoice,
             groups: HashSet::new(),
@@ -268,12 +268,13 @@ impl BindleFilter {
 
         // Build a list of parcels that are enabled by default, or enabled because a group
         // is enabled.
+        let zero_vec = Vec::with_capacity(0);
         let mut parcels: HashSet<Parcel> = self
             .invoice
             .parcel
-            .clone()
-            .unwrap_or_else(Vec::new)
-            .into_iter()
+            .as_ref()
+            .unwrap_or(&zero_vec)
+            .iter()
             .filter(|p| {
                 // Filter out any parcels that are not part of the global group or one
                 // of the enabled groups.
@@ -292,6 +293,7 @@ impl BindleFilter {
                     .unwrap_or(true) // No conditions means parcel is in global group
             })
             .filter(|p| !self.is_disabled(p))
+            .cloned()
             .collect();
 
         // Loop through the parcels and see if any of them require in more groups.
@@ -441,7 +443,7 @@ mod test {
         let inv: crate::Invoice = toml::from_str(toml).expect("test invoice parsed");
         // If we leave everything on, we should get two bindles. The two should be members
         // of the global group.
-        let filter = BindleFilter::new(inv).filter();
+        let filter = BindleFilter::new(&inv).filter();
         assert_eq!(2, filter.len());
     }
 
@@ -475,13 +477,13 @@ mod test {
         let inv: crate::Invoice = toml::from_str(toml).expect("test invoice parsed");
         // If we leave everything on, we should get two bindles.
         {
-            let filter = BindleFilter::new(inv.clone()).filter();
+            let filter = BindleFilter::new(&inv).filter();
             assert_eq!(2, filter.len());
         }
 
         // If we disable "testing.disabled=true", this should be one.
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(&inv)
                 .deactivate_feature("testing", "disabled", "true")
                 .filter();
             assert_eq!(1, filter.len());
@@ -489,7 +491,7 @@ mod test {
 
         // Verify that if a feature is activated and deactivated, deactivation wins.
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(&inv)
                 .deactivate_feature("testing", "disabled", "true")
                 .activate_feature("testing", "disabled", "true")
                 .filter();
@@ -498,7 +500,7 @@ mod test {
 
         // If we disable "testing.disabled=false", this should be two.
         {
-            let filter = BindleFilter::new(inv)
+            let filter = BindleFilter::new(&inv)
                 .deactivate_feature("testing", "disabled", "false")
                 .filter();
             assert_eq!(2, filter.len());
@@ -547,14 +549,14 @@ mod test {
 
         // By default, we should get all three bindles, since they are all in global.
         {
-            let filter = BindleFilter::new(inv.clone()).filter();
+            let filter = BindleFilter::new(&inv).filter();
             assert_eq!(3, filter.len());
         }
 
         // If we enable testing/animal/narwhal, we should get only two.
         // The `unicorn_handler` does not meet our requirements
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(&inv)
                 .activate_feature("testing", "animal", "narwhal")
                 .filter();
             assert_eq!(2, filter.len());
@@ -567,7 +569,7 @@ mod test {
         // If we deactivate AND activate narwhal, we should get only the one default
         // module.
         {
-            let filter = BindleFilter::new(inv.clone())
+            let filter = BindleFilter::new(&inv)
                 .activate_feature("testing", "animal", "narwhal")
                 .deactivate_feature("testing", "animal", "narwhal")
                 .filter();
@@ -577,7 +579,7 @@ mod test {
         // If we activate both narwhal and unicorn, we should get only the last one
         // activated. So we should get a match for unicorn, but not narwhal
         {
-            let filter = BindleFilter::new(inv)
+            let filter = BindleFilter::new(&inv)
                 .activate_feature("testing", "animal", "narwhal")
                 .activate_feature("testing", "animal", "unicorn")
                 .filter();
@@ -636,22 +638,20 @@ mod test {
 
         // Check that by default we have one parcel, because group is required.
         {
-            let filter = BindleFilter::new(inv.clone()).filter();
+            let filter = BindleFilter::new(&inv).filter();
             assert_eq!(1, filter.len());
         }
 
         // Activating one group should get us an additional parcel
         {
-            let filter = BindleFilter::new(inv.clone())
-                .with_group("is_optional")
-                .filter();
+            let filter = BindleFilter::new(&inv).with_group("is_optional").filter();
             assert_eq!(2, filter.len());
         }
 
         // Activating two groups should should get us two additional parcels. But parcel
         // two should not be present twice (it is a member of two groups)
         {
-            let filter = BindleFilter::new(inv)
+            let filter = BindleFilter::new(&inv)
                 .with_group("is_optional")
                 .with_group("also_optional")
                 .filter();
@@ -711,7 +711,7 @@ mod test {
         let inv: crate::Invoice = toml::from_str(toml).expect("test invoice parsed");
 
         // Should have three. More importantly, should not get stuck in an infinite loop.
-        let filter = BindleFilter::new(inv).filter();
+        let filter = BindleFilter::new(&inv).filter();
         assert_eq!(3, filter.len());
     }
 
@@ -767,13 +767,13 @@ mod test {
 
         // By default, we should get all three because "first" is required
         {
-            let filter = BindleFilter::new(inv.clone()).filter();
+            let filter = BindleFilter::new(&inv).filter();
             assert_eq!(3, filter.len());
         }
 
         // Disabling "first" should disable all
         {
-            let filter = BindleFilter::new(inv).without_group("first").filter();
+            let filter = BindleFilter::new(&inv).without_group("first").filter();
             assert_eq!(0, filter.len());
         }
     }
@@ -873,13 +873,13 @@ mod test {
         // - Two parcels included as "entrypoint"
         // - Three more parcels added by the `requires` directive on weather-ui.wasm
         {
-            let filter = BindleFilter::new(inv.clone()).filter();
+            let filter = BindleFilter::new(&inv).filter();
             assert_eq!(6, filter.len());
         }
 
         // We can disable the "entrypoint" group, and then we should have only one group.
         {
-            let filter = BindleFilter::new(inv).without_group("entrypoint").filter();
+            let filter = BindleFilter::new(&inv).without_group("entrypoint").filter();
             assert_eq!(1, filter.len());
         }
     }

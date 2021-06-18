@@ -5,6 +5,17 @@ use tracing::{debug, info};
 
 use std::convert::TryInto;
 
+const GREEDY_VERIFICATION_ROLES: &[SignatureRole] = &[SignatureRole::Creator];
+const CREATIVE_INTEGITY_ROLES: &[SignatureRole] = &[SignatureRole::Creator];
+const AUTHORITATIVE_INTEGRITY_ROLES: &[SignatureRole] =
+    &[SignatureRole::Creator, SignatureRole::Approver];
+const EXHAUSTIVE_VERIFICATION_ROLES: &[SignatureRole] = &[
+    SignatureRole::Creator,
+    SignatureRole::Approver,
+    SignatureRole::Host,
+    SignatureRole::Proxy,
+];
+
 /// This enumerates the verifications strategies described in the signing spec.
 #[derive(Debug)]
 pub enum VerificationStrategy {
@@ -74,29 +85,16 @@ impl VerificationStrategy {
     pub fn verify(&self, inv: &Invoice, keyring: &KeyRing) -> Result<(), SignatureError> {
         let (roles, all_valid, all_verified, all_roles) = match self {
             VerificationStrategy::GreedyVerification => {
-                (vec![SignatureRole::Creator], true, true, true)
+                (GREEDY_VERIFICATION_ROLES, true, true, true)
             }
-            VerificationStrategy::CreativeIntegrity => {
-                (vec![SignatureRole::Creator], false, true, true)
+            VerificationStrategy::CreativeIntegrity => (CREATIVE_INTEGITY_ROLES, false, true, true),
+            VerificationStrategy::AuthoritativeIntegrity => {
+                (AUTHORITATIVE_INTEGRITY_ROLES, false, false, false)
             }
-            VerificationStrategy::AuthoritativeIntegrity => (
-                vec![SignatureRole::Creator, SignatureRole::Approver],
-                false,
-                false,
-                false,
-            ),
-            VerificationStrategy::ExhaustiveVerification => (
-                vec![
-                    SignatureRole::Creator,
-                    SignatureRole::Approver,
-                    SignatureRole::Host,
-                    SignatureRole::Proxy,
-                ],
-                true,
-                true,
-                false,
-            ),
-            VerificationStrategy::MultipleAttestation(a, b) => (a.clone(), *b, true, true),
+            VerificationStrategy::ExhaustiveVerification => {
+                (EXHAUSTIVE_VERIFICATION_ROLES, true, true, false)
+            }
+            VerificationStrategy::MultipleAttestation(a, b) => (a.as_slice(), *b, true, true),
         };
 
         // Either the Creator or an Approver must be in the keyring
@@ -120,7 +118,7 @@ impl VerificationStrategy {
                     }
 
                     let role = s.role.clone();
-                    let cleartext = inv.cleartext(s.by.clone(), role.clone());
+                    let cleartext = inv.cleartext(&s.by, &role);
 
                     // Verify the signature
                     // TODO: This would allow a trivial DOS attack in which an attacker
@@ -137,7 +135,7 @@ impl VerificationStrategy {
                         filled_roles.push(role);
                     }
                     // See if the public key is known to us
-                    let pubkey = base64::decode(s.key.clone())
+                    let pubkey = base64::decode(&s.key)
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
                     let pko = PublicKey::from_bytes(pubkey.as_slice())
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
@@ -145,7 +143,7 @@ impl VerificationStrategy {
                     debug!("Looking for key");
                     // If the keyring contains PKO, then we are successful for this round.
                     if keyring.contains(&pko) {
-                        debug!("Found key {}", s.by.clone());
+                        debug!("Found key {}", s.by);
                         known_key = true;
                     } else if all_verified {
                         // If the keyring does not contain pko AND every key must be known,
@@ -350,7 +348,7 @@ mod test {
         }
         println!("Signed by creator, host, and unknown key");
         {
-            let mut inv = invoice.clone();
+            let mut inv = invoice;
             inv.sign(SignatureRole::Host, &key_host)
                 .expect("signed as host");
             inv.sign(SignatureRole::Creator, &key_creator)

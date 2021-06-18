@@ -27,10 +27,7 @@ where
                     store.clone(),
                     secret_store.clone(),
                 ))
-                .or(v1::invoice::create_json(
-                    store.clone(),
-                    secret_store.clone(),
-                ))
+                .or(v1::invoice::create_json(store.clone(), secret_store))
                 .or(v1::invoice::get(store.clone()))
                 .or(v1::invoice::head(store.clone()))
                 .or(v1::invoice::yank(store.clone()))

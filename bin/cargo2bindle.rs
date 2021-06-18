@@ -49,10 +49,10 @@ async fn main() {
     let cargo_toml = Path::new(cargo_dir).join("Cargo.toml");
 
     // Find and parse Cargo.toml
-    let cargo_raw = fs::read_to_string(cargo_toml)
+    let cargo_raw = fs::read(cargo_toml)
         .await
         .expect("Cargo.toml failed to load");
-    let cargo: Cargo = toml::from_str(cargo_raw.as_str()).expect("Cargo.toml failed to parse");
+    let cargo: Cargo = toml::from_slice(&cargo_raw).expect("Cargo.toml failed to parse");
 
     // Find target wasm
     let wasm_release_dir = Path::new(cargo_dir).join("target/wasm32-wasi/release");

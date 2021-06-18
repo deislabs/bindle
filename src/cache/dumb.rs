@@ -61,13 +61,12 @@ where
         match possible_entry {
             Some(inv) => Ok(inv),
             None => {
-                let parsed_id = parsed_id.clone();
                 async {
                     debug!(
                         "Cache miss for invoice {}, attempting to fetch from server",
                         parsed_id
                     );
-                    let inv = self.remote.get_yanked_invoice(parsed_id.clone()).await?;
+                    let mut inv = self.remote.get_yanked_invoice(&parsed_id).await?;
 
                     // TODO: In this case, we should be signing with a proxy key. The reason
                     // is that we are receiving from a remote (self.remote) and then storing
@@ -79,7 +78,7 @@ where
                     if let Err(e) = self
                         .local
                         .create_invoice(
-                            &mut inv.clone(),
+                            &mut inv,
                             SignatureRole::Proxy,
                             &sk,
                             VerificationStrategy::default(),

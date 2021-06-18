@@ -46,11 +46,11 @@ async fn main() {
     let bindle_path = Path::new(bindle_dir);
 
     // Find and read package.json
-    let package_json = fs::read_to_string(src_path.join("package.json"))
+    let package_json = fs::read(src_path.join("package.json"))
         .await
         .expect("failed to read package.json");
     let package: Package =
-        serde_json::from_str(package_json.as_str()).expect("failed to parse package.json");
+        serde_json::from_slice(&package_json).expect("failed to parse package.json");
     // Find target wasm
     let path = src_path.join("build/optimized.wasm");
     if !path.is_file() {

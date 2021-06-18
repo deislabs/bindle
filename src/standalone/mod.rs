@@ -188,8 +188,8 @@ impl StandaloneWrite {
 
     // TODO: From a tarball
 
-    /// Writes the given invoice and `HashMap` of parcels (as readers). The key
-    /// of the `HashMap` should be the SHA of the parcel
+    /// Writes the given invoice and `HashMap` of parcels (as readers). The key of the `HashMap`
+    /// should be the SHA of the parcel
     #[instrument(level = "trace", skip(self, inv, parcels), fields(invoice_id = %inv.bindle.id, num_parcels = parcels.len(), base_dir = %self.base_path.display()))]
     pub async fn write<T: AsyncRead + Unpin + Send + Sync>(
         &self,

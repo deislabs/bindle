@@ -176,7 +176,7 @@ async fn main() -> std::result::Result<(), ClientError> {
                             "Keyfile cannot be directory or symlink".to_owned(),
                         ));
                     }
-                    let mut keyfile = SecretKeyFile::load_file(dir.clone())
+                    let mut keyfile = SecretKeyFile::load_file(&dir)
                         .await
                         .map_err(|e| ClientError::Other(e.to_string()))?;
                     let newkey = SecretKeyEntry::new(
@@ -345,7 +345,7 @@ async fn load_keyring(keyring: Option<PathBuf>) -> anyhow::Result<KeyRing> {
     // This takes an Option<PathBuf> because we want to wrap all of the flag handling in this
     // function, including setting the default if the kyering is None.
     let dir = keyring
-        .unwrap_or_else(|| default_config_dir())
+        .unwrap_or_else(default_config_dir)
         .join("keyring.toml");
     let kr = bindle::client::load::toml(dir).await?;
     Ok(kr)
@@ -376,7 +376,7 @@ fn default_config_dir() -> PathBuf {
 /// This will return an error
 async fn ensure_config_dir() -> Result<PathBuf> {
     let dir = default_config_dir();
-    tokio::fs::create_dir_all(dir.clone()).await?;
+    tokio::fs::create_dir_all(&dir).await?;
     Ok(dir)
 }
 
@@ -391,7 +391,7 @@ fn role_from_name(name: String) -> Result<SignatureRole> {
 }
 
 async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<SecretKeyEntry> {
-    let keys = SecretKeyFile::load_file(fpath.clone()).await.map_err(|e| {
+    let keys = SecretKeyFile::load_file(&fpath).await.map_err(|e| {
         ClientError::Other(format!(
             "Error loading file {}: {}",
             fpath.display(),
