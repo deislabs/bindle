@@ -154,10 +154,7 @@ async fn main() -> anyhow::Result<()> {
     let keyring: KeyRing = match std::fs::metadata(&keyring_file) {
         Ok(md) if md.is_file() => load_toml(keyring_file).await?,
         Ok(_) => {
-            return Err(anyhow::anyhow!(
-                "Expected {} to be a regular file",
-                keyring_file.display()
-            ))
+            anyhow::bail!("Expected {} to be a regular file", keyring_file.display());
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             warn!("No keyring.toml found. Using default keyring.");

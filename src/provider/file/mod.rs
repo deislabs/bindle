@@ -116,11 +116,11 @@ impl<T: Search + Send + Sync> FileProvider<T> {
             let invoice: crate::Invoice = toml::from_slice(&inv_toml)?;
             let digest = invoice.canonical_name();
             if sha != digest {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "SHA {} did not match computed digest {}. Delete this record.",
                     sha,
                     digest
-                ));
+                );
             }
 
             if let Err(e) = self.index.index(&invoice).await {
