@@ -14,6 +14,7 @@ use bindle::{
 };
 
 use clap::Clap;
+use futures::TryFutureExt;
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
@@ -26,7 +27,12 @@ mod opts;
 use opts::*;
 
 #[tokio::main]
-async fn main() -> std::result::Result<(), ClientError> {
+async fn main() -> anyhow::Result<()> {
+    // Trap and format error messages using anyhow's formatter.
+    run().await.map_err(anyhow::Error::new)
+}
+
+async fn run() -> std::result::Result<(), ClientError> {
     let opts = opts::Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
     tracing_subscriber::fmt::init();

@@ -179,8 +179,8 @@ pub enum ProviderError {
     #[error("resource already exists")]
     Exists,
     /// The error returned when the given `Id` was invalid and unable to be parsed
-    #[error("invalid ID given")]
-    InvalidId,
+    #[error("invalid ID given: {0:?}")]
+    InvalidId(String),
     /// An uploaded parcel does not match the SHA-256 sum provided with its label
     #[error("digest does not match")]
     DigestMismatch,
@@ -214,8 +214,11 @@ pub enum ProviderError {
 
 impl From<ParseError> for ProviderError {
     fn from(e: ParseError) -> ProviderError {
+        let e_msg = e.to_string();
         match e {
-            ParseError::InvalidId | ParseError::InvalidSemver => ProviderError::InvalidId,
+            ParseError::InvalidId(_) | ParseError::InvalidSemver(_) => {
+                ProviderError::InvalidId(e_msg)
+            }
         }
     }
 }
