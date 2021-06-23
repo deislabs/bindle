@@ -32,11 +32,14 @@ pub enum VerificationStrategy {
     /// Verify that every key on the invoice is known, and that every signature is valid.
     ExhaustiveVerification,
     /// Verifies that all signatures of the given roles are valid and signed by known keys.
+    MultipleAttestation(Vec<SignatureRole>),
+    /// Verifies that all signatures of the given roles are valid and signed by known keys. Will
+    /// also validate unknown signers similar to GreedyVerification
     ///
-    /// If the bool is true, unknown signers will also be valdidated.
-    /// Be aware that doing so may make the validation subject to a special form of
-    /// DOS attack in which someone can generate a known-bad signature.
-    MultipleAttestation(Vec<SignatureRole>, bool),
+    /// If the bool is true, unknown signers will also be validated. Be aware that doing so may make
+    /// the validation subject to a special form of DOS attack in which someone can generate a
+    /// known-bad signature.
+    MultipleAttestationGreedy(Vec<SignatureRole>),
 }
 
 impl Default for VerificationStrategy {
@@ -94,7 +97,8 @@ impl VerificationStrategy {
             VerificationStrategy::ExhaustiveVerification => {
                 (EXHAUSTIVE_VERIFICATION_ROLES, true, true, false)
             }
-            VerificationStrategy::MultipleAttestation(a, b) => (a.as_slice(), *b, true, true),
+            VerificationStrategy::MultipleAttestation(a) => (a.as_slice(), false, true, true),
+            VerificationStrategy::MultipleAttestationGreedy(a) => (a.as_slice(), true, true, true),
         };
 
         // Either the Creator or an Approver must be in the keyring
@@ -237,13 +241,13 @@ mod test {
             VerificationStrategy::GreedyVerification
                 .verify(&inv, &keyring)
                 .expect_err("inv should not pass: Requires creator and all valid");
-            VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host], true)
+            VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Only requires host");
-            VerificationStrategy::MultipleAttestation(
-                vec![SignatureRole::Host, SignatureRole::Proxy],
-                true,
-            )
+            VerificationStrategy::MultipleAttestationGreedy(vec![
+                SignatureRole::Host,
+                SignatureRole::Proxy,
+            ])
             .verify(&inv, &keyring)
             .expect_err("inv should not pass: Requires proxy");
 
@@ -268,13 +272,13 @@ mod test {
             VerificationStrategy::GreedyVerification
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Requires creator and all valid");
-            VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host], true)
+            VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Only requires host");
-            VerificationStrategy::MultipleAttestation(
-                vec![SignatureRole::Host, SignatureRole::Proxy],
-                true,
-            )
+            VerificationStrategy::MultipleAttestationGreedy(vec![
+                SignatureRole::Host,
+                SignatureRole::Proxy,
+            ])
             .verify(&inv, &keyring)
             .expect_err("inv should not pass: Requires proxy");
 
@@ -299,13 +303,13 @@ mod test {
             VerificationStrategy::GreedyVerification
                 .verify(&inv, &keyring)
                 .expect_err("inv should not pass: Requires creator and all valid");
-            VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host], true)
+            VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Only requires host");
-            VerificationStrategy::MultipleAttestation(
-                vec![SignatureRole::Host, SignatureRole::Proxy],
-                true,
-            )
+            VerificationStrategy::MultipleAttestationGreedy(vec![
+                SignatureRole::Host,
+                SignatureRole::Proxy,
+            ])
             .verify(&inv, &keyring)
             .expect_err("inv should not pass: Requires proxy");
 
@@ -332,13 +336,13 @@ mod test {
             VerificationStrategy::GreedyVerification
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Requires creator and all valid");
-            VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host], true)
+            VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Only requires host");
-            VerificationStrategy::MultipleAttestation(
-                vec![SignatureRole::Host, SignatureRole::Proxy],
-                true,
-            )
+            VerificationStrategy::MultipleAttestationGreedy(vec![
+                SignatureRole::Host,
+                SignatureRole::Proxy,
+            ])
             .verify(&inv, &keyring)
             .expect("inv should pass: Requires proxy");
 
@@ -372,13 +376,13 @@ mod test {
                 .expect_err(
                     "inv should not pass: Requires creator and all known, anon is not known",
                 );
-            VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host], false)
+            VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host])
                 .verify(&inv, &keyring)
                 .expect("inv should pass: Only requires host");
-            VerificationStrategy::MultipleAttestation(
-                vec![SignatureRole::Host, SignatureRole::Approver],
-                true,
-            )
+            VerificationStrategy::MultipleAttestationGreedy(vec![
+                SignatureRole::Host,
+                SignatureRole::Approver,
+            ])
             .verify(&inv, &keyring)
             .expect_err("inv should not pass: Requires approver to be known");
 

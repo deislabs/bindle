@@ -347,6 +347,11 @@ While not infallible, it can give an early and decisive warning if a package cro
 For example, if a package is signed by an unknown host key, then this package has been hosted on a server outside the chain of trust.
 While this level of scrutiny is not desirable on, say, a public Bindle registry, it may be invaluable to closed and air-gapped networks where the presence of an unknown signature may warn of a misconfiguration.
 
+### Strategy 6: Multiple Attestation Greedy
+
+The same as the Multiple Attestation strategy with the additional requirement that verifying every other signature in the invoice SHOULD be attempted, similar to Greedy.
+
+For example, if validating `creator` and `approver` under normal Multiple Attestation, only signatures with those roles would be validated. Under Multiple Attestation, all other roles would also be validated
 
 ## Yanking Bindles
 
