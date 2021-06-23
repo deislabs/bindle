@@ -68,17 +68,21 @@ $ export BINDLE_SERVER_URL="http://localhost:8080/v1/"
 
 To bootstrap a new bindle instance:
 
-- Create a Bindle invoice, as described in the specification. See the test data in this repo for examples.
-- Create a directory to store you bindle, for example `mkdir -p _scratch/bindir/invoices`
-- Use the `bindle invoice-name` command to generate a SHA of the bindle
-- Create a directory in the `invoices` folder whose name is the SHA generated above
-- Copy your invoice into that directory, naming the file `invoice.toml`
-- Start your `bindle-server`, pointing it to your bindle directory.
+1. Create a directory to store your bindles. We recommend `${HOME}/.bindle/bindles`. You can also
+   skip this step and bindles will be stored in the `/tmp` directory
+2. Start your `bindle-server`, pointing it to your bindle directory.
+3. Create an `invoice.toml`
+4. Use the `bindle` client to push the invoice to the server
 
-Here's a compact version of the above:
+Here's a concrete version of the above for UNIX-like systems:
 ```console
-$ edit invoice.toml
-$ cat invoice.toml
+$ mkdir -p $HOME/.bindle/bindles
+# This step is optional, but will give you a bit more log output if you are curious
+$ export RUST_LOG=error,warp=info,bindle=debug
+$ bindle-server --directory ${HOME}/.bindle/bindles
+
+# In another terminal window
+$ cat <<EOF > invoice.toml
 bindleVersion = "1.0.0"
 
 [bindle]
@@ -89,9 +93,10 @@ description = "My first bindle"
 
 [annotations]
 myname = "myvalue"
-$ mkdir -p _scratch/bindir/invoices/$(bindle invoice-name ./invoice.toml)
-$ mv invoice.toml _scratch/bindir/invoices/$(bindle invoice-name ./invoice.toml)
-$ bindle-server-d _scratch/bindir
+EOF
+$ export BINDLE_SERVER_URL="http://localhost:8080/v1/" 
+$ bindle push-invoice invoice.toml
+Invoice mybindle/0.1.0 created
 ```
 
 You can verify that this is working by fetching the invoice:
