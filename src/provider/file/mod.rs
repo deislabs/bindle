@@ -689,7 +689,7 @@ mod test {
                 &mut scaffold.invoice,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             )
             .await
             .unwrap();
@@ -735,7 +735,7 @@ mod test {
                 &mut scaffold.invoice,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             )
             .await
             .is_err());
@@ -760,7 +760,7 @@ mod test {
                 &mut scaffold.invoice,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             )
             .await
             .expect("should be able to create invoice");
@@ -818,7 +818,7 @@ mod test {
                 &mut scaffold.invoice,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             )
             .await
             .expect("should be able to create an invoice");
@@ -870,7 +870,7 @@ mod test {
                 &mut scaffold.invoice,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             )
             .await
             .expect("Invoice should be created");
@@ -914,13 +914,13 @@ mod test {
                 &mut inv1,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             ),
             store.create_invoice(
                 &mut inv2,
                 SignatureRole::Host,
                 &sk,
-                VerificationStrategy::MultipleAttestation(vec![], false),
+                VerificationStrategy::MultipleAttestation(vec![]),
             )
         );
 
