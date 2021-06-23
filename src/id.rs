@@ -9,11 +9,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
-    #[error("Invalid ID")]
-    InvalidId,
-    // TODO: Add an error message so we can pass through the parse error from semver
-    #[error("ID does not contain a valid semver")]
-    InvalidSemver,
+    #[error("Invalid bindle ID '{0}'. A bindle ID should be NAME/VERSION")]
+    InvalidId(String),
+    #[error("Version {0} is not a valid semantic version (e.g. 1.2.3)")]
+    InvalidSemver(String),
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
@@ -100,7 +99,7 @@ impl FromStr for Id {
         // Every ID should contain at least one separator or it is invalid
         let last_separator_index = match s.rfind(PATH_SEPARATOR) {
             Some(i) => i,
-            None => return Err(ParseError::InvalidId),
+            None => return Err(ParseError::InvalidId(s.to_owned())),
         };
 
         let (name_part, version_part) = s.split_at(last_separator_index);
@@ -109,12 +108,13 @@ impl FromStr for Id {
         let version_part = version_part.trim_start_matches(PATH_SEPARATOR);
 
         if name_part.is_empty() || version_part.is_empty() {
-            return Err(ParseError::InvalidId);
+            let msg = format!("name: '{}', version: '{}'", name_part, version_part);
+            return Err(ParseError::InvalidId(msg));
         }
 
         let version = version_part
             .parse()
-            .map_err(|_| ParseError::InvalidSemver)?;
+            .map_err(|_| ParseError::InvalidSemver(version_part.to_owned()))?;
 
         Ok(Id {
             name: name_part.to_owned(),

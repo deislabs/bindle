@@ -26,7 +26,24 @@ mod opts;
 use opts::*;
 
 #[tokio::main]
-async fn main() -> std::result::Result<(), ClientError> {
+async fn main() {
+    // Trap and format error messages using the proper value
+    if let Err(e) = run().await.map_err(|e| anyhow::Error::new(e)) {
+        eprintln!("{}", e);
+        for (i, cause) in e.chain().enumerate() {
+            // Skip the first message because it is printed above.
+            if i > 0 {
+                if i == 1 {
+                    eprintln!("\nError trace:");
+                }
+                eprintln!("\t{}: {}", i, cause);
+            }
+        }
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> std::result::Result<(), ClientError> {
     let opts = opts::Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
     tracing_subscriber::fmt::init();
@@ -355,7 +372,8 @@ fn map_storage_error(e: ProviderError) -> ClientError {
     match e {
         ProviderError::Io(e) => ClientError::Io(e),
         ProviderError::ProxyError(inner) => inner,
-        _ => ClientError::Other(format!("{:?}", e)),
+        ProviderError::InvalidId(parse_err) => ClientError::InvalidId(parse_err),
+        _ => ClientError::Other(format!("{}", e)),
     }
 }
 

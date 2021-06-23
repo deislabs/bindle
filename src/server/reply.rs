@@ -115,7 +115,7 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<SerializedDat
         ProviderError::Malformed(_)
         | ProviderError::Unserializable(_)
         | ProviderError::DigestMismatch
-        | ProviderError::InvalidId
+        | ProviderError::InvalidId(_)
         | ProviderError::SizeMismatch => StatusCode::BAD_REQUEST,
         ProviderError::Yanked => StatusCode::FORBIDDEN,
         #[cfg(feature = "client")]

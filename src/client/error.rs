@@ -4,26 +4,26 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ClientError {
     /// Indicates that the given URL is invalid, contains the underlying parsing error
-    #[error("Invalid URL given: {0:?}")]
+    #[error("Invalid URL given")]
     InvalidUrl(#[from] url::ParseError),
     /// Invalid configuration was given to the client
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
     /// IO errors from interacting with the file system
-    #[error("Error while performing IO operation: {0:?}")]
+    #[error("Error while performing IO operation")]
     Io(#[from] std::io::Error),
     /// Invalid TOML parsing that can occur when loading an invoice or label from disk
-    #[error("Invalid toml: {0:?}")]
+    #[error("Invalid toml")]
     InvalidToml(#[from] toml::de::Error),
     /// Invalid TOML serialization that can occur when serializing an object to a request
-    #[error("Invalid toml: {0:?}")]
+    #[error("Invalid toml")]
     TomlSerializationError(#[from] toml::ser::Error),
     /// There was a problem with the http client. This is likely not a user issue. Contains the
     /// underlying error
-    #[error("Error creating request: {0:?}")]
+    #[error("Error creating request")]
     HttpClientError(#[from] reqwest::Error),
     /// An invalid ID was given. Returns the underlying parse error
-    #[error("Invalid id: {0:?}")]
+    #[error("Invalid id")]
     InvalidId(#[from] crate::id::ParseError),
 
     // API errors
@@ -55,7 +55,7 @@ pub enum ClientError {
     #[error("User has invalid credentials or is not authorized to access the requested resource")]
     Unauthorized,
 
-    #[error("Signature error: {0:?}")]
+    #[error("Signature error")]
     SignatureError(#[from] crate::invoice::signature::SignatureError),
 
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying

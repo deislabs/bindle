@@ -30,7 +30,7 @@ use tokio_stream::Stream;
 
 use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::Id;
-use crate::{id::ParseError, SignatureError};
+use crate::SignatureError;
 
 /// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
 pub type Result<T> = core::result::Result<T, ProviderError>;
@@ -173,14 +173,14 @@ pub enum ProviderError {
     #[error("resource not found: if an item does not appear in our records, it does not exist!")]
     NotFound,
     /// Any errors that occur due to IO issues. Contains the underlying IO `Error`
-    #[error("resource could not be loaded: {0:?}")]
+    #[error("resource could not be loaded")]
     Io(#[from] std::io::Error),
     /// The resource being created already exists in the system
     #[error("resource already exists")]
     Exists,
     /// The error returned when the given `Id` was invalid and unable to be parsed
     #[error("invalid ID given")]
-    InvalidId,
+    InvalidId(#[from] crate::id::ParseError),
     /// An uploaded parcel does not match the SHA-256 sum provided with its label
     #[error("digest does not match")]
     DigestMismatch,
@@ -193,31 +193,23 @@ pub enum ProviderError {
     /// An error that occurs when the provider implementation uses a proxy and that proxy request
     /// encounters an error. Only available with the `client` feature enabled
     #[cfg(feature = "client")]
-    #[error("proxy error: {0:?}")]
+    #[error("proxy error")]
     ProxyError(#[from] crate::client::ClientError),
 
     /// The data cannot be properly deserialized from TOML
-    #[error("resource is malformed: {0:?}")]
+    #[error("resource is malformed")]
     Malformed(#[from] toml::de::Error),
     /// The data cannot be properly serialized from TOML
-    #[error("resource cannot be stored: {0:?}")]
+    #[error("resource cannot be stored")]
     Unserializable(#[from] toml::ser::Error),
 
-    #[error("failed signature check invoice: {0:?}")]
+    #[error("failed signature check invoice")]
     FailedSigning(#[from] SignatureError),
 
     /// A catch-all for uncategorized errors. Contains an error message describing the underlying
     /// issue
     #[error("{0}")]
     Other(String),
-}
-
-impl From<ParseError> for ProviderError {
-    fn from(e: ParseError) -> ProviderError {
-        match e {
-            ParseError::InvalidId | ParseError::InvalidSemver => ProviderError::InvalidId,
-        }
-    }
 }
 
 impl From<std::convert::Infallible> for ProviderError {
