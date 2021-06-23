@@ -9,10 +9,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
-    #[error("Invalid bindle ID {0}. A bindle ID should be NAME/VERSION")]
+    #[error("Invalid bindle ID '{0}'. A bindle ID should be NAME/VERSION")]
     InvalidId(String),
-    // TODO: Add an error message so we can pass through the parse error from semver
-    #[error("ID does not contain a valid semantic version (e.g. 1.2.3): {0}")]
+    #[error("Version {0} is not a valid semantic version (e.g. 1.2.3)")]
     InvalidSemver(String),
 }
 
