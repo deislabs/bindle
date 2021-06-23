@@ -31,7 +31,7 @@ async fn main() {
     if let Err(e) = run().await.map_err(|e| anyhow::Error::new(e)) {
         eprintln!("{}", e);
         for (i, cause) in e.chain().enumerate() {
-            // Skip the first message
+            // Skip the first message because it is printed above.
             if i > 0 {
                 if i == 1 {
                     eprintln!("\nError trace:");
