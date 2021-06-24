@@ -94,7 +94,9 @@ For both client and server, the `--help` flag will print out documentation.
 To start the compiled server, simply run `target/debug/bindle-server`. If you would like
 to see the available options, use the `--help` command.
 
-If you would like to run the server with `cargo run` (useful when debugging), use `make serve`.
+If you would like to run the server with `cargo run` (useful when debugging), use `make serve` or `make serve-tls`.
+
+You can generate self-signed testing SSL certificates with `make gen-cert`.
 
 #### Supplying a Configuration File
 

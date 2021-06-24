@@ -6,6 +6,8 @@ BINDLE_LOG_LEVEL ?= debug
 BINDLE_ID ?= enterprise.com/warpcore/1.0.0
 BINDLE_IFACE ?= 127.0.0.1:8080
 MIME ?= "application/toml"
+CERT_NAME ?= "./ssl-example"
+TLS_OPTS ?= --tls-cert ${CERT_NAME}.crt.pem --tls-key ${CERT_NAME}.key.pem
 
 export RUST_LOG=error,warp=info,bindle=${BINDLE_LOG_LEVEL}
 
@@ -15,9 +17,13 @@ test: build
 	cargo test
 	cargo test --doc --all
 
+.PHONY: serve-tls
+serve-tls:
+	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN} -- --directory ${HOME}/.bindle/bindles --address ${BINDLE_IFACE} ${TLS_OPTS}
+
 .PHONY: serve
-serve:
-	cargo run ${SERVER_FEATURES} --bin ${SERVER_BIN} -- --directory ${HOME}/.bindle/bindles --address ${BINDLE_IFACE}
+serve: TLS_OPTS =
+serve: serve-tls
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client
@@ -36,3 +42,6 @@ build-server:
 build-client:
 	cargo build ${CLIENT_FEATURES} --bin ${CLIENT_BIN}
 
+.PHONY: gen-cert
+gen-cert:
+	openssl req -newkey rsa:2048 -nodes -keyout ${CERT_NAME}.key.pem -x509 -days 365 -out ${CERT_NAME}.crt.pem 
