@@ -95,8 +95,7 @@ To start the compiled server, simply run `target/debug/bindle-server`. If you wo
 to see the available options, use the `--help` command.
 
 If you would like to run the server with `cargo run` (useful when debugging), use `make serve` or `make serve-tls`.
-
-You can generate self-signed testing SSL certificates with `make gen-cert`.
+(The first time you run `make serve-tls`, it will prompt you to create a testing TLS cert.)
 
 #### Supplying a Configuration File
 
