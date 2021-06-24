@@ -8,6 +8,7 @@ use tracing::error;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::path::Path;
+use std::str::FromStr;
 
 /// The latest key ring version supported by this library.
 pub const KEY_RING_VERSION: &str = "1.0";
@@ -84,6 +85,21 @@ impl Display for SignatureRole {
                 Self::Approver => "approver",
             }
         )
+    }
+}
+
+impl FromStr for SignatureRole {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let normalized = s.trim().to_lowercase();
+        match normalized.as_str() {
+            "creator" => Ok(Self::Creator),
+            "proxy" => Ok(Self::Proxy),
+            "host" => Ok(Self::Host),
+            "approver" => Ok(Self::Approver),
+            _ => Err("Invalid SignatureRole, should be one of: Creator, Proxy, Host, Approver"),
+        }
     }
 }
 
@@ -336,6 +352,28 @@ impl SecretKeyStorage for SecretKeyFile {
 mod test {
     use super::*;
     use ed25519_dalek::Keypair;
+
+    #[test]
+    fn test_parse_role() {
+        // Happy path
+        "Creator".parse::<SignatureRole>().expect("should parse");
+        "Proxy".parse::<SignatureRole>().expect("should parse");
+        "Host".parse::<SignatureRole>().expect("should parse");
+        "Approver".parse::<SignatureRole>().expect("should parse");
+
+        // Odd formatting
+        "CrEaToR"
+            .parse::<SignatureRole>()
+            .expect("mixed case should parse");
+        "  ProxY "
+            .parse::<SignatureRole>()
+            .expect("extra spacing should parse");
+
+        // Unhappy path
+        "yipyipyip"
+            .parse::<SignatureRole>()
+            .expect_err("non-existent shouldn't parse");
+    }
 
     #[test]
     fn test_sign_label() {

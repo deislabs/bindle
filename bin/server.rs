@@ -19,7 +19,7 @@ Bindle is a technology for storing and retrieving aggregate applications.
 This program runs an HTTP frontend for a Bindle repository.
 "#;
 
-#[derive(Clap)]
+#[derive(Clap, serde::Deserialize, Default)]
 #[clap(name = "bindle-server", version = clap::crate_version!(), author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
 struct Opts {
     #[clap(
@@ -76,6 +76,14 @@ struct Opts {
         about = "location of the TOML file that holds the signing keys"
     )]
     signing_file: Option<PathBuf>,
+
+    #[clap(
+        name = "verification_strategy",
+        long = "strategy",
+        env = "BINDLE_VERIFICATION_STRATEGY",
+        about = "The verification strategy to use on the server. Must be one of: CreativeIntegrity, AuthoritativeIntegrity, GreedyVerification, ExhaustiveVerification, MultipleAttestation, MultipleAttestationGreedy. For either of the multiple attestation strategies, you can specify the roles using the following syntax: `MultipleAttestation[Creator, Approver]`"
+    )]
+    verification_strategy: Option<bindle::VerificationStrategy>,
 }
 
 #[tokio::main]
@@ -94,9 +102,9 @@ async fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("could not find a default config path"))?,
     };
 
-    let config: toml::Value = load_toml(config_file_path).await.unwrap_or_else(|_| {
-        warn!("No server.toml file loaded");
-        toml::Value::Table(toml::value::Table::new())
+    let config: Opts = load_toml(config_file_path).await.unwrap_or_else(|e| {
+        warn!(error = %e, "No server.toml file loaded");
+        Opts::default()
     });
 
     // find socket address
@@ -105,11 +113,7 @@ async fn main() -> anyhow::Result<()> {
     //   3. default
     let addr: SocketAddr = opts
         .address
-        .or_else(|| {
-            config
-                .get("address")
-                .map(|v| v.as_str().unwrap().to_string())
-        })
+        .or(config.address)
         .unwrap_or_else(|| String::from("127.0.0.1:8080"))
         .parse()?;
 
@@ -119,11 +123,7 @@ async fn main() -> anyhow::Result<()> {
     //   3. default
     let bindle_directory: PathBuf = opts
         .bindle_directory
-        .or_else(|| {
-            config
-                .get("bindle-directory")
-                .map(|v| v.as_str().unwrap().parse().unwrap())
-        })
+        .or(config.bindle_directory)
         .unwrap_or_else(|| {
             dirs::data_dir()
                 .expect("Unable to infer data directory")
@@ -138,11 +138,7 @@ async fn main() -> anyhow::Result<()> {
     // TODO: Should we ensure a keyring?
     let keyring_file: PathBuf = opts
         .keyring_file
-        .or_else(|| {
-            config
-                .get("keyring")
-                .map(|v| v.as_str().unwrap().parse().unwrap())
-        })
+        .or(config.keyring_file)
         .unwrap_or_else(|| default_config_dir().join("keyring.toml"));
 
     // We might want to do something different in the future. But what we do here is
@@ -167,28 +163,16 @@ async fn main() -> anyhow::Result<()> {
     // - --signing-keys filename
     // - or config file signing-keys entry
     // - or $XDG_DATA/bindle/signing-keys.toml
-    let signing_keys_config: Option<PathBuf> = opts.signing_file.or_else(|| {
-        config
-            .get("signing-keys")
-            .map(|v| v.to_string().parse().unwrap())
-    });
+    let signing_keys_config: Option<PathBuf> = opts.signing_file.or(config.signing_file);
 
     let signing_keys = match signing_keys_config {
         Some(keypath) => keypath,
         None => ensure_signing_keys().await?,
     };
 
-    let cert_path = opts.cert_path.or_else(|| {
-        config
-            .get("cert-path")
-            .map(|v| v.to_string().parse().unwrap())
-    });
+    let cert_path = opts.cert_path.or(config.cert_path);
 
-    let key_path = opts.key_path.or_else(|| {
-        config
-            .get("key-path")
-            .map(|v| v.to_string().parse().unwrap())
-    });
+    let key_path = opts.key_path.or(config.key_path);
 
     // Map doesn't work here because we've already moved data out of opts
     #[allow(clippy::manual_map)]
@@ -199,6 +183,13 @@ async fn main() -> anyhow::Result<()> {
             key_path: key_path.expect("--key-path should be set if --cert-path was set"),
         }),
     };
+
+    let strategy = opts
+        .verification_strategy
+        .or(config.verification_strategy)
+        .unwrap_or_default();
+
+    tracing::info!("Using verification strategy of {:?}", strategy);
 
     let index = search::StrictEngine::default();
     let store = provider::file::FileProvider::new(&bindle_directory, index.clone(), keyring).await;
@@ -224,6 +215,7 @@ async fn main() -> anyhow::Result<()> {
         addr,
         tls,
         secret_store,
+        strategy,
     )
     .await
 }

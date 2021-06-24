@@ -10,6 +10,7 @@ pub fn api<P, I, Authn, Authz, S>(
     authn: Authn,
     authz: Authz,
     secret_store: S,
+    verification_strategy: crate::VerificationStrategy,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
 where
     P: crate::provider::Provider + Clone + Send + Sync + 'static,
@@ -26,8 +27,13 @@ where
                 .or(v1::invoice::create_toml(
                     store.clone(),
                     secret_store.clone(),
+                    verification_strategy.clone(),
                 ))
-                .or(v1::invoice::create_json(store.clone(), secret_store))
+                .or(v1::invoice::create_json(
+                    store.clone(),
+                    secret_store,
+                    verification_strategy,
+                ))
                 .or(v1::invoice::get(store.clone()))
                 .or(v1::invoice::head(store.clone()))
                 .or(v1::invoice::yank(store.clone()))
@@ -72,6 +78,7 @@ pub mod v1 {
         pub fn create_toml<P, S>(
             store: P,
             secret_store: S,
+            verification_strategy: crate::VerificationStrategy,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
@@ -82,6 +89,7 @@ pub mod v1 {
                 .and(warp::post())
                 .and(with_store(store))
                 .and(with_secret_store(secret_store))
+                .and(warp::any().map(move || verification_strategy.clone()))
                 .and(filters::toml())
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(create_invoice)
@@ -90,6 +98,7 @@ pub mod v1 {
         pub fn create_json<P, S>(
             store: P,
             secret_store: S,
+            verification_strategy: crate::VerificationStrategy,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
@@ -100,6 +109,7 @@ pub mod v1 {
                 .and(warp::post())
                 .and(with_store(store))
                 .and(with_secret_store(secret_store))
+                .and(warp::any().map(move || verification_strategy.clone()))
                 .and(warp::body::json())
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(create_invoice)
