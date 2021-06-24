@@ -53,6 +53,7 @@ pub mod v1 {
     pub async fn create_invoice<P: Provider, S: SecretKeyStorage>(
         store: P,
         secret_store: S,
+        strategy: VerificationStrategy,
         mut inv: crate::Invoice,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
@@ -63,8 +64,6 @@ pub mod v1 {
         // Then I need to validate the invoice against the public keys, sign the invoice
         // with my private key, and THEN go on to store.create_invoice()
 
-        // FIXME: Allow other strategies
-        let strategy = VerificationStrategy::default();
         let role = SignatureRole::Host;
         let sk = match secret_store.get_first_matching(&role) {
             None => {

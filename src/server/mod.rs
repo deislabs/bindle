@@ -28,6 +28,7 @@ pub struct TlsConfig {
 /// Returns a future that runs a server until it receives a SIGINT to stop. If optional TLS
 /// configuration is given, the server will be configured to use TLS. Otherwise it will use plain
 /// HTTP
+// TODO: Change this to a builder instead as this is too many arguments
 pub async fn server<P, I, Authn, Authz, S>(
     store: P,
     index: I,
@@ -36,6 +37,7 @@ pub async fn server<P, I, Authn, Authz, S>(
     addr: impl Into<SocketAddr> + 'static,
     tls: Option<TlsConfig>,
     keystore: S,
+    verification_strategy: crate::VerificationStrategy,
 ) -> anyhow::Result<()>
 where
     P: Provider + Clone + Send + Sync + 'static,
@@ -45,7 +47,7 @@ where
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
-    let api = routes::api(store, index, authn, authz, keystore);
+    let api = routes::api(store, index, authn, authz, keystore, verification_strategy);
 
     let server = warp::serve(api);
     match tls {
@@ -98,7 +100,14 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize, ks);
+        let api = super::routes::api(
+            store,
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            ks,
+            VerificationStrategy::default(),
+        );
 
         // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
 
@@ -259,6 +268,7 @@ mod test {
             AlwaysAuthenticate,
             AlwaysAuthorize,
             ks,
+            VerificationStrategy::default(),
         );
 
         let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
@@ -328,6 +338,7 @@ mod test {
             AlwaysAuthenticate,
             AlwaysAuthorize,
             ks,
+            VerificationStrategy::default(),
         );
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
         let mut valid = testing::Scaffold::from(valid_raw.clone());
@@ -369,6 +380,7 @@ mod test {
             AlwaysAuthenticate,
             AlwaysAuthorize,
             keystore.clone(),
+            VerificationStrategy::default(),
         );
         // Insert a parcel
         let mut scaffold = testing::Scaffold::load("valid_v1").await;
@@ -457,6 +469,7 @@ mod test {
             AlwaysAuthenticate,
             AlwaysAuthorize,
             ks,
+            VerificationStrategy::default(),
         );
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
@@ -561,6 +574,7 @@ mod test {
             AlwaysAuthenticate,
             AlwaysAuthorize,
             ks,
+            VerificationStrategy::default(),
         );
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
@@ -626,7 +640,14 @@ mod test {
     async fn test_host_signed() {
         let (store, index, ks) = testing::setup().await;
 
-        let api = super::routes::api(store, index, AlwaysAuthenticate, AlwaysAuthorize, ks);
+        let api = super::routes::api(
+            store,
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            ks,
+            VerificationStrategy::default(),
+        );
 
         let scaffold = testing::RawScaffold::load("valid_v1").await;
         // Create a valid invoice and make sure the returned invoice is signed

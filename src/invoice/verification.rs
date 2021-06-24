@@ -4,6 +4,7 @@ use ed25519_dalek::{PublicKey, Signature as EdSignature};
 use tracing::{debug, info};
 
 use std::convert::TryInto;
+use std::str::FromStr;
 
 const GREEDY_VERIFICATION_ROLES: &[SignatureRole] = &[SignatureRole::Creator];
 const CREATIVE_INTEGITY_ROLES: &[SignatureRole] = &[SignatureRole::Creator];
@@ -17,7 +18,7 @@ const EXHAUSTIVE_VERIFICATION_ROLES: &[SignatureRole] = &[
 ];
 
 /// This enumerates the verifications strategies described in the signing spec.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VerificationStrategy {
     /// CreativeIntegrity verifies that (a) the key that signs as Creator is a known key,
     /// and that the signature is valid.
@@ -46,6 +47,84 @@ impl Default for VerificationStrategy {
     fn default() -> Self {
         VerificationStrategy::GreedyVerification
     }
+}
+
+/// This implementation will parse the strategy from a string. MultipleAttestation strategies should
+/// be of the format `MultipleAttestation[Creator, Approver]`
+impl FromStr for VerificationStrategy {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Err("Cannot parse VerificationStrategy from an empty string");
+        }
+        // We are very flexible here, allowing for any casing and trimming leading or trailing
+        // whitespace
+        let normalized = s.trim().to_lowercase();
+        let parts: Vec<&str> = normalized.splitn(2, '[').collect();
+        // Safety: Shouldn't panic here because we checked for an empty string _and_ splitn on an
+        // empty string still will return a vec with a length of 1
+        match parts[0] {
+            "creativeintegrity" => Ok(Self::CreativeIntegrity),
+            "authoritativeintegrity" => Ok(Self::AuthoritativeIntegrity),
+            "greedyverification" => Ok(Self::GreedyVerification),
+            "exhaustiveverification" => Ok(Self::ExhaustiveVerification),
+            "multipleattestation" => Ok(Self::MultipleAttestation(parse_roles(parts.get(1))?)),
+            "multipleattestationgreedy" => {
+                Ok(Self::MultipleAttestationGreedy(parse_roles(parts.get(1))?))
+            }
+            _ => Err("Unknown verification strategy"),
+        }
+    }
+}
+
+/// Manual implementation of deserialize due to TOML not supporting "newtype" enum variants. This
+/// deserializes using the same parsing rules as `FromStr`
+impl<'de> serde::Deserialize<'de> for VerificationStrategy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_string(StrategyVisitor)
+    }
+}
+
+struct StrategyVisitor;
+
+impl<'de> serde::de::Visitor<'de> for StrategyVisitor {
+    type Value = VerificationStrategy;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a valid verification strategy value")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        match v.parse::<VerificationStrategy>() {
+            Ok(s) => Ok(s),
+            Err(e) => Err(E::custom(e)),
+        }
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.visit_str(&v)
+    }
+}
+
+fn parse_roles(r: Option<&&str>) -> Result<Vec<SignatureRole>, &'static str> {
+    let raw = r.ok_or("Multiple attestation strategy is missing roles")?;
+    if !raw.ends_with(']') {
+        return Err("Missing closing ']' on roles");
+    }
+    raw.trim_end_matches(']')
+        .split(',')
+        .map(|role| role.parse::<SignatureRole>())
+        .collect::<Result<Vec<_>, _>>()
 }
 
 /// A strategy for verifying an invoice.
@@ -186,6 +265,156 @@ impl VerificationStrategy {
 mod test {
     use super::*;
     use crate::invoice::*;
+
+    #[test]
+    fn test_parse_verification_strategies() {
+        // Happy path
+        let strat = "CreativeIntegrity"
+            .parse::<VerificationStrategy>()
+            .expect("should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::CreativeIntegrity),
+            "Should parse to the correct type"
+        );
+        let strat = "AuthoritativeIntegrity"
+            .parse::<VerificationStrategy>()
+            .expect("should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::AuthoritativeIntegrity),
+            "Should parse to the correct type"
+        );
+        let strat = "GreedyVerification"
+            .parse::<VerificationStrategy>()
+            .expect("should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::GreedyVerification),
+            "Should parse to the correct type"
+        );
+        let strat = "ExhaustiveVerification"
+            .parse::<VerificationStrategy>()
+            .expect("should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::ExhaustiveVerification),
+            "Should parse to the correct type"
+        );
+        let strat = "MultipleAttestation[Creator, Host, Approver]"
+            .parse::<VerificationStrategy>()
+            .expect("should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::MultipleAttestation(_)),
+            "Should parse to the correct type"
+        );
+        let strat = "MultipleAttestationGreedy[Creator, Host, Approver]"
+            .parse::<VerificationStrategy>()
+            .expect("should parse");
+
+        // Validate everything parsed to the right type as a sanity check
+        match strat {
+            VerificationStrategy::MultipleAttestationGreedy(roles) => {
+                assert!(
+                    roles.contains(&SignatureRole::Creator),
+                    "Roles should contain creator"
+                );
+                assert!(
+                    roles.contains(&SignatureRole::Host),
+                    "Roles should contain host"
+                );
+                assert!(
+                    roles.contains(&SignatureRole::Approver),
+                    "Roles should contain approver"
+                );
+            }
+            _ => panic!("Wrong type returned"),
+        }
+
+        // Odd formatting
+        let strat = "CrEaTiVeInTeGrItY"
+            .parse::<VerificationStrategy>()
+            .expect("mixed case should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::CreativeIntegrity),
+            "Should parse to the correct type"
+        );
+        let strat = "  multipleAttestAtion[Creator, Host, Approver] "
+            .parse::<VerificationStrategy>()
+            .expect("extra spaces should parse");
+        assert!(
+            matches!(strat, VerificationStrategy::MultipleAttestation(_)),
+            "Should parse to the correct type"
+        );
+
+        // Unhappy path
+        "nopenopenope"
+            .parse::<VerificationStrategy>()
+            .expect_err("non-existent strategy shouldn't parse");
+        "Creative Integrity"
+            .parse::<VerificationStrategy>()
+            .expect_err("spacing in the middle shouldn't parse");
+        "MultipleAttestationCreator, Host, Approver]"
+            .parse::<VerificationStrategy>()
+            .expect_err("missing start brace shouldn't parse");
+        "MultipleAttestation[Creator, Host, Approver"
+            .parse::<VerificationStrategy>()
+            .expect_err("missing end brace shouldn't parse");
+        "MultipleAttestation[Blah, Host, Approver]"
+            .parse::<VerificationStrategy>()
+            .expect_err("Invalid role shouldn't parse");
+    }
+
+    #[test]
+    fn test_strategy_deserialize() {
+        #[derive(serde::Deserialize)]
+        struct StrategyMock {
+            verification_strategy: VerificationStrategy,
+        }
+
+        let toml_value = r#"
+        verification_strategy = "MultipleAttestation[Creator, Host, Approver]"
+        "#;
+
+        let mock: StrategyMock = toml::from_str(toml_value).expect("toml should parse");
+
+        assert!(
+            matches!(
+                mock.verification_strategy,
+                VerificationStrategy::MultipleAttestation(_)
+            ),
+            "Should parse to the correct type"
+        );
+
+        // Sanity check: A non-array variant
+
+        let toml_value = r#"
+        verification_strategy = "CreativeIntegrity"
+        "#;
+
+        let mock: StrategyMock = toml::from_str(toml_value).expect("toml should parse");
+
+        assert!(
+            matches!(
+                mock.verification_strategy,
+                VerificationStrategy::CreativeIntegrity
+            ),
+            "Should parse to the correct type"
+        );
+
+        // Now check JSON
+        let json_value = r#"
+        {
+            "verification_strategy": "MultipleAttestation[Creator, Host, Approver]"
+        }
+        "#;
+
+        let mock: StrategyMock = serde_json::from_str(json_value).expect("json should parse");
+
+        assert!(
+            matches!(
+                mock.verification_strategy,
+                VerificationStrategy::MultipleAttestation(_)
+            ),
+            "Should parse to the correct type"
+        );
+    }
 
     #[test]
     fn test_verification_strategies() {
