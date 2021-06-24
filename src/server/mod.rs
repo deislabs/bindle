@@ -28,7 +28,7 @@ pub struct TlsConfig {
 /// Returns a future that runs a server until it receives a SIGINT to stop. If optional TLS
 /// configuration is given, the server will be configured to use TLS. Otherwise it will use plain
 /// HTTP
-// TODO: Change this to a builder instead as this is too many arguments
+#[allow(clippy::too_many_arguments)]
 pub async fn server<P, I, Authn, Authz, S>(
     store: P,
     index: I,
