@@ -40,8 +40,8 @@ struct Opts {
     #[clap(
         name = "cert_path",
         short = 'c',
-        long = "cert-path",
-        env = "BINDLE_CERT_PATH",
+        long = "tls-cert",
+        env = "BINDLE_TLS_CERT",
         requires = "key_path",
         about = "the path to the TLS certificate to use. If set, --key-path must be set as well. If not set, the server will use HTTP"
     )]
@@ -49,8 +49,8 @@ struct Opts {
     #[clap(
         name = "key_path",
         short = 'k',
-        long = "key-path",
-        env = "BINDLE_KEY_PATH",
+        long = "tls-key",
+        env = "BINDLE_TLS_KEY",
         requires = "cert_path",
         about = "the path to the TLS certificate key to use. If set, --cert-path must be set as well. If not set, the server will use HTTP"
     )]
@@ -65,7 +65,7 @@ struct Opts {
         name = "keyring",
         short = 'r',
         long = "keyring",
-        about = "the path to the keyring file"
+        about = "the path to the public keyring file used for verifying signatures"
     )]
     keyring_file: Option<PathBuf>,
 
@@ -73,7 +73,7 @@ struct Opts {
         name = "signing_keys",
         long = "signing-keys",
         env = "BINDLE_SIGNING_KEYS",
-        about = "location of the TOML file that holds the signing keys"
+        about = "location of the TOML file that holds the signing keys used for creating signatures"
     )]
     signing_file: Option<PathBuf>,
 
