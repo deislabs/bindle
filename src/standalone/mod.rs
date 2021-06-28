@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
+use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio_stream::{Stream, StreamExt};
+use tokio_util::codec::{BytesCodec, FramedRead};
 use tracing::{debug, info, instrument, trace};
 
 use crate::client::{Client, ClientError, Result};
@@ -13,7 +15,9 @@ use crate::Id;
 /// The name of the invoice file
 pub const INVOICE_FILE: &str = "invoice.toml";
 /// The name of the parcels directory
-pub const PARCEL_DIR: &str = "parcels/";
+pub use crate::provider::file::{PARCEL_DAT, PARCEL_DIRECTORY as PARCEL_DIR};
+
+//const PARCEL_DIR: &str = "parcels/";
 
 /// A struct containing paths to all of the key components of a standalone bundle
 pub struct StandaloneRead {
@@ -116,6 +120,46 @@ impl StandaloneRead {
             .collect::<Result<Vec<_>>>()?;
         Ok(())
     }
+
+    /// Retrive the invoice from the standalone bindle.
+    ///
+    /// This loads the invoice from disk and then parse it into an invoice.
+    /// Errors can result either from reading from disk or from parsing the TOML
+    pub async fn get_invoice(&self) -> Result<crate::invoice::Invoice> {
+        let data = tokio::fs::read(&self.invoice_file)
+            .await
+            .map_err(ClientError::Io)?;
+        let inv = toml::from_slice(&data)?;
+        Ok(inv)
+    }
+
+    /// Get the path to a parcel in a standalone bindle
+    pub fn parcel_data_path(&self, parcel_id: &str) -> PathBuf {
+        self.parcel_dir.join(format!("{}.dat", parcel_id))
+    }
+
+    pub async fn get_parcel(&self, parcel_id: &str) -> Result<Vec<u8>> {
+        let local_path = self.parcel_data_path(parcel_id);
+        tokio::fs::read(local_path).await.map_err(ClientError::Io)
+    }
+
+    /// This fetches a parcel from within a standalone bindle.
+    ///
+    /// Note that while the general API checks for invoice membership, this API does not
+    /// because we know that if the parcel is included in the standalone, it is by
+    /// definition a member of the bindle.
+    pub async fn get_parcel_stream(
+        &self,
+        parcel_id: &str,
+    ) -> Result<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>> {
+        // Get the parcel from the array of parcels.
+        let local_path = self.parcel_data_path(parcel_id);
+        let reader = File::open(local_path).await.map_err(ClientError::Io)?;
+        Ok::<Box<dyn Stream<Item = Result<bytes::Bytes>> + Unpin + Send + Sync>, _>(Box::new(
+            FramedRead::new(reader, BytesCodec::new())
+                .map(|res| res.map_err(ClientError::Io).map(|b| b.freeze())),
+        ))
+    }
 }
 
 /// Helper function for creating an invoice or fetching it if it already exists. For security
@@ -190,6 +234,8 @@ impl StandaloneWrite {
 
     /// Writes the given invoice and `HashMap` of parcels (as readers). The key of the `HashMap`
     /// should be the SHA of the parcel
+    //
+    // The hash mapp should be the sha256 of the data as a key, and the data as the value.
     #[instrument(level = "trace", skip(self, inv, parcels), fields(invoice_id = %inv.bindle.id, num_parcels = parcels.len(), base_dir = %self.base_path.display()))]
     pub async fn write<T: AsyncRead + Unpin + Send + Sync>(
         &self,
@@ -320,5 +366,107 @@ fn validate_shas<'a, T: Iterator<Item = &'a String>>(
         )))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use sha2::{Digest, Sha256};
+    use tempfile::tempdir;
+
+    use crate::{
+        standalone::{StandaloneRead, StandaloneWrite},
+        BindleSpec, Id, Invoice, Label, Parcel,
+    };
+
+    #[tokio::test]
+    async fn should_round_trip() {
+        // Create temp dir
+        let dir = tempdir().expect("create a temp dir");
+        // Create invoice
+        let id: Id = "standalone/roundtrip/1.0.0"
+            .parse()
+            .expect("expect valid ID");
+        let mut inv = Invoice::new(BindleSpec {
+            id: id.clone(),
+            description: Some("testing standalone bindle".to_owned()),
+            authors: None,
+        });
+
+        // Create parcel
+        let parcel_data = "I'm a test fixture".as_bytes();
+        let sha = Sha256::digest(&parcel_data);
+        let sha_string = format!("{:x}", sha);
+
+        // Add parcel
+        inv.parcel = Some(vec![Parcel {
+            label: Label {
+                name: "fixture.txt".to_owned(),
+                media_type: "text/plain".to_owned(),
+                size: parcel_data.len() as u64,
+                sha256: sha_string.clone(),
+                annotations: None,
+                origin: None,
+                feature: None,
+            },
+            conditions: None,
+        }]);
+        let mut parcels = HashMap::new();
+        parcels.insert(sha_string.clone(), parcel_data);
+
+        // Save
+        eprintln!("Writing to {}", dir.path().display());
+        let writer = StandaloneWrite::new(&dir.path(), &id).expect("Create a writer");
+        writer
+            .write(inv, parcels)
+            .await
+            .expect("Write parcel to disk");
+
+        let reader = StandaloneRead::new(dir.path(), "standalone/roundtrip/1.0.0")
+            .await
+            .expect("construct a reader");
+
+        {
+            let md = tokio::fs::metadata(&reader.invoice_file)
+                .await
+                .expect("stat invoice path");
+            assert!(md.is_file());
+        }
+
+        // Verify that the parcel directory exists
+        {
+            let md = tokio::fs::metadata(&reader.parcel_dir)
+                .await
+                .expect("stat parcel path");
+            assert!(md.is_dir());
+        }
+
+        // Verify that the parcel exists
+        for p in reader.parcels.iter() {
+            tokio::fs::metadata(p)
+                .await
+                .unwrap_or_else(|e| panic!("failed to find {}: {}", p.display(), e));
+        }
+
+        // Load invoice
+        let inv2 = reader.get_invoice().await.expect("load invoice");
+        assert_eq!(
+            "standalone/roundtrip/1.0.0".to_string(),
+            inv2.bindle.id.to_string()
+        );
+
+        // Load parcel
+        let parcel_data2 = reader
+            .get_parcel(sha_string.as_str())
+            .await
+            .expect("load parcel data");
+
+        assert_eq!(parcel_data, &parcel_data2);
+
+        // This keeps dir from being deleted until we are done with the test.
+        // Otherwise, tmpfile will clean up the tmpdir too soon.
+        dir.close().expect("deleted temp dir");
     }
 }

@@ -13,9 +13,26 @@ export RUST_LOG=error,warp=info,bindle=$(BINDLE_LOG_LEVEL)
 
 .PHONY: test
 test: build
+test: test-fmt
+test: test-e2e
+test: test-docs
+
+.PHONY: test-fmt
+test-fmt:
 	cargo fmt --all -- --check
-	cargo test
+
+# Not called by `make test` because `test-e2e` does all the things already.
+.PHONY: test-unit
+test-unit:
+	cargo test --lib
+
+.PHONY: test-docs
+test-docs:
 	cargo test --doc --all
+
+.PHONY: test-e2e
+test-e2e:
+	cargo test --tests
 
 .PHONY: serve-tls
 serve-tls: $(CERT_NAME).crt.pem
