@@ -17,8 +17,6 @@ pub const INVOICE_FILE: &str = "invoice.toml";
 /// The name of the parcels directory
 pub use crate::provider::file::{PARCEL_DAT, PARCEL_DIRECTORY as PARCEL_DIR};
 
-//const PARCEL_DIR: &str = "parcels/";
-
 /// A struct containing paths to all of the key components of a standalone bundle
 pub struct StandaloneRead {
     pub invoice_file: PathBuf,
@@ -121,7 +119,7 @@ impl StandaloneRead {
         Ok(())
     }
 
-    /// Retrive the invoice from the standalone bindle.
+    /// Retrieve the invoice from the standalone bindle.
     ///
     /// This loads the invoice from disk and then parse it into an invoice.
     /// Errors can result either from reading from disk or from parsing the TOML
@@ -138,6 +136,7 @@ impl StandaloneRead {
         self.parcel_dir.join(format!("{}.dat", parcel_id))
     }
 
+    /// Read the parcel off of the filesystem and return the data.
     pub async fn get_parcel(&self, parcel_id: &str) -> Result<Vec<u8>> {
         let local_path = self.parcel_data_path(parcel_id);
         tokio::fs::read(local_path).await.map_err(ClientError::Io)
@@ -234,8 +233,8 @@ impl StandaloneWrite {
 
     /// Writes the given invoice and `HashMap` of parcels (as readers). The key of the `HashMap`
     /// should be the SHA of the parcel
-    //
-    // The hash mapp should be the sha256 of the data as a key, and the data as the value.
+    ///
+    /// The `HashMap` key should be the sha256 of the data, and the value should be the parcel content.
     #[instrument(level = "trace", skip(self, inv, parcels), fields(invoice_id = %inv.bindle.id, num_parcels = parcels.len(), base_dir = %self.base_path.display()))]
     pub async fn write<T: AsyncRead + Unpin + Send + Sync>(
         &self,
@@ -375,6 +374,7 @@ mod test {
 
     use sha2::{Digest, Sha256};
     use tempfile::tempdir;
+    use tokio_stream::StreamExt;
 
     use crate::{
         standalone::{StandaloneRead, StandaloneWrite},
@@ -417,7 +417,6 @@ mod test {
         parcels.insert(sha_string.clone(), parcel_data);
 
         // Save
-        eprintln!("Writing to {}", dir.path().display());
         let writer = StandaloneWrite::new(&dir.path(), &id).expect("Create a writer");
         writer
             .write(inv, parcels)
@@ -464,6 +463,20 @@ mod test {
             .expect("load parcel data");
 
         assert_eq!(parcel_data, &parcel_data2);
+
+        // Load the parcel from a stream
+        let mut parcel_stream = reader
+            .get_parcel_stream(sha_string.as_str())
+            .await
+            .expect("got the parcel stream");
+
+        let parcel_data3 = parcel_stream
+            .next()
+            .await
+            .expect("at least one parcel in the stream")
+            .expect("successfully loaded the parcel");
+
+        assert_eq!(parcel_data, parcel_data3);
 
         // This keeps dir from being deleted until we are done with the test.
         // Otherwise, tmpfile will clean up the tmpdir too soon.
