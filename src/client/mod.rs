@@ -15,7 +15,8 @@ use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, info, instrument, trace};
 use url::Url;
 
-use crate::Id;
+use crate::provider::{Provider, ProviderError};
+use crate::{Id, SecretKeyEntry, SignatureRole, VerificationStrategy};
 
 pub use error::ClientError;
 
@@ -428,6 +429,109 @@ impl Client {
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice).await?;
         Ok(toml::from_slice::<crate::MissingParcelsResponse>(&resp.bytes().await?)?.missing)
+    }
+}
+
+// We implement provider for client because often times (such as in the CLI) we are composing the
+// client in to a provider cache. This implementation does not verify or sign anything
+#[async_trait::async_trait]
+impl Provider for Client {
+    async fn create_invoice(
+        &self,
+        inv: &mut crate::Invoice,
+        _role: SignatureRole,
+        _secret_key: &SecretKeyEntry,
+        _strategy: VerificationStrategy,
+    ) -> crate::provider::Result<Vec<crate::Label>> {
+        let res = self.create_invoice(inv.to_owned()).await?;
+        Ok(res.missing.unwrap_or_default())
+    }
+
+    async fn get_yanked_invoice<I>(&self, id: I) -> crate::provider::Result<crate::Invoice>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
+        // Parse the ID now because the error type constraint doesn't match that of the client
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
+        self.get_yanked_invoice(parsed_id)
+            .await
+            .map_err(|e| e.into())
+    }
+
+    async fn yank_invoice<I>(&self, id: I) -> crate::provider::Result<()>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
+        // Parse the ID now because the error type constraint doesn't match that of the client
+        let parsed_id = id.try_into().map_err(|e| e.into())?;
+        self.yank_invoice(parsed_id).await.map_err(|e| e.into())
+    }
+
+    async fn create_parcel<I, R, B>(
+        &self,
+        bindle_id: I,
+        parcel_id: &str,
+        data: R,
+    ) -> crate::provider::Result<()>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+        R: Stream<Item = std::io::Result<B>> + Unpin + Send + Sync + 'static,
+        B: bytes::Buf,
+    {
+        // Parse the ID now because the error type constraint doesn't match that of the client
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        self.create_parcel_from_stream(parsed_id, parcel_id, data)
+            .await
+            .map_err(|e| e.into())
+    }
+
+    async fn get_parcel<I>(
+        &self,
+        bindle_id: I,
+        parcel_id: &str,
+    ) -> crate::provider::Result<
+        Box<dyn Stream<Item = crate::provider::Result<bytes::Bytes>> + Unpin + Send + Sync>,
+    >
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
+        // Parse the ID now because the error type constraint doesn't match that of the client
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        let stream = self.get_parcel_stream(parsed_id, parcel_id).await?;
+        Ok(Box::new(stream.map(|res| res.map_err(|e| e.into()))))
+    }
+
+    async fn parcel_exists<I>(&self, bindle_id: I, parcel_id: &str) -> crate::provider::Result<bool>
+    where
+        I: TryInto<Id> + Send,
+        I::Error: Into<ProviderError>,
+    {
+        let parsed_id = bindle_id.try_into().map_err(|e| e.into())?;
+        let resp = self
+            .raw(
+                reqwest::Method::HEAD,
+                &format!(
+                    "{}/{}@{}",
+                    crate::client::INVOICE_ENDPOINT,
+                    parsed_id,
+                    parcel_id,
+                ),
+                None::<reqwest::Body>,
+            )
+            .await
+            .map_err(|e| ProviderError::Other(e.to_string()))?;
+        match resp.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            _ => Err(ProviderError::ProxyError(ClientError::InvalidRequest {
+                status_code: resp.status(),
+                message: None,
+            })),
+        }
     }
 }
 
