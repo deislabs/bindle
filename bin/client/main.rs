@@ -28,7 +28,7 @@ use opts::*;
 #[tokio::main]
 async fn main() {
     // Trap and format error messages using the proper value
-    if let Err(e) = run().await.map_err(|e| anyhow::Error::new(e)) {
+    if let Err(e) = run().await.map_err(anyhow::Error::new) {
         eprintln!("{}", e);
         for (i, cause) in e.chain().enumerate() {
             // Skip the first message because it is printed above.
@@ -63,8 +63,7 @@ async fn run() -> std::result::Result<(), ClientError> {
             .unwrap_or_else(|_| KeyRing::default()),
     )
     .await;
-    let proxy = bindle::proxy::Proxy::new(bindle_client.clone());
-    let cache = DumbCache::new(proxy, local);
+    let cache = DumbCache::new(bindle_client.clone(), local);
 
     match opts.subcmd {
         SubCommand::Info(info_opts) => {
