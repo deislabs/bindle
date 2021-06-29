@@ -31,9 +31,9 @@ use crate::Id;
 /// The folder name for the invoices directory
 const INVOICE_DIRECTORY: &str = "invoices";
 /// The folder name for the parcels directory
-const PARCEL_DIRECTORY: &str = "parcels";
+pub const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
-const PARCEL_DAT: &str = "parcel.dat";
+pub const PARCEL_DAT: &str = "parcel.dat";
 const CACHE_SIZE: usize = 50;
 const PART_EXTENSION: &str = "part";
 

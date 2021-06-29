@@ -35,6 +35,8 @@ use tracing::info;
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::BINDLE_VERSION_1;
+
 /// Alias for feature map in an Invoice's parcel
 pub type FeatureMap = BTreeMap<String, BTreeMap<String, String>>;
 
@@ -63,6 +65,22 @@ pub struct Invoice {
 }
 
 impl Invoice {
+    /// Create a new Invoice with a bindle specification.
+    ///
+    /// The returned bindle will have no parcels, annotations, signatures, or groups.
+    pub fn new(spec: BindleSpec) -> Self {
+        Invoice {
+            bindle_version: BINDLE_VERSION_1.to_owned(),
+            bindle: spec,
+            parcel: None,
+            yanked: None,
+            yanked_signature: None,
+            annotations: None,
+            signature: None,
+            group: None,
+        }
+    }
+
     /// produce a slash-delimited "invoice name"
     ///
     /// For example, an invoice with the bindle name "hello" and the bindle version
