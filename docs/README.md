@@ -60,10 +60,10 @@ Here are links to the common builds:
 
 The `bindle` program is the client. The `bindle-server` program is the HTTP server.
 
-Before using the `bindle` client, set the `BINDLE_SERVER_URL` environment variable:
+Before using the `bindle` client, set the `BINDLE_URL` environment variable:
 
 ```console
-$ export BINDLE_SERVER_URL="http://localhost:8080/v1/" 
+$ export BINDLE_URL="http://localhost:8080/v1/" 
 ```
 
 To bootstrap a new bindle instance:
@@ -94,7 +94,7 @@ description = "My first bindle"
 [annotations]
 myname = "myvalue"
 EOF
-$ export BINDLE_SERVER_URL="http://localhost:8080/v1/" 
+$ export BINDLE_URL="http://localhost:8080/v1/" 
 $ bindle push-invoice invoice.toml
 Invoice mybindle/0.1.0 created
 ```

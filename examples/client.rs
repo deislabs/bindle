@@ -5,7 +5,7 @@ use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let url = std::env::var("BINDLE_SERVER_URL")?;
+    let url = std::env::var("BINDLE_URL")?;
     let root = std::env::var("CARGO_MANIFEST_DIR")?;
     let root_path = std::path::PathBuf::from(root);
 
