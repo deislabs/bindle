@@ -9,8 +9,6 @@ use tracing::debug;
 use super::{JSON_MIME_TYPE, TOML_MIME_TYPE};
 use crate::provider::ProviderError;
 
-const SUPPORTED_SERIALIZERS: &[&str] = &[TOML_MIME_TYPE, JSON_MIME_TYPE, "text/json"];
-
 /// Use an accept header to determine how to serialize content.
 ///
 /// This will examine the Accept header, looking for the best match, and then it will
@@ -26,46 +24,62 @@ pub fn serialized_data<T>(val: &T, accept: String) -> SerializedData
 where
     T: Serialize,
 {
-    // TODO: replace with the mime::Mime type
-    let default_mime = "*/*".to_owned();
-    let accept_items = parse_accept(accept.as_str());
-    debug!(
-        %accept,
-        ?accept_items,
-        "Parsed accept header into list",
-    );
-    let best_fit = accept_items
-        .iter()
-        .find(|i| SUPPORTED_SERIALIZERS.contains(&i.as_str()))
-        .unwrap_or(&default_mime);
-    debug!(%best_fit, "Selected a best-fit MIME");
-    let mut final_mime = TOML_MIME_TYPE;
-    let inner = match (*best_fit).as_str() {
-        JSON_MIME_TYPE | "text/json" => {
-            final_mime = JSON_MIME_TYPE;
-            serde_json::to_vec(val).map_err(|e| {
-                tracing::log::error!("Error while serializing TOML: {:?}", e);
-            })
-        }
+    let best_fit = accept_best_fit(accept.as_str());
+    let inner = match best_fit {
+        JSON_MIME_TYPE => serde_json::to_vec(val).map_err(|e| {
+            tracing::log::error!("Error while serializing TOML: {:?}", e);
+        }),
         // TOML is default
         _ => toml::to_vec(val).map_err(|e| {
             tracing::log::error!("Error while serializing TOML: {:?}", e);
         }),
     };
-    debug!(%final_mime, "negotiated MIME");
     SerializedData {
         inner,
-        mime: final_mime.to_owned(),
+        mime: best_fit.to_owned(),
     }
 }
 
-fn parse_accept(header: &str) -> Vec<String> {
+/// Parse an Accept header and return the best possible handler.
+///
+/// This will always return one of the supported serializers, defaulting to
+/// application/toml.
+fn accept_best_fit(accept_value: &str) -> &str {
+    let accept_items = parse_accept(accept_value);
+    debug!(
+        %accept_value,
+        ?accept_items,
+        "Parsed accept header into list",
+    );
+
+    // Basically, we're working around the issue that there are multiple MIME types
+    // for JSON (application/json and text/json, as well as application/json+STUFF)
+    let best_fit = accept_items
+        .iter()
+        .find_map(|m| match m.subtype().as_str() {
+            "toml" => Some(TOML_MIME_TYPE),
+            "json" => Some(JSON_MIME_TYPE),
+            _ => None,
+        })
+        .unwrap_or(TOML_MIME_TYPE);
+
+    debug!(%best_fit, "Selected a best-fit MIME");
+    best_fit
+}
+
+fn parse_accept(header: &str) -> Vec<mime::Mime> {
     header
         .split(',')
-        .map(|h| {
-            let normalized = h.trim().to_lowercase();
-            let parts: Vec<&str> = normalized.split(';').collect();
-            parts[0].to_string()
+        .filter_map(|h| match h.trim().parse::<mime::Mime>() {
+            Ok(m) => Some(m),
+            Err(e) => {
+                tracing::warn!(
+                    header,
+                    %e,
+                    "Accept header contains unparsable media type. Ignoring."
+                );
+                None
+            }
         })
         .collect()
 }
@@ -146,16 +160,65 @@ pub fn reply_from_error(
 
 #[cfg(test)]
 mod test {
+    use mime::JSON;
+
     use super::*;
     #[test]
     fn test_parse_accept() {
+        // In these cases, the `mime.to_string()` is fine for testing
         assert_eq!(vec!["application/toml"], parse_accept("application/toml"));
 
         assert_eq!(vec!["application/toml"], parse_accept("application/TOML"));
 
+        // In this case, we want to test the essence_str
         assert_eq!(
             vec!["text/json", "application/json"],
             parse_accept("text/json, application/json;q=0.9")
+                .iter()
+                .map(|m| m.essence_str())
+                .collect::<Vec<&str>>()
+        );
+    }
+
+    #[test]
+    fn test_accept_best_fit() {
+        assert_eq!(TOML_MIME_TYPE, accept_best_fit("application/toml"));
+        assert_eq!(JSON_MIME_TYPE, accept_best_fit("text/json"));
+        assert_eq!(
+            JSON_MIME_TYPE,
+            accept_best_fit("text/plain,application/json")
+        );
+        assert_eq!(
+            JSON_MIME_TYPE,
+            accept_best_fit("text/plain, application/json, image/jpeg")
+        );
+
+        // use JSON for the oddball cases b/c TOML is the default if a parse fails
+        assert_eq!(
+            JSON_MIME_TYPE,
+            accept_best_fit("application/json;hello=world")
+        );
+        assert_eq!(JSON_MIME_TYPE, accept_best_fit("application/json+bindle"));
+        assert_eq!(
+            JSON_MIME_TYPE,
+            accept_best_fit("not-a-mime, text/json, also/not/a/mime")
+        );
+
+        // Default cases
+        assert_eq!(TOML_MIME_TYPE, accept_best_fit(""));
+        assert_eq!(TOML_MIME_TYPE, accept_best_fit("*"));
+        assert_eq!(TOML_MIME_TYPE, accept_best_fit("*/*"));
+        assert_eq!(TOML_MIME_TYPE, accept_best_fit("text/plain"));
+
+        // Should go by order of appearance in the list
+        // We don't support `p=`. It's not worth the effort.
+        assert_eq!(
+            JSON_MIME_TYPE,
+            accept_best_fit("application/json, application/toml")
+        );
+        assert_eq!(
+            TOML_MIME_TYPE,
+            accept_best_fit("application/toml, application/json")
         );
     }
 }
