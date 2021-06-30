@@ -115,10 +115,10 @@ key-path = "/etc/ssl/bindle/key.pem"
 If you compiled, the client is in `target/debug/bindle`. You can also run from source with
 `cargo run --features=cli --bin=bindle` or `$(make client)` (e.g. `$(make client) --help`).
 
-You will either need to supply the `--server` parameter on the command line or set the `BINDLE_SERVER_URL`.
+You will either need to supply the `--server` parameter on the command line or set the `BINDLE_URL`.
 
 ```console
-$ export BINDLE_SERVER_URL="http://localhost:8080/v1"
+$ export BINDLE_URL="http://localhost:8080/v1"
 $ # Running from build
 $ target/debug/bindle --help
 $ # Running from Cargo

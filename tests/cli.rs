@@ -5,6 +5,8 @@ use test_util::TestController;
 use bindle::client::Client;
 use bindle::testing;
 
+const ENV_BINDLE_URL: &str = "BINDLE_URL";
+
 // Inserts data into the test server for fetching
 async fn setup_data(client: &Client) {
     // For now let's just put in a simple manifest and one with a lot of parcels
@@ -50,7 +52,7 @@ async fn test_push() {
             path.to_str().unwrap(),
             "enterprise.com/warpcore/1.0.0",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
     assert_status(output, "Should be able to push a full bindle");
@@ -72,7 +74,7 @@ async fn test_push_invoice_and_file() {
             "push-invoice",
             base.join("invoice.toml").to_str().unwrap(),
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 
@@ -91,7 +93,7 @@ async fn test_push_invoice_and_file() {
             "enterprise.com/warpcore/1.0.0",
             base.join("parcels/parcel.dat").to_str().unwrap(),
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
     assert_status(output, "Should be able to push a file");
@@ -115,7 +117,7 @@ async fn test_get() {
             "get",
             "enterprise.com/warpcore/1.0.0",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 
@@ -135,7 +137,7 @@ async fn test_get() {
             "get",
             "enterprise.com/warpcore/1.0.0",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 
@@ -158,7 +160,7 @@ async fn test_get() {
             tempdir.path().to_str().unwrap(),
             "enterprise.com/warpcore/1.0.0",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 
@@ -198,7 +200,7 @@ async fn test_get_invoice() {
             tempdir.path().join("invoice.toml").to_str().unwrap(),
             "enterprise.com/warpcore/1.0.0",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 
@@ -223,7 +225,7 @@ async fn test_create_key_and_sign_invoice() {
         );
         let output = std::process::Command::new("cargo")
             .args(cmd.split(' '))
-            .env("BINDLE_SERVER_URL", "localhost:8080")
+            .env(ENV_BINDLE_URL, "localhost:8080")
             .output()
             .expect("Key should get created");
         assert_status(output, "Key should be generated");
@@ -244,7 +246,7 @@ async fn test_create_key_and_sign_invoice() {
         );
         let output = std::process::Command::new("cargo")
             .args(cmd.split(' '))
-            .env("BINDLE_SERVER_URL", "localhost:8080")
+            .env(ENV_BINDLE_URL, "localhost:8080")
             .output()
             .expect("Invoice should get signed");
         assert_status(output, "Invoice should get signed");
@@ -281,7 +283,7 @@ async fn test_get_parcel() {
             "enterprise.com/warpcore/1.0.0",
             "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 
@@ -311,7 +313,7 @@ async fn test_yank() {
             "yank",
             "enterprise.com/warpcore/1.0.0",
         ])
-        .env("BINDLE_SERVER_URL", &controller.base_url)
+        .env(ENV_BINDLE_URL, &controller.base_url)
         .output()
         .expect("Should be able to run command");
 

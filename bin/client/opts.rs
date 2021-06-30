@@ -14,7 +14,7 @@ pub struct Opts {
     #[clap(
         short = 's',
         long = "server",
-        env = "BINDLE_SERVER_URL",
+        env = "BINDLE_URL",
         about = "The address of the bindle server. For the default local server, this should be http://localhost:8080/v1"
     )]
     pub server_url: String,
