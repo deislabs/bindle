@@ -7,13 +7,13 @@ use reqwest::StatusCode;
 use tokio_stream::{Stream, StreamExt};
 
 use crate::provider::{Provider, ProviderError, Result};
-use crate::signature::KeyRing;
-use crate::Id;
+use crate::verification::Verified;
 use crate::{
     client::{Client, ClientError},
     signature::SignatureRole,
-    SecretKeyEntry, VerificationStrategy,
+    SecretKeyEntry,
 };
+use crate::{Id, Signed};
 
 /// A proxy implementation that forwards requests to an upstream server as configured by a
 /// [`Client`](crate::client::Client). The proxy implementation will verify and sign invoice create
@@ -21,19 +21,14 @@ use crate::{
 #[derive(Clone)]
 pub struct Proxy {
     client: Client,
-    keyring: KeyRing,
     secret_key: SecretKeyEntry,
 }
 
 impl Proxy {
     /// Returns a new proxy configured to connect to an upstream using the given client and verify
     /// and sign using the given secret key and keyring
-    pub fn new(client: Client, secret_key: SecretKeyEntry, keyring: KeyRing) -> Self {
-        Proxy {
-            client,
-            keyring,
-            secret_key,
-        }
+    pub fn new(client: Client, secret_key: SecretKeyEntry) -> Self {
+        Proxy { client, secret_key }
     }
 }
 
@@ -41,19 +36,12 @@ impl Proxy {
 impl Provider for Proxy {
     /// Creates the invoice on the upstream server, signing the invoice as a proxy. The role and
     /// secret key parameters do not matter here
-    async fn create_invoice(
-        &self,
-        inv: &mut crate::Invoice,
-        _role: SignatureRole,
-        _secret_key: &SecretKeyEntry,
-        strategy: VerificationStrategy,
-    ) -> Result<Vec<crate::Label>> {
-        strategy.verify(inv, &self.keyring)?;
-
-        self.sign_invoice(inv, SignatureRole::Proxy, &self.secret_key)?;
-
-        let res = self.client.create_invoice(inv.to_owned()).await?;
-        Ok(res.missing.unwrap_or_default())
+    async fn create_invoice<I>(&self, invoice: I) -> Result<(crate::Invoice, Vec<crate::Label>)>
+    where
+        I: Signed + Verified + Send + Sync,
+    {
+        let res = self.client.create_invoice(invoice.signed()).await?;
+        Ok((res.invoice, res.missing.unwrap_or_default()))
     }
 
     async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
@@ -63,9 +51,9 @@ impl Provider for Proxy {
     {
         // Parse the ID now because the error type constraint doesn't match that of the client
         let parsed_id = id.try_into().map_err(|e| e.into())?;
-        let mut inv = self.client.get_yanked_invoice(parsed_id).await?;
-        self.sign_invoice(&mut inv, SignatureRole::Proxy, &self.secret_key)?;
-        Ok(inv)
+        let inv = self.client.get_yanked_invoice(parsed_id).await?;
+        let signed = crate::sign(inv, vec![(SignatureRole::Proxy, &self.secret_key)])?;
+        Ok(signed.signed())
     }
 
     async fn yank_invoice<I>(&self, id: I) -> Result<()>

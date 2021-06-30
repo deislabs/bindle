@@ -28,9 +28,9 @@ use std::convert::TryInto;
 use thiserror::Error;
 use tokio_stream::Stream;
 
-use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
-use crate::Id;
+use crate::verification::Verified;
 use crate::SignatureError;
+use crate::{Id, Signed};
 
 /// A custom shorthand result type that always has an error type of [`ProviderError`](ProviderError)
 pub type Result<T> = core::result::Result<T, ProviderError>;
@@ -48,29 +48,14 @@ pub type Result<T> = core::result::Result<T, ProviderError>;
 /// conflict.
 #[async_trait::async_trait]
 pub trait Provider {
-    /// This takes an invoice and creates it in storage.
+    /// This takes an invoice and creates it in storage. Returns the newly created invoice and a
+    /// list of missing parcels
     ///
     /// It must verify that each referenced parcel is present in storage. Any parcel that is not
     /// present must be returned in the list of labels.
-    async fn create_invoice(
-        &self,
-        inv: &mut super::Invoice, // Signing requires mutability
-        signing_role: SignatureRole,
-        secret_key: &SecretKeyEntry,
-        verification_strategy: VerificationStrategy,
-    ) -> Result<Vec<super::Label>>;
-
-    /// This is the default implementation of the signing logic. All providers should call
-    /// this function to sign the invoice when creating a new invoice.
-    fn sign_invoice(
-        &self,
-        inv: &mut super::Invoice,
-        role: SignatureRole,
-        secret_key: &SecretKeyEntry,
-    ) -> Result<()> {
-        inv.sign(role, secret_key)?;
-        Ok(())
-    }
+    async fn create_invoice<I>(&self, inv: I) -> Result<(crate::Invoice, Vec<super::Label>)>
+    where
+        I: Signed + Verified + Send + Sync;
 
     /// Load an invoice and return it
     ///

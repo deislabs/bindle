@@ -58,12 +58,14 @@ async fn run() -> std::result::Result<(), ClientError> {
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
         bindle::search::NoopEngine::default(),
-        load_keyring(opts.keyring)
-            .await
-            .unwrap_or_else(|_| KeyRing::default()),
     )
     .await;
     let cache = DumbCache::new(bindle_client.clone(), local);
+
+    // We don't verify locally yet, but we will need the keyring to do so
+    let _keyring = load_keyring(opts.keyring)
+        .await
+        .unwrap_or_else(|_| KeyRing::default());
 
     match opts.subcmd {
         SubCommand::Info(info_opts) => {

@@ -16,7 +16,6 @@ use tracing::{debug, instrument, trace};
 use tracing_futures::Instrument;
 
 use super::*;
-use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::{Id, Invoice};
 
@@ -56,18 +55,15 @@ impl<Remote> Provider for LruCache<Remote>
 where
     Remote: Provider + Send + Sync + Clone,
 {
-    #[instrument(level = "trace", skip(self))]
-    async fn create_invoice(
-        &self,
-        inv: &mut Invoice,
-        role: SignatureRole,
-        key: &SecretKeyEntry,
-        strategy: VerificationStrategy,
-    ) -> Result<Vec<crate::Label>> {
+    #[instrument(level = "trace", skip(self, inv))]
+    async fn create_invoice<I>(&self, inv: I) -> Result<(crate::Invoice, Vec<crate::Label>)>
+    where
+        I: Signed + Verified + Send + Sync,
+    {
         // In this case, the cache itself does not sign the invoice, though perhaps
         // it should at least check to see if the invoice has been signed with the
         // local proxy key.
-        self.remote.create_invoice(inv, role, key, strategy).await
+        self.remote.create_invoice(inv).await
     }
 
     #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
@@ -216,8 +212,11 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{provider::Provider, testing};
-    use std::sync::Arc;
+    use crate::{
+        provider::Provider, signature::KeyRing, testing, SecretKeyEntry, SignatureRole,
+        VerificationStrategy,
+    };
+    use std::{convert::TryFrom, sync::Arc};
 
     use tokio::sync::Mutex;
     use tokio_stream::StreamExt;
@@ -236,16 +235,20 @@ mod test {
 
     #[async_trait::async_trait]
     impl Provider for TestProvider {
-        async fn create_invoice(
-            &self,
-            _inv: &mut Invoice,
-            _role: SignatureRole,
-            _secret_key: &SecretKeyEntry,
-            _strategy: VerificationStrategy,
-        ) -> Result<Vec<crate::Label>> {
+        async fn create_invoice<I>(&self, _inv: I) -> Result<(crate::Invoice, Vec<crate::Label>)>
+        where
+            I: Signed + Verified + Send + Sync,
+        {
             let mut called = self.create_invoice_called.lock().await;
             *called = true;
-            Ok(Vec::new())
+            Ok((
+                crate::Invoice::new(crate::BindleSpec {
+                    id: crate::Id::try_from("foo/bar/1.0.0").unwrap(),
+                    description: None,
+                    authors: None,
+                }),
+                Vec::new(),
+            ))
         }
 
         async fn get_yanked_invoice<I>(&self, _id: I) -> Result<Invoice>
@@ -410,14 +413,13 @@ mod test {
         let cache = LruCache::new(10, provider.clone());
         let sk = SecretKeyEntry::new("TEST".to_owned(), vec![SignatureRole::Proxy]);
 
-        let mut scaffold = testing::Scaffold::load("valid_v1").await;
+        let scaffold = testing::Scaffold::load("valid_v1").await;
+        let verified = VerificationStrategy::MultipleAttestation(vec![])
+            .verify(scaffold.invoice.clone(), &KeyRing::default())
+            .unwrap();
+        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
         cache
-            .create_invoice(
-                &mut scaffold.invoice,
-                SignatureRole::Proxy,
-                &sk,
-                VerificationStrategy::CreativeIntegrity,
-            )
+            .create_invoice(signed)
             .await
             .expect("Should be able to create invoice");
         cache

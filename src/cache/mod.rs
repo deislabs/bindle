@@ -1,7 +1,11 @@
 //! Caching implementations for client and server-side usage. This module is under heavy development
 //! and iteration
 
-use crate::provider::{Provider, ProviderError};
+use crate::{
+    provider::{Provider, ProviderError},
+    verification::{NoopVerified, Verified},
+    NoopSigned, Signed,
+};
 
 pub mod dumb;
 pub use dumb::DumbCache;
@@ -26,4 +30,9 @@ pub(crate) fn into_cache_result<T>(res: crate::provider::Result<T>) -> CacheResu
         Err(e) if matches!(e, ProviderError::NotFound) => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+/// Helper function for "verifying" and "signing" with noop operations
+fn noop_verify_and_sign(inv: crate::Invoice) -> impl Signed + Verified + Send + Sync {
+    NoopSigned(NoopVerified(inv))
 }

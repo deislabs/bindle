@@ -12,7 +12,10 @@ use crate::search::Search;
 pub mod v1 {
     use super::*;
 
-    use crate::{signature::SecretKeyStorage, QueryOptions, SignatureError};
+    use crate::{
+        signature::{KeyRing, SecretKeyStorage},
+        QueryOptions, SignatureError,
+    };
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
 
@@ -54,7 +57,8 @@ pub mod v1 {
         store: P,
         secret_store: S,
         strategy: VerificationStrategy,
-        mut inv: crate::Invoice,
+        keyring: std::sync::Arc<KeyRing>,
+        inv: crate::Invoice,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let accept = accept_header.unwrap_or_default();
@@ -74,7 +78,16 @@ pub mod v1 {
             Some(k) => k,
         };
 
-        let labels = match store.create_invoice(&mut inv, role, &sk, strategy).await {
+        let verified = match strategy.verify(inv, &keyring) {
+            Ok(v) => v,
+            Err(e) => return Ok(reply::into_reply(ProviderError::FailedSigning(e))),
+        };
+        let signed = match crate::sign(verified, vec![(role, sk)]) {
+            Ok(s) => s,
+            Err(e) => return Ok(reply::into_reply(ProviderError::FailedSigning(e))),
+        };
+
+        let (invoice, labels) = match store.create_invoice(signed).await {
             Ok(l) => l,
             Err(e) => {
                 return Ok(reply::into_reply(e));
@@ -84,14 +97,14 @@ pub mod v1 {
         // things were accepted, but will not be fetchable until further action is taken
         if !labels.is_empty() {
             trace!(
-                invoice_id = %inv.bindle.id,
+                invoice_id = %invoice.bindle.id,
                 missing = labels.len(),
                 "Newly created invoice is missing parcels",
             );
             Ok(warp::reply::with_status(
                 reply::serialized_data(
                     &crate::InvoiceCreateResponse {
-                        invoice: inv,
+                        invoice,
                         missing: Some(labels),
                     },
                     accept,
@@ -100,13 +113,13 @@ pub mod v1 {
             ))
         } else {
             trace!(
-                invoice_id = %inv.bindle.id,
+                invoice_id = %invoice.bindle.id,
                 "Newly created invoice has all existing parcels",
             );
             Ok(warp::reply::with_status(
                 reply::serialized_data(
                     &crate::InvoiceCreateResponse {
-                        invoice: inv,
+                        invoice,
                         missing: None,
                     },
                     accept,

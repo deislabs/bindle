@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use warp::Filter;
 
-use crate::server::filters;
+use crate::{server::filters, signature::KeyRing};
 
 /// A helper function that aggregates all routes into a complete API filter. If you only wish to
 /// serve specific endpoints or versions, you can assemble them with the individual submodules
@@ -11,6 +13,7 @@ pub fn api<P, I, Authn, Authz, S>(
     authz: Authz,
     secret_store: S,
     verification_strategy: crate::VerificationStrategy,
+    keyring: KeyRing,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
 where
     P: crate::provider::Provider + Clone + Send + Sync + 'static,
@@ -19,6 +22,8 @@ where
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
+    // Use an Arc to avoid a possibly expensive clone of the keyring on every API call
+    let wrapped_keyring = Arc::new(keyring);
     warp::path("v1")
         .and(filters::authenticate_and_authorize(authn, authz))
         .untuple_one()
@@ -28,11 +33,13 @@ where
                     store.clone(),
                     secret_store.clone(),
                     verification_strategy.clone(),
+                    wrapped_keyring.clone(),
                 ))
                 .or(v1::invoice::create_json(
                     store.clone(),
                     secret_store,
                     verification_strategy,
+                    wrapped_keyring,
                 ))
                 .or(v1::invoice::get(store.clone()))
                 .or(v1::invoice::head(store.clone()))
@@ -57,9 +64,14 @@ pub mod v1 {
     use warp::Filter;
 
     pub mod invoice {
-        use crate::{server::routes::with_secret_store, signature::SecretKeyStorage};
+        use crate::{
+            server::routes::with_secret_store,
+            signature::{KeyRing, SecretKeyStorage},
+        };
 
         use super::*;
+
+        use std::sync::Arc;
 
         pub fn query<S>(
             index: S,
@@ -79,6 +91,7 @@ pub mod v1 {
             store: P,
             secret_store: S,
             verification_strategy: crate::VerificationStrategy,
+            keyring: Arc<KeyRing>,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
@@ -90,6 +103,7 @@ pub mod v1 {
                 .and(with_store(store))
                 .and(with_secret_store(secret_store))
                 .and(warp::any().map(move || verification_strategy.clone()))
+                .and(warp::any().map(move || keyring.clone()))
                 .and(filters::toml())
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(create_invoice)
@@ -99,6 +113,7 @@ pub mod v1 {
             store: P,
             secret_store: S,
             verification_strategy: crate::VerificationStrategy,
+            keyring: Arc<KeyRing>,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
@@ -110,6 +125,7 @@ pub mod v1 {
                 .and(with_store(store))
                 .and(with_secret_store(secret_store))
                 .and(warp::any().map(move || verification_strategy.clone()))
+                .and(warp::any().map(move || keyring.clone()))
                 .and(warp::body::json())
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(create_invoice)

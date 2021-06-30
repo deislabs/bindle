@@ -16,7 +16,8 @@ use tracing::{debug, info, instrument, trace};
 use url::Url;
 
 use crate::provider::{Provider, ProviderError};
-use crate::{Id, SecretKeyEntry, SignatureRole, VerificationStrategy};
+use crate::verification::Verified;
+use crate::{Id, Signed};
 
 pub use error::ClientError;
 
@@ -436,15 +437,15 @@ impl Client {
 // client in to a provider cache. This implementation does not verify or sign anything
 #[async_trait::async_trait]
 impl Provider for Client {
-    async fn create_invoice(
+    async fn create_invoice<I>(
         &self,
-        inv: &mut crate::Invoice,
-        _role: SignatureRole,
-        _secret_key: &SecretKeyEntry,
-        _strategy: VerificationStrategy,
-    ) -> crate::provider::Result<Vec<crate::Label>> {
-        let res = self.create_invoice(inv.to_owned()).await?;
-        Ok(res.missing.unwrap_or_default())
+        invoice: I,
+    ) -> crate::provider::Result<(crate::Invoice, Vec<crate::Label>)>
+    where
+        I: Signed + Verified + Send + Sync,
+    {
+        let res = self.create_invoice(invoice.signed()).await?;
+        Ok((res.invoice, res.missing.unwrap_or_default()))
     }
 
     async fn get_yanked_invoice<I>(&self, id: I) -> crate::provider::Result<crate::Invoice>
