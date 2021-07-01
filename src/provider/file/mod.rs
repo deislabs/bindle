@@ -530,6 +530,29 @@ impl PartFile {
         {
             return Err(ProviderError::WriteInProgress);
         }
+        #[cfg(target_family = "windows")]
+        let file = match OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .read(true)
+            // 4 is the value for FILE_SHARE_DELETE so we don't have to import the winapi constants.
+            // We need this so we can delete the file on drop. See
+            // https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+            .share_mode(4)
+            .open(&part)
+            .await
+        {
+            Ok(f) => f,
+            // This is the error code for a sharing violation, which will happen if there is a write
+            // in progress
+            Err(e) if e.raw_os_error().unwrap_or_default() == 32 => {
+                return Err(ProviderError::WriteInProgress)
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
+        #[cfg(target_family = "unix")]
         let file = OpenOptions::new()
             .create_new(true)
             .write(true)
