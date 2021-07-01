@@ -3,6 +3,8 @@
 pub use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 use tracing::error;
 
 use std::convert::{TryFrom, TryInto};
@@ -337,7 +339,25 @@ impl SecretKeyFile {
     /// Save the present keyfile to the named path.
     pub async fn save_file(&self, dest: impl AsRef<Path>) -> anyhow::Result<()> {
         let out = toml::to_vec(self)?;
-        tokio::fs::write(dest, out).await?;
+        #[cfg(target_family = "unix")]
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o700)
+            .open(dest)
+            .await?;
+
+        // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
+        // creator/owner with read/write permissions and everything else excluded) and figure out
+        // how to set those
+        #[cfg(target_family = "windows")]
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(dest)
+            .await?;
+
+        file.write_all(&out).await?;
         Ok(())
     }
 }
@@ -411,6 +431,18 @@ mod test {
         kr.save_file(&dest)
             .await
             .expect("Should write new key to file");
+        #[cfg(target_family = "unix")]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let metadata = tokio::fs::metadata(&dest).await.unwrap();
+            // This masks out the bits we don't care about
+            assert_eq!(
+                metadata.permissions().mode() & 0o00700,
+                0o700,
+                "Permissions of saved key should be 0700"
+            )
+        }
         let newfile = SecretKeyFile::load_file(dest)
             .await
             .expect("Should load key from file");

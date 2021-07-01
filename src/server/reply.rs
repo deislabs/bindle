@@ -160,8 +160,6 @@ pub fn reply_from_error(
 
 #[cfg(test)]
 mod test {
-    use mime::JSON;
-
     use super::*;
     #[test]
     fn test_parse_accept() {
