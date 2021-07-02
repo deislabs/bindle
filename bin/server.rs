@@ -192,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Using verification strategy of {:?}", strategy);
 
     let index = search::StrictEngine::default();
-    let store = provider::file::FileProvider::new(&bindle_directory, index.clone(), keyring).await;
+    let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
     let secret_store = SecretKeyFile::load_file(&signing_keys).await.map_err(|e| {
         anyhow::anyhow!(
             "Failed to load secret key file from {}: {} HINT: Try the flag --signing-keys",
@@ -216,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
         tls,
         secret_store,
         strategy,
+        keyring,
     )
     .await
 }

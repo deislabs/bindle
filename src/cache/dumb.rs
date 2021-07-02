@@ -6,9 +6,9 @@ use tracing::{debug, instrument, trace, warn};
 use tracing_futures::Instrument;
 
 use super::{into_cache_result, Cache};
-use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
 use crate::provider::{Provider, ProviderError, Result};
-use crate::Id;
+use crate::verification::Verified;
+use crate::{Id, Signed};
 
 /// A cache that doesn't ever expire entries. It fills the cache by requesting bindles from a bindle
 /// server using the configured client and stores them in the given storage implementation
@@ -37,13 +37,10 @@ where
     Local: Provider + Send + Sync + Clone,
     Remote: Provider + Send + Sync + Clone,
 {
-    async fn create_invoice(
-        &self,
-        _: &mut crate::Invoice,
-        _: SignatureRole,
-        _: &SecretKeyEntry,
-        _: VerificationStrategy,
-    ) -> Result<Vec<crate::Label>> {
+    async fn create_invoice<I>(&self, _: I) -> Result<(crate::Invoice, Vec<crate::Label>)>
+    where
+        I: Signed + Verified + Send + Sync,
+    {
         Err(ProviderError::Other(
             "This cache implementation does not allow for creation of invoices".to_string(),
         ))
@@ -66,22 +63,17 @@ where
                         "Cache miss for invoice {}, attempting to fetch from server",
                         parsed_id
                     );
-                    let mut inv = self.remote.get_yanked_invoice(&parsed_id).await?;
+                    let inv = self.remote.get_yanked_invoice(&parsed_id).await?;
 
-                    // TODO: In this case, we should be signing with a proxy key. The reason
-                    // is that we are receiving from a remote (self.remote) and then storing
-                    // locally. If this invoice is then subsequently fetched, it should have
-                    // the present host's proxy signature.
-                    let sk = SecretKeyEntry::new("FAKE".to_owned(), vec![SignatureRole::Proxy]);
+                    // NOTE: We may want to have some sort of configuration that allows the cache to
+                    // sign as a proxy if needed, but for now we should be fine
+                    let signed = super::noop_verify_and_sign(inv.clone());
 
                     // Attempt to insert the invoice into the store, if it fails, warn the user and return the invoice anyway
                     if let Err(e) = self
                         .local
                         .create_invoice(
-                            &mut inv,
-                            SignatureRole::Proxy,
-                            &sk,
-                            VerificationStrategy::default(),
+                            signed
                         )
                         .await
                     {

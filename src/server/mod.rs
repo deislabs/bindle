@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use tracing::debug;
 
 use super::provider::Provider;
+use crate::signature::KeyRing;
 use crate::{search::Search, signature::SecretKeyStorage};
 
 pub(crate) const TOML_MIME_TYPE: &str = "application/toml";
@@ -38,6 +39,7 @@ pub async fn server<P, I, Authn, Authz, S>(
     tls: Option<TlsConfig>,
     keystore: S,
     verification_strategy: crate::VerificationStrategy,
+    keyring: KeyRing,
 ) -> anyhow::Result<()>
 where
     P: Provider + Clone + Send + Sync + 'static,
@@ -47,7 +49,15 @@ where
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
-    let api = routes::api(store, index, authn, authz, keystore, verification_strategy);
+    let api = routes::api(
+        store,
+        index,
+        authn,
+        authz,
+        keystore,
+        verification_strategy,
+        keyring,
+    );
 
     let server = warp::serve(api);
     match tls {
@@ -88,7 +98,10 @@ mod test {
 
     use crate::authn::always::AlwaysAuthenticate;
     use crate::authz::always::AlwaysAuthorize;
-    use crate::invoice::{signature::SecretKeyEntry, SignatureRole, VerificationStrategy};
+    use crate::invoice::{
+        signature::{KeyRing, SecretKeyEntry},
+        SignatureRole, VerificationStrategy,
+    };
     use crate::provider::Provider;
     use crate::testing;
 
@@ -107,6 +120,7 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
 
         // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
@@ -269,19 +283,19 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
 
         let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
 
         // Insert an invoice
-        let mut scaffold = testing::Scaffold::load("incomplete").await;
+        let scaffold = testing::Scaffold::load("incomplete").await;
+        let verified = VerificationStrategy::MultipleAttestation(vec![])
+            .verify(scaffold.invoice.clone(), &KeyRing::default())
+            .unwrap();
+        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(
-                &mut scaffold.invoice,
-                SignatureRole::Host,
-                &sk,
-                VerificationStrategy::default(),
-            )
+            .create_invoice(signed)
             .await
             .expect("Should be able to insert invoice");
 
@@ -339,16 +353,17 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
-        let mut valid = testing::Scaffold::from(valid_raw.clone());
+        let valid = testing::Scaffold::from(valid_raw.clone());
+        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let verified = VerificationStrategy::MultipleAttestation(vec![])
+            .verify(valid.invoice.clone(), &KeyRing::default())
+            .unwrap();
+        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(
-                &mut valid.invoice,
-                SignatureRole::Host,
-                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
-                VerificationStrategy::default(),
-            )
+            .create_invoice(signed)
             .await
             .expect("Invoice create failure");
 
@@ -381,18 +396,19 @@ mod test {
             AlwaysAuthorize,
             keystore.clone(),
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
         // Insert a parcel
-        let mut scaffold = testing::Scaffold::load("valid_v1").await;
+        let scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
         let data = std::io::Cursor::new(parcel.data.clone());
+        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let verified = VerificationStrategy::MultipleAttestation(vec![])
+            .verify(scaffold.invoice.clone(), &KeyRing::default())
+            .unwrap();
+        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(
-                &mut scaffold.invoice,
-                SignatureRole::Host,
-                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
-                VerificationStrategy::default(),
-            )
+            .create_invoice(signed)
             .await
             .expect("Unable to insert invoice into store");
         store
@@ -421,16 +437,17 @@ mod test {
             String::from_utf8_lossy(res.body())
         );
 
-        let mut scaffold = testing::Scaffold::load("invalid").await;
+        let scaffold = testing::Scaffold::load("invalid").await;
+
+        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let verified = VerificationStrategy::MultipleAttestation(vec![])
+            .verify(scaffold.invoice.clone(), &KeyRing::default())
+            .unwrap();
+        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
 
         // Create invoice first
         store
-            .create_invoice(
-                &mut scaffold.invoice,
-                SignatureRole::Host,
-                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
-                VerificationStrategy::default(),
-            )
+            .create_invoice(signed)
             .await
             .expect("Unable to create invoice");
 
@@ -470,18 +487,20 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
+        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+
         for b in bindles_to_insert.into_iter() {
             let current = testing::Scaffold::load(b).await;
+            let verified = VerificationStrategy::MultipleAttestation(vec![])
+                .verify(current.invoice.clone(), &KeyRing::default())
+                .unwrap();
+            let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
             store
-                .create_invoice(
-                    &mut current.invoice.clone(),
-                    SignatureRole::Host,
-                    &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
-                    VerificationStrategy::default(),
-                )
+                .create_invoice(signed)
                 .await
                 .expect("Unable to create invoice");
         }
@@ -575,16 +594,17 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
+        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let verified = VerificationStrategy::MultipleAttestation(vec![])
+            .verify(scaffold.invoice.clone(), &KeyRing::default())
+            .unwrap();
+        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(
-                &mut scaffold.invoice.clone(),
-                SignatureRole::Host,
-                &SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]),
-                VerificationStrategy::default(),
-            )
+            .create_invoice(signed)
             .await
             .expect("Unable to load in invoice");
         let parcel = scaffold
@@ -647,6 +667,7 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
+            KeyRing::default(),
         );
 
         let scaffold = testing::RawScaffold::load("valid_v1").await;

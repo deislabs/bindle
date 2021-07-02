@@ -1,9 +1,13 @@
+use crate::invoice::Signed;
+
 use super::signature::KeyRing;
 use super::{Invoice, Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{PublicKey, Signature as EdSignature};
 use tracing::{debug, info};
 
+use std::borrow::{Borrow, BorrowMut};
 use std::convert::TryInto;
+use std::fmt::Debug;
 use std::str::FromStr;
 
 const GREEDY_VERIFICATION_ROLES: &[SignatureRole] = &[SignatureRole::Creator];
@@ -16,6 +20,9 @@ const EXHAUSTIVE_VERIFICATION_ROLES: &[SignatureRole] = &[
     SignatureRole::Host,
     SignatureRole::Proxy,
 ];
+
+/// A marker trait indicating that an invoice has been verified
+pub trait Verified: super::sealed::Sealed {}
 
 /// This enumerates the verifications strategies described in the signing spec.
 #[derive(Debug, Clone)]
@@ -164,7 +171,15 @@ impl VerificationStrategy {
     /// A strategy will determine success or failure based on whether the signature is verified,
     /// whether the keys are known, whether the requisite number/roles are satisfied, and
     /// so on.
-    pub fn verify(&self, inv: &Invoice, keyring: &KeyRing) -> Result<(), SignatureError> {
+    pub fn verify<I>(
+        &self,
+        invoice: I,
+        keyring: &KeyRing,
+    ) -> Result<VerifiedInvoice<I>, SignatureError>
+    where
+        I: Borrow<Invoice> + Into<Invoice>,
+    {
+        let inv = invoice.borrow();
         let (roles, all_valid, all_verified, all_roles) = match self {
             VerificationStrategy::GreedyVerification => {
                 (GREEDY_VERIFICATION_ROLES, true, true, true)
@@ -184,7 +199,7 @@ impl VerificationStrategy {
         match inv.signature.as_ref() {
             None => {
                 info!(id = %inv.bindle.id, "No signatures on invoice");
-                Ok(())
+                Ok(VerifiedInvoice(invoice))
             }
             Some(signatures) => {
                 let mut known_key = false;
@@ -255,9 +270,85 @@ impl VerificationStrategy {
                         }
                     }
                 }
-                Ok(())
+                Ok(VerifiedInvoice(invoice))
             }
         }
+    }
+}
+
+/// An invoice whose signatures have been verified. Can be converted borrowed as a plain [`Invoice`]
+pub struct VerifiedInvoice<T: Into<crate::Invoice>>(T);
+
+impl<T: Into<crate::Invoice>> Verified for VerifiedInvoice<T> {}
+
+impl<T: Into<crate::Invoice>> super::sealed::Sealed for VerifiedInvoice<T> {}
+
+impl<T> Signed for VerifiedInvoice<T>
+where
+    T: Signed + Into<crate::Invoice>,
+{
+    fn signed(self) -> crate::Invoice {
+        self.0.signed()
+    }
+}
+
+impl<T> Borrow<crate::Invoice> for VerifiedInvoice<T>
+where
+    T: Into<crate::Invoice> + Borrow<crate::Invoice>,
+{
+    fn borrow(&self) -> &crate::Invoice {
+        self.0.borrow()
+    }
+}
+
+impl<T> BorrowMut<crate::Invoice> for VerifiedInvoice<T>
+where
+    T: Into<crate::Invoice> + BorrowMut<crate::Invoice>,
+{
+    fn borrow_mut(&mut self) -> &mut crate::Invoice {
+        self.0.borrow_mut()
+    }
+}
+
+/// An internal only type that implementes `Verified` for use in caches and other passthroughs
+pub(crate) struct NoopVerified<T: Into<crate::Invoice>>(pub(crate) T);
+
+impl<T: Into<crate::Invoice>> Verified for NoopVerified<T> {}
+
+impl<T: Into<crate::Invoice>> super::sealed::Sealed for NoopVerified<T> {}
+
+impl<T> Signed for NoopVerified<T>
+where
+    T: Signed + Into<crate::Invoice>,
+{
+    fn signed(self) -> crate::Invoice {
+        self.0.signed()
+    }
+}
+
+// Need the into implementation so that it can be passed into NoopSigned
+#[allow(clippy::from_over_into)]
+impl<T: Into<crate::Invoice>> Into<crate::Invoice> for NoopVerified<T> {
+    fn into(self) -> crate::Invoice {
+        self.0.into()
+    }
+}
+
+// Only implementing this in one direction (e.g. no `From`) because we only want to be able to
+// convert into an invoice
+#[allow(clippy::from_over_into)]
+impl<T: Into<crate::Invoice>> Into<crate::Invoice> for VerifiedInvoice<T> {
+    fn into(self) -> crate::Invoice {
+        self.0.into()
+    }
+}
+
+impl<T> Debug for VerifiedInvoice<T>
+where
+    T: Debug + Into<crate::Invoice>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.0.fmt(f)
     }
 }
 
@@ -462,26 +553,26 @@ mod test {
                 .expect("signed as host");
             // This should fail
             VerificationStrategy::CreativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect_err("inv should not pass: Requires creator");
             VerificationStrategy::AuthoritativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect_err("inv should not pass: Requires creator or approver");
             VerificationStrategy::GreedyVerification
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect_err("inv should not pass: Requires creator and all valid");
             VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Only requires host");
             VerificationStrategy::MultipleAttestationGreedy(vec![
                 SignatureRole::Host,
                 SignatureRole::Proxy,
             ])
-            .verify(&inv, &keyring)
+            .verify(inv.clone(), &keyring)
             .expect_err("inv should not pass: Requires proxy");
 
             VerificationStrategy::ExhaustiveVerification
-                .verify(&inv, &keyring)
+                .verify(inv, &keyring)
                 .expect("inv should not pass: Requires that all signatures must be verified");
         }
         // Signed by creator and host
@@ -493,26 +584,26 @@ mod test {
                 .expect("signed as creator");
             // This should fail
             VerificationStrategy::CreativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Signed by creator");
             VerificationStrategy::AuthoritativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Signed by creator");
             VerificationStrategy::GreedyVerification
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Requires creator and all valid");
             VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Only requires host");
             VerificationStrategy::MultipleAttestationGreedy(vec![
                 SignatureRole::Host,
                 SignatureRole::Proxy,
             ])
-            .verify(&inv, &keyring)
+            .verify(inv.clone(), &keyring)
             .expect_err("inv should not pass: Requires proxy");
 
             VerificationStrategy::ExhaustiveVerification
-                .verify(&inv, &keyring)
+                .verify(inv, &keyring)
                 .expect("inv should not pass: Requires that all signatures must be verified");
         }
         // Signed by approver and host
@@ -524,26 +615,26 @@ mod test {
                 .expect("signed as approver");
             // This should fail
             VerificationStrategy::CreativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect_err("inv should not pass: not signed by creator");
             VerificationStrategy::AuthoritativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Signed by approver");
             VerificationStrategy::GreedyVerification
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect_err("inv should not pass: Requires creator and all valid");
             VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Only requires host");
             VerificationStrategy::MultipleAttestationGreedy(vec![
                 SignatureRole::Host,
                 SignatureRole::Proxy,
             ])
-            .verify(&inv, &keyring)
+            .verify(inv.clone(), &keyring)
             .expect_err("inv should not pass: Requires proxy");
 
             VerificationStrategy::ExhaustiveVerification
-                .verify(&inv, &keyring)
+                .verify(inv, &keyring)
                 .expect("inv should not pass: Requires that all signatures must be verified");
         }
         // Signed by creator, proxy, and host
@@ -557,26 +648,26 @@ mod test {
                 .expect("signed as proxy");
             // This should fail
             VerificationStrategy::CreativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: signed by creator");
             VerificationStrategy::AuthoritativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Signed by creator");
             VerificationStrategy::GreedyVerification
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Requires creator and all valid");
             VerificationStrategy::MultipleAttestationGreedy(vec![SignatureRole::Host])
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Only requires host");
             VerificationStrategy::MultipleAttestationGreedy(vec![
                 SignatureRole::Host,
                 SignatureRole::Proxy,
             ])
-            .verify(&inv, &keyring)
+            .verify(inv.clone(), &keyring)
             .expect("inv should pass: Requires proxy");
 
             VerificationStrategy::ExhaustiveVerification
-                .verify(&inv, &keyring)
+                .verify(inv, &keyring)
                 .expect("inv should pass: Requires that all signatures must be verified");
         }
         println!("Signed by creator, host, and unknown key");
@@ -595,28 +686,28 @@ mod test {
 
             // This should fail
             VerificationStrategy::CreativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: signed by creator");
             VerificationStrategy::AuthoritativeIntegrity
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Signed by creator");
             VerificationStrategy::GreedyVerification
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect_err(
                     "inv should not pass: Requires creator and all known, anon is not known",
                 );
             VerificationStrategy::MultipleAttestation(vec![SignatureRole::Host])
-                .verify(&inv, &keyring)
+                .verify(inv.clone(), &keyring)
                 .expect("inv should pass: Only requires host");
             VerificationStrategy::MultipleAttestationGreedy(vec![
                 SignatureRole::Host,
                 SignatureRole::Approver,
             ])
-            .verify(&inv, &keyring)
+            .verify(inv.clone(), &keyring)
             .expect_err("inv should not pass: Requires approver to be known");
 
             VerificationStrategy::ExhaustiveVerification
-                .verify(&inv, &keyring)
+                .verify(inv, &keyring)
                 .expect_err("inv should not pass: Requires that all signatures must be verified");
         }
     }
