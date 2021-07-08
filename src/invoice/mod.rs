@@ -49,7 +49,7 @@ pub type AnnotationMap = BTreeMap<String, String>;
 
 /// A sealed trait used to mark that an invoice has been signed. This trait cannot be implemented by
 /// consumers of the bindle crate
-pub trait Signed {
+pub trait Signed: sealed::Sealed {
     /// Consumes the object, returning the signed invoice
     fn signed(self) -> Invoice;
 }
