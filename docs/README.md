@@ -27,7 +27,7 @@ on Linux, MacOS, and Windows (in PowerShell):
 
 1. Download your desired version from [the releases
    page](https://github.com/deislabs/bindles/releases)
-1. Unpack it (`tar -xzf bindle-v0.3.1-linux-amd64.tar.gz`)
+1. Unpack it (`tar -xzf bindle-v0.4.0-linux-amd64.tar.gz`)
 1. Move the bindle and bindle CLIs to their desired
    destinations somewhere in your `$PATH` (e.g. `mv bindle bindle-server /usr/local/bin/` on Unix-like
    systems or `mv *.exe C:\Windows\system32\` on Windows)
@@ -38,7 +38,7 @@ find Bindle, check to make sure that your `$PATH` environment variable is set co
 #### Validating
 
 If you'd like to validate the download, checksums can be downloaded from
-https://bindle.blob.core.windows.net/releases/checksums-v0.3.1.txt
+https://bindle.blob.core.windows.net/releases/checksums-v0.4.0.txt
 
 ### From Canary Builds
 
