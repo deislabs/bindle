@@ -15,7 +15,7 @@ bindle = "0.1"
 By default, all of the following features are enabled. To use specific features (for example, just using the client component):
 
 ```toml
-bindle = { version = "0.1", default-features = false, features = ["client"]}
+bindle = { version = "0.4", default-features = false, features = ["client"]}
 ```
 
 - `client`: The client component of Bindle. This includes a fully featured client SDK.
