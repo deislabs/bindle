@@ -7,7 +7,7 @@ Bindle is an aggregate object storage system used for storing aggregate applicat
 Add the following to your `Cargo.toml` dependencies:
 
 ```toml
-bindle = "0.1"
+bindle = "0.4"
 ```
 
 ### Features
