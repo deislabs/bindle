@@ -28,6 +28,33 @@ The top-level fields describe the `parcel.dat` content of this parcel.
 - `origin` indicates the name and version of the upstream invoice (if any) originally referred to this parcel (OPTIONAL)
 - `sha512` is the SHA2-512 hash of the parcel data (Not yet supported)
 
+## The `annotations` Section
+
+Annotations are name (string) value (string) pairs that can be attached to a label.
+Annotations are defined as non-functional metadata about a parcel.
+While features are used to turn on and off parts of a bindle,
+annotations are used to express information about this parcel and its content.
+
+They look like this:
+
+```toml
+[[annotations]]
+homepage = "https://example.com"
+count = "80"
+"example.com/namespaced/key" = "some value"
+```
+
+### Reserved Annotations
+
+The following annotations are reserved, and are described here:
+
+- `bindle.dev/readme`: Accepts values `true` or `false`. Indicates that this parcel is a README file. The `mediaType` property should be consulted to determine the format. Easy to read text formats such as `text/plain` and `text/markdown` are recommended.
+    - Multiple parcels may have `"bindle.dev/readme" = "true"`. Bindle does not define how an agent should handle this case. However, one methodology may be to choose based on `mediaType`.
+- `bindle.dev/license`: Accepted values are `OTHER` and any of the identifiers defined in the [SPDX license list](https://spdx.org/licenses/). This indicates that the parcel _is_ a license document. The `mediaType` should be consulted to determine format. Plain text with the `text/plain` media type is encouraged.
+    - If an SPDX identifier is used, the license text MUST be of the license indicated by the SPDX identifier.
+    - Multiple parcels may be identified as containing licenses. Bindle does not define how licenses are to apply to the bindle contents.
+    
+
 ## The `feature` Section
 
 The `feature` section provides a location for storing additional details about the parcel.
