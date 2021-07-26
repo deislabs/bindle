@@ -116,14 +116,12 @@ impl Reply for SerializedData {
 /// error = "bindle is yanked"
 /// ```
 pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<SerializedData> {
-    let mut error = error;
     let status_code = match &error {
         ProviderError::CreateYanked => StatusCode::UNPROCESSABLE_ENTITY,
         ProviderError::NotFound => StatusCode::NOT_FOUND,
         ProviderError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Remap the error in the case this is a not found error
-            error = ProviderError::NotFound;
-            StatusCode::NOT_FOUND
+            return reply_from_error(ProviderError::NotFound, StatusCode::NOT_FOUND);
         }
         ProviderError::Exists | ProviderError::WriteInProgress => StatusCode::CONFLICT,
         ProviderError::Malformed(_)
@@ -133,9 +131,15 @@ pub fn into_reply(error: ProviderError) -> warp::reply::WithStatus<SerializedDat
         | ProviderError::SizeMismatch => StatusCode::BAD_REQUEST,
         ProviderError::Yanked => StatusCode::FORBIDDEN,
         #[cfg(feature = "client")]
-        ProviderError::ProxyError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::ProxyError(e) => {
+            // Unwrap the inner error so as to provide better details to the client
+            return reply_from_error(e, StatusCode::INTERNAL_SERVER_ERROR);
+        }
         ProviderError::Other(_) | ProviderError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        ProviderError::FailedSigning(_) => StatusCode::BAD_REQUEST,
+        ProviderError::FailedSigning(e) => {
+            // Unwrap the inner error so as to provide better details to the client
+            return reply_from_error(e, StatusCode::BAD_REQUEST);
+        }
     };
 
     reply_from_error(error, status_code)
