@@ -70,6 +70,10 @@ The annotations section is OPTIONAL.
 
 Implementations MUST NOT add fields anywhere else in the invoice except here and in the `annotations` field of a bundle label.
 
+### Reserved Annotations
+
+Currently, there are no reserved annotations. Note that README and LICENSE information SHOULD be noted on parcel annotations, not the invoice annotations.
+
 ## `parcel` List
 
 In TOML, a list header (`[[parcel]]`) precedes each list item. Each parcel is a separate `[[parcel]]` entry.
