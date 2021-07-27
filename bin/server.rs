@@ -232,7 +232,9 @@ fn default_config_dir() -> PathBuf {
 
 async fn ensure_config_dir() -> anyhow::Result<PathBuf> {
     let dir = default_config_dir();
-    tokio::fs::create_dir_all(&dir).await?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| anyhow::anyhow!("Unable to create config dir at {}: {}", dir.display(), e))?;
     Ok(dir)
 }
 
@@ -253,7 +255,16 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
             );
             let key = SecretKeyEntry::new("Default host key".to_owned(), vec![SignatureRole::Host]);
             default_keyfile.key.push(key);
-            default_keyfile.save_file(&signing_keyfile).await?;
+            default_keyfile
+                .save_file(&signing_keyfile)
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "Unable to save newly created key to {}: {}",
+                        signing_keyfile.display(),
+                        e
+                    )
+                })?;
             Ok(signing_keyfile)
         }
         Err(e) => Err(anyhow::anyhow!(
