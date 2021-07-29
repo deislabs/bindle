@@ -118,6 +118,74 @@ myname = "myvalue"
 
 To learn more about the Bindle command, run `bindle --help`.
 
+### Configuring Signing
+
+Keys are used for signing and verification.
+Keys are stored as base64-encoded Ed25519 keys inside of specially formatted TOML files.
+
+#### Verification Keys
+
+Verification keyrings are used to verify signatures.
+They contain annotated _public keys_.
+You should add the keys from trusted creators, hosts, proxies, and verifiers to this file.
+
+The file exists in your system's `XDG_DATA_DIR` in the `bindle` subdirectory.
+(On a mac, this will be something like `$HOME/Library/Application\ Support/bindle/`.
+On Linux, it will be `$HOME/.local/share`.)
+
+The file's content looks something like this:
+
+```toml
+version = "1.0"
+
+[[key]]
+label = "Matt <example@example.com>"
+key = "SOME_PUBLIC_KEY"
+roles = ["creator"]
+
+[[key]]
+label = "bindle.example.com"
+key = "SOME_PUBLIC_KEY"
+roles = ["host"]
+```
+
+At the bare minimum, a key file must have the `version = "1.0"` line.
+Each entry represents a key that you trust.
+The `label` is a user-friendly string that tells about the key.
+The `roles` lists all of the roles that you trust this key to perform (`creator`, `host`, `proxy`, and `verifier`).
+The `key` is a base64-encoded Ed25519 public key.
+Some keys have a signed piece of metadata called `label_signature`.
+This field contains a base64-encoded signature of the label, ensuring that the label has not been changed.
+The signature is generated using the private key that corresponds to this public key,
+thus ensuring that (a) only the keyholder can create this signature, and (b) anyone with
+the `key` entry can verify the signature.
+This adds additional trust, because it ensures that the label is the label that the keyholder desired.
+However, in many cases this additional level of trust may not be necessary or desired.
+
+#### Signing Keys
+
+A _signing key_ is used when Bindle needs to sign something.
+The file `secret_keys.toml` is created in your system's `XDG_DATA_DIR`, in the `bindle/` subdirectory.
+(On a mac, this will be something like `$HOME/Library/Application\ Support/bindle/`.
+On Linux, it will be `$HOME/.local/share`.)
+
+The file's content will look something like this:
+
+```toml
+version = "1.0"
+
+[[key]]
+label = "Matt <example@example.com>"
+keypair = "KEYDATA_GOES_IN_HERE"
+roles = ["creator"]
+```
+
+A user only needs on such keypair (though a user is free to have more).
+This file can be moved from system to system, just like OpenPGP or SSH key sets.
+
+- To create a signing key for a client, use `bindle create-key`
+- By default, if Bindle does not find an existing keyring, it creates one of these when it first starts.
+
 ## Specification
 
 1. The specification for the Bindle format and design begins with the [Bindle Specification](bindle-spec.md).
