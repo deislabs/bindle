@@ -11,7 +11,10 @@ pub struct TestController {
 }
 
 impl TestController {
-    pub async fn new() -> TestController {
+    /// Builds a new test controller, using the given binary name to start the server (e.g. if your
+    /// project is called bindle-foo, then `bindle-foo` would be the argument to this function).
+    /// Waits for up to 10 seconds for the server to run
+    pub async fn new(server_binary_name: &str) -> TestController {
         let build_result = tokio::task::spawn_blocking(|| {
             std::process::Command::new("cargo")
                 .args(&["build", "--all-features"])
@@ -33,21 +36,19 @@ impl TestController {
 
         let base_url = format!("http://{}/v1/", address);
 
-        let server_handle = std::process::Command::new("cargo")
-            .args(&[
-                "run",
-                "--features",
-                "cli",
-                "--bin",
-                "bindle-server",
-                "--",
-                "-d",
-                tempdir.path().to_string_lossy().to_string().as_str(),
-                "-i",
-                address.as_str(),
-            ])
-            .spawn()
-            .expect("unable to start bindle server");
+        let server_handle = std::process::Command::new(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target/debug")
+                .join(server_binary_name),
+        )
+        .args(&[
+            "-d",
+            tempdir.path().to_string_lossy().to_string().as_str(),
+            "-i",
+            address.as_str(),
+        ])
+        .spawn()
+        .expect("unable to start bindle server");
 
         // Wait until we can connect to the server so we know it is available
         let mut wait_count = 1;

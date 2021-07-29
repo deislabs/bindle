@@ -6,6 +6,7 @@ use bindle::client::Client;
 use bindle::testing;
 
 const ENV_BINDLE_URL: &str = "BINDLE_URL";
+const BINARY_NAME: &str = "bindle-server";
 
 // Inserts data into the test server for fetching
 async fn setup_data(client: &Client) {
@@ -35,7 +36,7 @@ async fn setup_data(client: &Client) {
 
 #[tokio::test]
 async fn test_push() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
     // TODO: Figure out how to dedup these outputs. I tried doing something but `args` returns an `&mut` which complicates things
@@ -60,7 +61,7 @@ async fn test_push() {
 
 #[tokio::test]
 async fn test_push_invoice_and_file() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let base = std::path::PathBuf::from(root).join("tests/scaffolds/valid_v1");
     let output = std::process::Command::new("cargo")
@@ -101,7 +102,7 @@ async fn test_push_invoice_and_file() {
 
 #[tokio::test]
 async fn test_get() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
     setup_data(&controller.client).await;
     let cachedir = tempfile::tempdir().expect("unable to set up tempdir");
     let output = std::process::Command::new("cargo")
@@ -180,7 +181,7 @@ async fn test_get() {
 
 #[tokio::test]
 async fn test_get_invoice() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
     setup_data(&controller.client).await;
 
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
@@ -262,7 +263,7 @@ async fn test_create_key_and_sign_invoice() {
 
 #[tokio::test]
 async fn test_get_parcel() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
     setup_data(&controller.client).await;
 
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
@@ -299,7 +300,7 @@ async fn test_get_parcel() {
 
 #[tokio::test]
 async fn test_yank() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
     setup_data(&controller.client).await;
 
     let output = std::process::Command::new("cargo")
