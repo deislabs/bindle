@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use bindle::invoice::signature::{
 };
 use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
+use bindle::signature::KeyEntry;
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
 use bindle::{
     cache::{Cache, DumbCache},
@@ -165,6 +167,51 @@ async fn run() -> std::result::Result<(), ClientError> {
             )
             .await?;
             println!("{}", toml::to_string_pretty(&label)?);
+        }
+        SubCommand::PrintKey(print_key_opts) => {
+            let dir = match print_key_opts.secret_file {
+                Some(dir) => dir,
+                None => ensure_config_dir().await?.join("secret_keys.toml"),
+            };
+            let keyfile = SecretKeyFile::load_file(dir)
+                .await
+                .map_err(|e| ClientError::Other(e.to_string()))?;
+
+            let matches: Vec<KeyEntry> = match print_key_opts.label {
+                Some(name) => keyfile
+                    .key
+                    .iter()
+                    .filter_map(|k| {
+                        if !k.label.contains(&name) {
+                            return None;
+                        }
+                        match k.try_into() {
+                            //Skip malformed keys.
+                            Err(e) => {
+                                eprintln!("Warning: Malformed key: {} (skipping)", e);
+                                None
+                            }
+                            Ok(ke) => Some(ke),
+                        }
+                    })
+                    .collect(),
+                None => keyfile
+                    .key
+                    .iter()
+                    .filter_map(|k| match k.try_into() {
+                        //Skip malformed keys.
+                        Err(e) => {
+                            eprintln!("Warning: Malformed key: {} (skipping)", e);
+                            None
+                        }
+                        Ok(ke) => Some(ke),
+                    })
+                    .collect(),
+            };
+
+            let keyring = KeyRing::new(matches);
+            let out = toml::to_string(&keyring).map_err(|e| ClientError::Other(e.to_string()))?;
+            println!("{}", out);
         }
         SubCommand::CreateKey(create_opts) => {
             let dir = match create_opts.secret_file {

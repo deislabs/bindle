@@ -39,51 +39,56 @@ pub struct Opts {
 
 #[derive(Clap)]
 pub enum SubCommand {
-    #[clap(name = "info", about = "get the bindle invoice and display it")]
+    #[clap(name = "info", about = "Get the bindle invoice and display it")]
     Info(Info),
     #[clap(
         name = "push",
-        about = "push a bindle and all its parcels to the server"
+        about = "Push a bindle and all its parcels to the server"
     )]
     Push(Push),
-    #[clap(name = "push-invoice", about = "push an invoice file to the server")]
+    #[clap(name = "push-invoice", about = "Push an invoice file to the server")]
     PushInvoice(PushInvoice),
     #[clap(
         name = "push-file",
-        about = "push an arbitrary file as a parcel to the server"
+        about = "Push an arbitrary file as a parcel to the server"
     )]
     PushFile(PushFile),
-    #[clap(name = "get", about = "download the given bindle and all its parcels")]
+    #[clap(name = "get", about = "Download the given bindle and all its parcels")]
     Get(Get),
-    #[clap(name = "yank", about = "yank an existing bindle")]
+    #[clap(name = "yank", about = "Yank an existing bindle")]
     Yank(Yank),
-    #[clap(name = "search", about = "search for bindles")]
+    #[clap(name = "search", about = "Search for bindles")]
     Search(Search),
     #[clap(
         name = "get-parcel",
-        about = "get an individual parcel by SHA and store it to a specific location"
+        about = "Get an individual parcel by SHA and store it to a specific location"
     )]
     GetParcel(GetParcel),
     #[clap(
         name = "get-invoice",
-        about = "get only the specified invoice (does not download parcels) and store it to a specific location"
+        about = "Get only the specified invoice (does not download parcels) and store it to a specific location"
     )]
     GetInvoice(GetInvoice),
     #[clap(
         name = "generate-label",
-        about = "generates a label for the given file and prints it to stdout. This can be used to generate the label and add it to an invoice"
+        about = "Generates a label for the given file and prints it to stdout. This can be used to generate the label and add it to an invoice"
     )]
     GenerateLabel(GenerateLabel),
     #[clap(
         name = "create-key",
-        about = "creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email address, of the form 'name <email>'."
+        about = "Creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email address, of the form 'name <email>'."
     )]
     CreateKey(CreateKey),
     #[clap(
         name = "sign-invoice",
-        about = "sign an invoice with one of your secret keys"
+        about = "Sign an invoice with one of your secret keys"
     )]
     SignInvoice(SignInvoice),
+    #[clap(
+        name = "print-key",
+        about = "Print the public key entries for keys from the secret key file. If no '--label' is supplied, public keys for all secret keys are returned."
+    )]
+    PrintKey(PrintKey),
 }
 
 #[derive(Clap)]
@@ -97,7 +102,7 @@ pub struct Info {
     #[clap(
         short = 'y',
         long = "yanked",
-        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+        about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
 }
@@ -114,7 +119,7 @@ pub struct Push {
         short = 'p',
         long = "path",
         default_value = "./",
-        about = "a path where the standalone bindle directory is located"
+        about = "A path where the standalone bindle directory is located"
     )]
     pub path: PathBuf,
 }
@@ -130,13 +135,13 @@ pub struct Get {
     #[clap(
         short = 'y',
         long = "yanked",
-        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+        about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
     #[clap(
         short = 'e',
         long = "export",
-        about = "if specified, export the bindle as a standlone bindle in the given directory"
+        about = "If specified, export the bindle as a standlone bindle in the given directory"
     )]
     pub export: Option<PathBuf>,
 }
@@ -169,27 +174,27 @@ pub struct Search {
     #[clap(
         short = 'q',
         long = "query",
-        about = "filter bindles by this query. Typically, the query is a bindle name or part of a name"
+        about = "Filter bindles by this query. Typically, the query is a bindle name or part of a name"
     )]
     pub query: Option<String>,
     #[clap(short = 'b', long = "bindle-version", about = "version constraint of the bindle to search for", long_about = VERSION_QUERY)]
     pub version: Option<String>,
     #[clap(
         long = "offset",
-        about = "the offset where to start the next page of results"
+        about = "The offset where to start the next page of results"
     )]
     pub offset: Option<u64>,
     #[clap(long = "limit", about = "the limit of results per page")]
     pub limit: Option<u8>,
     #[clap(
         long = "strict",
-        about = "whether or not to use strict mode",
-        long_about = "whether or not to use strict mode. Please note that bindle servers must implement a strict mode per the specification, a non-strict (standard) mode is optional"
+        about = "Whether or not to use strict mode",
+        long_about = "Whether or not to use strict mode. Please note that bindle servers must implement a strict mode per the specification, a non-strict (standard) mode is optional"
     )]
     pub strict: Option<bool>,
     #[clap(
         long = "yanked",
-        about = "whether or not to include yanked bindles in the search result"
+        about = "Whether or not to include yanked bindles in the search result"
     )]
     pub yanked: Option<bool>,
 }
@@ -248,7 +253,7 @@ pub struct GetInvoice {
     #[clap(
         short = 'y',
         long = "yanked",
-        about = "whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+        about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
 }
@@ -264,13 +269,13 @@ pub struct GenerateLabel {
     #[clap(
         short = 'n',
         long = "name",
-        about = "the name of the parcel, defaults to the name + extension of the file"
+        about = "The name of the parcel, defaults to the name + extension of the file"
     )]
     pub name: Option<String>,
     #[clap(
         short = 'm',
         long = "media-type",
-        about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
+        about = "The media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
     )]
     pub media_type: Option<String>,
 }
@@ -286,9 +291,27 @@ pub struct CreateKey {
     #[clap(
         short = 'f',
         long = "secrets-file",
-        about = "the path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
+        about = "The path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
     )]
     pub secret_file: Option<PathBuf>,
+}
+
+#[derive(Clap)]
+pub struct PrintKey {
+    #[clap(
+        short = 'f',
+        long = "secrets-file",
+        value_name = "KEYFILE_PATH",
+        about = "The path to the private key file. If not set, the default location will be checked."
+    )]
+    pub secret_file: Option<PathBuf>,
+    #[clap(
+        short = 'l',
+        long = "label",
+        value_name = "LABEL",
+        about = "The label to search for. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
+    )]
+    pub label: Option<String>,
 }
 
 #[derive(Clap)]
