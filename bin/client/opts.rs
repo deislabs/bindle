@@ -21,7 +21,7 @@ pub struct Opts {
     #[clap(
         short = 'd',
         long = "bindle-dir",
-        env = "BINDLE_DIR",
+        env = "BINDLE_DIRECTORY",
         about = "The directory where bindles are stored/cached, defaults to $XDG_CACHE_HOME"
     )]
     pub bindle_dir: Option<PathBuf>,
