@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::invoice::signature::{SecretKeyEntry, SecretKeyStorage, SignatureRole};
+#[cfg(feature = "embedded")]
+use crate::provider::embedded::EmbeddedProvider;
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
 
@@ -151,12 +153,25 @@ impl From<RawScaffold> for Scaffold {
     }
 }
 
-/// Returns a file `Store` implementation configured with a temporary directory and strict Search
-/// implementation for use in testing API endpoints
+/// Returns a file `Provider` implementation configured with a temporary directory, strict Search
+/// implementation, and a mock key store for use in testing API endpoints
 pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine, MockKeyStore) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
     let store = FileProvider::new(temp.path().to_owned(), index.clone()).await;
+    let kstore = MockKeyStore::new();
+    (store, index, kstore)
+}
+
+/// Returns an embedded `Provider` implementation configured with a temporary directory, strict
+/// Search implementation, and a mock key store for use in testing API endpoints
+#[cfg(feature = "embedded")]
+pub async fn setup_embedded() -> (EmbeddedProvider<StrictEngine>, StrictEngine, MockKeyStore) {
+    let temp = tempdir().expect("unable to create tempdir");
+    let index = StrictEngine::default();
+    let store = EmbeddedProvider::new(temp.path().to_owned(), index.clone())
+        .await
+        .expect("Unable to configure embedded provider");
     let kstore = MockKeyStore::new();
     (store, index, kstore)
 }

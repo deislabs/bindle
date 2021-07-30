@@ -1,4 +1,4 @@
-SERVER_FEATURES ?= --all-features
+BASE_SERVER_FEATURES = --features cli
 SERVER_BIN := bindle-server
 CLIENT_FEATURES ?= --features=cli
 CLIENT_BIN := bindle
@@ -24,7 +24,7 @@ test-fmt:
 # Not called by `make test` because `test-e2e` does all the things already.
 .PHONY: test-unit
 test-unit:
-	cargo test --lib
+	cargo test --lib --features embedded
 
 .PHONY: test-docs
 test-docs:
@@ -32,20 +32,33 @@ test-docs:
 
 .PHONY: test-e2e
 test-e2e:
-	cargo test --tests
+	cargo test --tests --features embedded
 
 .PHONY: serve-tls
 serve-tls: $(CERT_NAME).crt.pem
 serve-tls: _run
-	
 
 .PHONY: serve
 serve: TLS_OPTS =
+serve: SERVER_FEATURES = $(BASE_SERVER_FEATURES)
+serve: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles
 serve: _run
+
+.PHONY: serve-embedded
+serve-embedded: TLS_OPTS =
+serve-embedded: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
+serve-embedded: SERVER_FEATURES = $(BASE_SERVER_FEATURES),embedded
+serve-embedded: _run
+
+.PHONY: serve-embedded-tls
+serve-embedded-tls: $(CERT_NAME).crt.pem
+serve-embedded-tls: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
+serve-embedded-tls: SERVER_FEATURES = $(BASE_SERVER_FEATURES),embedded
+serve-embedded-tls: _run
 
 .PHONY: _run
 _run:
-	cargo run $(SERVER_FEATURES) --bin $(SERVER_BIN) -- --directory $(HOME)/.bindle/bindles --address $(BINDLE_IFACE) $(TLS_OPTS)
+	cargo run $(SERVER_FEATURES) --bin $(SERVER_BIN) -- --directory $(BINDLE_DIRECTORY) --address $(BINDLE_IFACE) $(TLS_OPTS)
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client
@@ -57,7 +70,13 @@ build: build-server
 build: build-client
 
 .PHONY: build-server
+build-server: SERVER_FEATURES = $(BASE_SERVER_FEATURES)
 build-server:
+	cargo build $(SERVER_FEATURES) --bin $(SERVER_BIN)
+
+.PHONY: build-embedded-server
+build-embedded-server: SERVER_FEATURES = $(BASE_SERVER_FEATURES),embedded
+build-embedded-server:
 	cargo build $(SERVER_FEATURES) --bin $(SERVER_BIN)
 
 .PHONY: build-client

@@ -21,6 +21,8 @@
 //! will generally contain another Provider implementation or an HTTP client to talk to another
 //! server upstream
 
+#[cfg(feature = "embedded")]
+pub mod embedded;
 pub mod file;
 
 use std::convert::TryInto;
@@ -201,5 +203,19 @@ impl From<std::convert::Infallible> for ProviderError {
     fn from(_: std::convert::Infallible) -> ProviderError {
         // This can never happen (by definition of infallible), so it doesn't matter what we return
         ProviderError::Other("Shouldn't happen".to_string())
+    }
+}
+
+#[cfg(feature = "embedded")]
+// TODO(thomastaylor312): We should probably have a more generic form of
+// deserialization/serialization errors that aren't tied to TOML as backends can serialize how they
+// want. For now there is this workaround
+impl From<serde_cbor::Error> for ProviderError {
+    fn from(e: serde_cbor::Error) -> Self {
+        if e.is_io() {
+            ProviderError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+        } else {
+            ProviderError::Other(format!("Unable to parse CBOR payload: {}", e))
+        }
     }
 }

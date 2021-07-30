@@ -192,7 +192,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Using verification strategy of {:?}", strategy);
 
     let index = search::StrictEngine::default();
-    let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
     let secret_store = SecretKeyFile::load_file(&signing_keys).await.map_err(|e| {
         anyhow::anyhow!(
             "Failed to load secret key file from {}: {} HINT: Try the flag --signing-keys",
@@ -201,24 +200,55 @@ async fn main() -> anyhow::Result<()> {
         )
     })?;
 
-    tracing::log::info!(
-        "Starting server at {}, and serving bindles from {}",
-        addr.to_string(),
-        bindle_directory.display()
-    );
+    #[cfg(not(feature = "embedded"))]
+    {
+        tracing::info!("Using FileProvider");
+        let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
 
-    server(
-        store,
-        index,
-        bindle::authn::always::AlwaysAuthenticate,
-        bindle::authz::always::AlwaysAuthorize,
-        addr,
-        tls,
-        secret_store,
-        strategy,
-        keyring,
-    )
-    .await
+        tracing::log::info!(
+            "Starting server at {}, and serving bindles from {}",
+            addr.to_string(),
+            bindle_directory.display()
+        );
+
+        server(
+            store,
+            index,
+            bindle::authn::always::AlwaysAuthenticate,
+            bindle::authz::always::AlwaysAuthorize,
+            addr,
+            tls,
+            secret_store,
+            strategy,
+            keyring,
+        )
+        .await
+    }
+    #[cfg(feature = "embedded")]
+    {
+        warn!("Using EmbeddedProvider. This is currently experimental");
+        let store =
+            provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
+
+        tracing::log::info!(
+            "Starting server at {}, and serving bindles from {}",
+            addr.to_string(),
+            bindle_directory.display()
+        );
+
+        server(
+            store,
+            index,
+            bindle::authn::always::AlwaysAuthenticate,
+            bindle::authz::always::AlwaysAuthorize,
+            addr,
+            tls,
+            secret_store,
+            strategy,
+            keyring,
+        )
+        .await
+    }
 }
 
 fn default_config_file() -> Option<PathBuf> {
