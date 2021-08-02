@@ -341,7 +341,7 @@ impl SecretKeyFile {
         let out = toml::to_vec(self)?;
         #[cfg(target_family = "unix")]
         let mut file = OpenOptions::new()
-            .create_new(true)
+            .create(true)
             .write(true)
             .mode(0o700)
             .open(dest)
@@ -352,12 +352,13 @@ impl SecretKeyFile {
         // how to set those
         #[cfg(target_family = "windows")]
         let mut file = OpenOptions::new()
-            .create_new(true)
+            .create(true)
             .write(true)
             .open(dest)
             .await?;
 
         file.write_all(&out).await?;
+        file.flush().await?;
         Ok(())
     }
 }
