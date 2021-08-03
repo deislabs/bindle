@@ -10,11 +10,13 @@ use bindle::testing;
 
 use tokio_stream::StreamExt;
 
+const BINARY_NAME: &str = "bindle-server";
+
 #[tokio::test]
 async fn test_successful() {
     // This first creates some invoices/parcels and then tries fetching them to see that they work.
     // Once we confirm that works, we test yank
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
 
     let scaffold = testing::Scaffold::load("valid_v1").await;
 
@@ -74,7 +76,7 @@ async fn test_successful() {
 
 #[tokio::test]
 async fn test_streaming_successful() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
 
     // Use raw paths instead of scaffolds so we can test the stream
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
@@ -133,7 +135,7 @@ async fn test_streaming_successful() {
 
 #[tokio::test]
 async fn test_already_created() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
 
     let scaffold = testing::Scaffold::load("valid_v2").await;
 
@@ -168,7 +170,7 @@ async fn test_already_created() {
 
 #[tokio::test]
 async fn test_missing() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
 
     // Create a bindle with missing invoices
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
@@ -214,7 +216,7 @@ async fn test_missing() {
 
 #[tokio::test]
 async fn test_charset() {
-    let controller = TestController::new().await;
+    let controller = TestController::new(BINARY_NAME).await;
 
     let scaffold = testing::RawScaffold::load("valid_v1").await;
 
