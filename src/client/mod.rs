@@ -39,10 +39,6 @@ pub struct Client {
 /// Options for setting up a `Client`
 pub struct ClientOptions {
     /// Controls whether the client assumes HTTP/2 or attempts to negotiate it.
-    /// The default is to assume HTTP/2, bypassing the negotiation step, because
-    /// the Bindle server always offers HTTP/2. However, it can be useful to negotiate
-    /// if the server may be behind a proxy or tunnelling service. Set
-    /// `http2_prior_knowledge` to `false` to negotiate.
     pub http2_prior_knowledge: bool,
     /// Controls whether the client accepts invalid certificates. The default is
     /// to reject invalid certificates. It is sometimes necessary to set this
@@ -54,7 +50,7 @@ pub struct ClientOptions {
 impl Default for ClientOptions {
     fn default() -> Self {
         Self {
-            http2_prior_knowledge: true,
+            http2_prior_knowledge: false,
             danger_accept_invalid_certs: false,
         }
     }
