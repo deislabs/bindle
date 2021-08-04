@@ -2,6 +2,7 @@
 //! feature is enabled
 
 pub mod always;
+pub mod github;
 
 use crate::authz::Authorizable;
 

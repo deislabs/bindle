@@ -63,6 +63,20 @@ pub mod v1 {
 
     use warp::Filter;
 
+    pub mod auth {
+        use super::*;
+
+        pub fn login(
+            provider_client_id: String,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+            warp::path("login")
+                .and(warp::get())
+                .and(warp::query::<LoginParams>())
+                .and(warp::any().map(move || provider_client_id.clone()))
+                .and_then(crate::server::handlers::v1::login)
+        }
+    }
+
     pub mod invoice {
         use crate::{
             server::routes::with_secret_store,

@@ -10,14 +10,25 @@ use crate::provider::{Provider, ProviderError};
 use crate::search::Search;
 
 pub mod v1 {
+    use std::convert::TryFrom;
+
     use super::*;
 
     use crate::{
         signature::{KeyRing, SecretKeyStorage},
         QueryOptions, SignatureError,
     };
+
+    use oauth2::basic::BasicClient;
+    use oauth2::reqwest::async_http_client;
+    use oauth2::{
+        AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
+        RedirectUrl, Scope, TokenResponse, TokenUrl,
+    };
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
+
+    const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
 
     //////////// Invoice Functions ////////////
     #[instrument(level = "trace", skip(index))]
@@ -346,6 +357,69 @@ pub mod v1 {
             ),
             warp::http::StatusCode::OK,
         ))
+    }
+
+    //////////// Login Functions ////////////
+
+    // Keeping these types private for now until we stabilize exactly how we want to handle it
+
+    #[derive(serde::Deserialize, Debug)]
+    pub(crate) struct LoginParams {
+        pub provider: LoginProvider,
+        pub redirect_url: String,
+    }
+
+    #[derive(serde::Deserialize, Debug)]
+    #[serde(try_from = "String")]
+    pub(crate) enum LoginProvider {
+        Github,
+    }
+
+    impl TryFrom<String> for LoginProvider {
+        type Error = anyhow::Error;
+
+        fn try_from(value: String) -> Result<Self, Self::Error> {
+            match value.to_lowercase().as_str() {
+                "github" => Ok(LoginProvider::Github),
+                _ => Err(anyhow::anyhow!("Invalid provider {}", value)),
+            }
+        }
+    }
+
+    /// Redirects to a login request
+    #[instrument(level = "trace")]
+    pub async fn login(p: LoginParams, client_id: String) -> Result<impl warp::Reply, Infallible> {
+        match p.provider {
+            LoginProvider::Github => {
+                let redirect_url = match RedirectUrl::new(p.redirect_url) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        return Ok(reply::reply_from_error(
+                            format!("Invalid redirect URL: {}", e),
+                            StatusCode::BAD_REQUEST,
+                        ))
+                    }
+                };
+
+                let client = BasicClient::new(
+                    client_id,
+                    None,
+                    AuthUrl::new(GITHUB_AUTH_URL.to_owned())
+                        .expect("The github auth URL is invalid, this is programmer error"),
+                    None,
+                )
+                .set_redirect_uri(redirect_url);
+                let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+                let (authorize_url, csrf_state) = client
+                    .authorize_url(CsrfToken::new_random)
+                    // This example is requesting access to the user's public email
+                    .add_scope(Scope::new("user:email".to_string()))
+                    .set_pkce_challenge(pkce_challenge)
+                    .url();
+            }
+        };
+
+        todo!()
     }
 
     //////////// Helper Functions ////////////

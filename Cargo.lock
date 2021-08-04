@@ -73,10 +73,11 @@ dependencies = [
  "lru",
  "mime",
  "mime_guess",
+ "oauth2",
  "rand 0.7.3",
  "reqwest",
  "rstest",
- "semver",
+ "semver 0.11.0",
  "serde",
  "serde_cbor",
  "serde_json",
@@ -159,6 +160,7 @@ dependencies = [
  "libc",
  "num-integer",
  "num-traits",
+ "serde",
  "winapi",
 ]
 
@@ -497,8 +499,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fcd999463524c52659517fe2cea98493cfe485d10565e7b0fb07dbba7ad2753"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi 0.10.2+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -640,6 +644,21 @@ dependencies = [
  "tower-service",
  "tracing",
  "want",
+]
+
+[[package]]
+name = "hyper-rustls"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f9f7a97316d44c0af9b0301e65010573a853a9fc97046d7331d7f6bc0fd5a64"
+dependencies = [
+ "futures-util",
+ "hyper",
+ "log",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+ "webpki",
 ]
 
 [[package]]
@@ -894,6 +913,26 @@ checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
 dependencies = [
  "hermit-abi",
  "libc",
+]
+
+[[package]]
+name = "oauth2"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80e47cfc4c0a1a519d9a025ebfbac3a2439d1b5cdf397d72dcb79b11d9920dab"
+dependencies = [
+ "base64",
+ "chrono",
+ "getrandom 0.2.3",
+ "http",
+ "rand 0.8.4",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "sha2",
+ "thiserror",
+ "url",
 ]
 
 [[package]]
@@ -1238,6 +1277,7 @@ dependencies = [
  "http",
  "http-body",
  "hyper",
+ "hyper-rustls",
  "hyper-tls",
  "ipnet",
  "js-sys",
@@ -1247,14 +1287,17 @@ dependencies = [
  "native-tls",
  "percent-encoding",
  "pin-project-lite",
+ "rustls",
  "serde",
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-rustls",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webpki-roots",
  "winreg",
 ]
 
@@ -1275,9 +1318,9 @@ dependencies = [
 
 [[package]]
 name = "rstest"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "041bb0202c14f6a158bbbf086afb03d0c6e975c2dec7d4912f8061ed44f290af"
+checksum = "2288c66aeafe3b2ed227c981f364f9968fa952ef0b30e84ada4486e7ee24d00a"
 dependencies = [
  "cfg-if",
  "proc-macro2",
@@ -1288,11 +1331,11 @@ dependencies = [
 
 [[package]]
 name = "rustc_version"
-version = "0.3.3"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0dfe2087c51c460008730de8b57e6a320782fbfb312e1f4d520e6c6fae155ee"
+checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
- "semver",
+ "semver 1.0.4",
 ]
 
 [[package]]
@@ -1386,6 +1429,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "semver"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "568a8e6258aa33c13358f81fd834adb854c6f7c9468520910a9b1e8fac068012"
+
+[[package]]
 name = "semver-parser"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1432,6 +1481,15 @@ checksum = "799e97dc9fdae36a5c8b8f2cae9ce2ee9fdce2058c57a93e6099d919fd982f79"
 dependencies = [
  "itoa",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42f6109f0506e20f7e0f910e51a0079acf41da8e0694e6442527c4ddf5a2b158"
+dependencies = [
  "serde",
 ]
 
@@ -1960,6 +2018,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]
@@ -2124,6 +2183,15 @@ checksum = "b8e38c0608262c46d4a56202ebabdeb094cef7e560ca7a226c6bf055188aa4ea"
 dependencies = [
  "ring",
  "untrusted",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aabe153544e473b775453675851ecc86863d2a81d786d741f6b76778f2a48940"
+dependencies = [
+ "webpki",
 ]
 
 [[package]]
