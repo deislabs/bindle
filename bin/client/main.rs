@@ -86,13 +86,13 @@ async fn run() -> std::result::Result<(), ClientError> {
             }
             .await
             .map_err(map_storage_error)?;
-            tokio::fs::OpenOptions::new()
+            let mut file = tokio::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true) // Make sure we aren't overwriting
                 .open(&gi_opts.output)
-                .await?
-                .write_all(&toml::to_vec(&inv)?)
                 .await?;
+            file.write_all(&toml::to_vec(&inv)?).await?;
+            file.flush().await?;
             println!(
                 "Wrote invoice {} to {}",
                 gi_opts.bindle_id,
