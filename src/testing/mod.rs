@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::invoice::signature::{SecretKeyEntry, SecretKeyStorage, SignatureRole};
-#[cfg(feature = "embedded")]
 use crate::provider::embedded::EmbeddedProvider;
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
@@ -165,7 +164,6 @@ pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine, MockKeyStore)
 
 /// Returns an embedded `Provider` implementation configured with a temporary directory, strict
 /// Search implementation, and a mock key store for use in testing API endpoints
-#[cfg(feature = "embedded")]
 pub async fn setup_embedded() -> (EmbeddedProvider<StrictEngine>, StrictEngine, MockKeyStore) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();

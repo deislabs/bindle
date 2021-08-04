@@ -84,6 +84,15 @@ struct Opts {
         about = "The verification strategy to use on the server. Must be one of: CreativeIntegrity, AuthoritativeIntegrity, GreedyVerification, ExhaustiveVerification, MultipleAttestation, MultipleAttestationGreedy. For either of the multiple attestation strategies, you can specify the roles using the following syntax: `MultipleAttestation[Creator, Approver]`"
     )]
     verification_strategy: Option<bindle::VerificationStrategy>,
+
+    #[clap(
+        name = "use_embedded_db",
+        long = "use-embedded-db",
+        short = 'e',
+        env = "BINDLE_USE_EMBEDDED_DB",
+        about = "Use the new embedded database provider. This is currently experimental, but fairly stable and more efficient. In the future, this will be the default"
+    )]
+    use_embedded_db: bool,
 }
 
 #[tokio::main]
@@ -200,16 +209,16 @@ async fn main() -> anyhow::Result<()> {
         )
     })?;
 
-    #[cfg(not(feature = "embedded"))]
-    {
-        tracing::info!("Using FileProvider");
-        let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
+    tracing::log::info!(
+        "Starting server at {}, and serving bindles from {}",
+        addr.to_string(),
+        bindle_directory.display()
+    );
 
-        tracing::log::info!(
-            "Starting server at {}, and serving bindles from {}",
-            addr.to_string(),
-            bindle_directory.display()
-        );
+    if opts.use_embedded_db {
+        warn!("Using EmbeddedProvider. This is currently experimental");
+        let store =
+            provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
 
         server(
             store,
@@ -223,18 +232,9 @@ async fn main() -> anyhow::Result<()> {
             keyring,
         )
         .await
-    }
-    #[cfg(feature = "embedded")]
-    {
-        warn!("Using EmbeddedProvider. This is currently experimental");
-        let store =
-            provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
-
-        tracing::log::info!(
-            "Starting server at {}, and serving bindles from {}",
-            addr.to_string(),
-            bindle_directory.display()
-        );
+    } else {
+        tracing::info!("Using FileProvider");
+        let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
 
         server(
             store,

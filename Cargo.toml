@@ -29,7 +29,6 @@ maintenance = { status = "actively-developed" }
 default = ["server", "client", "caching", "test-tools"]
 server = ["warp"]
 client = ["reqwest", "mime_guess", "dirs"]
-embedded = ["sled", "serde_cbor"]
 caching = []
 test-tools = []
 cli = ["clap", "tracing-subscriber"]
@@ -67,8 +66,8 @@ base64 = "0.13"
 tracing = { version = "0.1", features = ["log"] }
 tracing-futures = "0.2"
 mime = "0.3"
-sled = {version = "0.34", optional = true}
-serde_cbor = {version = "0.11", optional = true}
+sled = "0.34"
+serde_cbor = "0.11"
 
 [dev-dependencies]
 rstest = "0.10"

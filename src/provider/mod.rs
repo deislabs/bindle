@@ -21,7 +21,6 @@
 //! will generally contain another Provider implementation or an HTTP client to talk to another
 //! server upstream
 
-#[cfg(feature = "embedded")]
 pub mod embedded;
 pub mod file;
 
@@ -206,7 +205,6 @@ impl From<std::convert::Infallible> for ProviderError {
     }
 }
 
-#[cfg(feature = "embedded")]
 // TODO(thomastaylor312): We should probably have a more generic form of
 // deserialization/serialization errors that aren't tied to TOML as backends can serialize how they
 // want. For now there is this workaround

@@ -7,9 +7,7 @@
 //! the database.
 //!
 //! This provider is currently experimental, with the goal of replacing the `FileProvider` as the
-//! default provider in the future. This provider is only available with the `embedded` feature
-//! enabled. Please note that the embedded data store and encoding format may change until this
-//! feature is stabilized
+//! default provider in the future.
 
 use std::convert::TryInto;
 use std::path::Path;
@@ -95,46 +93,32 @@ impl<T: Search + Send + Sync> EmbeddedProvider<T> {
     #[instrument(level = "trace", skip(self))]
     async fn warm_index(&self) -> anyhow::Result<()> {
         // Read all invoices
-        // info!(path = %self.root.display(), "Beginning index warm");
-        // let mut total_indexed: u64 = 0;
-        // // Check if the invoice directory exists. If it doesn't, this is likely the first time and
-        // // we should just return
-        // let invoice_path = self.invoice_path("");
-        // match tokio::fs::metadata(&invoice_path).await {
-        //     Ok(_) => (),
-        //     Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(()),
-        //     Err(e) => return Err(e.into()),
-        // };
-        // let mut readdir = tokio::fs::read_dir(invoice_path).await?;
-        // while let Some(e) = readdir.next_entry().await? {
-        //     let p = e.path();
-        //     let sha = match p.file_name().map(|f| f.to_string_lossy()) {
-        //         Some(sha_opt) => sha_opt,
-        //         None => continue,
-        //     };
-        //     // Load invoice
-        //     let inv_path = self.invoice_toml_path(&sha);
-        //     info!(path = %inv_path.display(), "Loading invoice into search index");
-        //     // Open file
-        //     let inv_toml = tokio::fs::read(inv_path).await?;
+        info!("Beginning index warm");
+        let mut total_indexed: u64 = 0;
+        // NOTE(thomastaylor312): Trying to do this async and spawn blocking is impossible unless we
+        // add a clone constraint to T. So technically this could cause a blocking issue depending
+        // on the cache size and if there are other IO operations (though it does have the advantage
+        // of filling the cache). However, I think this is fine as we only call this on startup
+        for res in self.invoices.iter() {
+            let (key, raw) = res.map_err(map_sled_error)?;
+            let sha = String::from_utf8_lossy(key.as_ref());
+            let invoice: crate::Invoice = serde_cbor::from_slice(raw.as_ref())?;
 
-        //     // Parse
-        //     let invoice: crate::Invoice = toml::from_slice(&inv_toml)?;
-        //     let digest = invoice.canonical_name();
-        //     if sha != digest {
-        //         anyhow::bail!(
-        //             "SHA {} did not match computed digest {}. Delete this record.",
-        //             sha,
-        //             digest
-        //         );
-        //     }
+            let digest = invoice.canonical_name();
+            if sha != digest {
+                anyhow::bail!(
+                    "SHA {} did not match computed digest {}. Delete this record.",
+                    sha,
+                    digest
+                );
+            }
 
-        //     if let Err(e) = self.index.index(&invoice).await {
-        //         error!(invoice_id = %invoice.bindle.id, error = %e, "Error indexing invoice");
-        //     }
-        //     total_indexed += 1;
-        // }
-        // debug!(total_indexed, "Warmed index");
+            if let Err(e) = self.index.index(&invoice).await {
+                error!(invoice_id = %invoice.bindle.id, error = %e, "Error indexing invoice");
+            }
+            total_indexed += 1;
+        }
+        debug!(total_indexed, "Warmed index");
         Ok(())
     }
 }
