@@ -34,6 +34,9 @@ pub enum ClientError {
     /// The parcel was not found.
     #[error("Parcel was not found")]
     ParcelNotFound,
+
+    #[error("Requested resource or endpoint is not found")]
+    ResourceNotFound,
     /// The invoice already exists
     #[error("Invoice already exists")]
     InvoiceAlreadyExists,
