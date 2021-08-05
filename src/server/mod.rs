@@ -103,15 +103,24 @@ mod test {
         SignatureRole, VerificationStrategy,
     };
     use crate::provider::Provider;
-    use crate::testing;
+    use crate::search::StrictEngine;
+    use crate::testing::{self, MockKeyStore};
 
+    use rstest::rstest;
     use testing::Scaffold;
     use tokio_util::codec::{BytesCodec, FramedRead};
 
+    #[rstest]
     #[tokio::test]
-    async fn test_successful_workflow() {
+    async fn test_successful_workflow<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
         let bindles = testing::load_all_files().await;
-        let (store, index, ks) = testing::setup().await;
+        let (store, index, ks) = provider_setup.await;
 
         let api = super::routes::api(
             store,
@@ -272,9 +281,16 @@ mod test {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn test_yank() {
-        let (store, index, ks) = testing::setup().await;
+    async fn test_yank<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
+        let (store, index, ks) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -339,12 +355,19 @@ mod test {
         toml::from_slice::<crate::Invoice>(res.body()).expect("should be valid invoice TOML");
     }
 
+    #[rstest]
     #[tokio::test]
     // This isn't meant to test all of the possible validation failures (that should be done in a unit
     // test for storage), just the main validation failures from the API
-    async fn test_invoice_validation() {
+    async fn test_invoice_validation<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
         let bindles = testing::load_all_files().await;
-        let (store, index, ks) = testing::setup().await;
+        let (store, index, ks) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -383,11 +406,18 @@ mod test {
         );
     }
 
+    #[rstest]
     #[tokio::test]
     // This isn't meant to test all of the possible validation failures (that should be done in a unit
     // test for storage), just the main validation failures from the API
-    async fn test_parcel_validation() {
-        let (store, index, keystore) = testing::setup().await;
+    async fn test_parcel_validation<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
+        let (store, index, keystore) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -473,12 +503,19 @@ mod test {
         );
     }
 
+    #[rstest]
     #[tokio::test]
     // Once again, this isn't meant to exercise all of the query functionality, just that the API
     // functions properly
-    async fn test_queries() {
+    async fn test_queries<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
         // Insert data into store
-        let (store, index, ks) = testing::setup().await;
+        let (store, index, ks) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -583,9 +620,16 @@ mod test {
         // Test limit/offset
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn test_missing() {
-        let (store, index, ks) = testing::setup().await;
+    async fn test_missing<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
+        let (store, index, ks) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -656,9 +700,16 @@ mod test {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn test_host_signed() {
-        let (store, index, ks) = testing::setup().await;
+    async fn test_host_signed<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
+        let (store, index, ks) = provider_setup.await;
 
         let api = super::routes::api(
             store,

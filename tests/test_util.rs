@@ -17,7 +17,7 @@ impl TestController {
     pub async fn new(server_binary_name: &str) -> TestController {
         let build_result = tokio::task::spawn_blocking(|| {
             std::process::Command::new("cargo")
-                .args(&["build", "--all-features"])
+                .args(&["build", "--features", "cli"])
                 .output()
         })
         .await
