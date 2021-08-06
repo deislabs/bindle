@@ -16,4 +16,9 @@ pub trait Authenticator {
     /// case of a failure. This data will likely be the value of the Authorization header. Anonymous
     /// auth will be indicated by an empty auth_data string
     async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item>;
+
+    /// The client_id to use for this authentication. Defaults to an empty string if not implemented
+    fn client_id(&self) -> &str {
+        ""
+    }
 }

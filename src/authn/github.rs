@@ -6,6 +6,7 @@ use super::Authenticator;
 #[derive(Clone)]
 pub struct GithubAuthenticator {
     introspection_url: String,
+    client_id: String,
     client: reqwest::Client,
 }
 
@@ -29,6 +30,7 @@ impl GithubAuthenticator {
 
         Ok(GithubAuthenticator {
             introspection_url,
+            client_id: client_id.to_owned(),
             client,
         })
     }
@@ -68,5 +70,9 @@ impl Authenticator for GithubAuthenticator {
             tracing::info!(status_code = %resp.status(), "Token validation failed");
             anyhow::bail!("Unauthorized")
         }
+    }
+
+    fn client_id(&self) -> &str {
+        &self.client_id
     }
 }

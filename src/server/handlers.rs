@@ -19,16 +19,15 @@ pub mod v1 {
         QueryOptions, SignatureError,
     };
 
-    use oauth2::basic::BasicClient;
     use oauth2::reqwest::async_http_client;
-    use oauth2::{
-        AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-        RedirectUrl, Scope, TokenResponse, TokenUrl,
-    };
+    use oauth2::{basic::BasicClient, devicecode::StandardDeviceAuthorizationResponse};
+    use oauth2::{AuthUrl, ClientId, DeviceAuthorizationUrl, Scope};
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
+    use warp::http::StatusCode;
 
     const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
+    const GITHUB_DEVICE_AUTH_URL: &str = "https://github.com/login/device/code";
 
     //////////// Invoice Functions ////////////
     #[instrument(level = "trace", skip(index))]
@@ -366,7 +365,6 @@ pub mod v1 {
     #[derive(serde::Deserialize, Debug)]
     pub(crate) struct LoginParams {
         pub provider: LoginProvider,
-        pub redirect_url: String,
     }
 
     #[derive(serde::Deserialize, Debug)]
@@ -388,38 +386,59 @@ pub mod v1 {
 
     /// Redirects to a login request
     #[instrument(level = "trace")]
-    pub async fn login(p: LoginParams, client_id: String) -> Result<impl warp::Reply, Infallible> {
+    pub(crate) async fn login(
+        p: LoginParams,
+        client_id: String,
+        accept_header: Option<String>,
+    ) -> Result<impl warp::Reply, Infallible> {
         match p.provider {
             LoginProvider::Github => {
-                let redirect_url = match RedirectUrl::new(p.redirect_url) {
-                    Ok(u) => u,
-                    Err(e) => {
-                        return Ok(reply::reply_from_error(
-                            format!("Invalid redirect URL: {}", e),
-                            StatusCode::BAD_REQUEST,
-                        ))
-                    }
-                };
-
                 let client = BasicClient::new(
-                    client_id,
+                    ClientId::new(client_id),
                     None,
+                    // I don't think we actually need this, but including it anyway
                     AuthUrl::new(GITHUB_AUTH_URL.to_owned())
                         .expect("The github auth URL is invalid, this is programmer error"),
                     None,
                 )
-                .set_redirect_uri(redirect_url);
-                let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-                let (authorize_url, csrf_state) = client
-                    .authorize_url(CsrfToken::new_random)
-                    // This example is requesting access to the user's public email
-                    .add_scope(Scope::new("user:email".to_string()))
-                    .set_pkce_challenge(pkce_challenge)
-                    .url();
-            }
-        };
+                .set_device_authorization_url(
+                    DeviceAuthorizationUrl::new(GITHUB_DEVICE_AUTH_URL.to_owned())
+                        .expect("Incorrect device auth url. This is programmer error"),
+                );
+                let device_auth_req = match client.exchange_device_code() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::error!(error = ?e, "Unable to create request for device auth");
+                        return Ok(reply::reply_from_error(
+                            "Error with Github auth request",
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        ));
+                    }
+                };
+                let details: StandardDeviceAuthorizationResponse = match device_auth_req
+                    .add_scope(Scope::new("user:email".into()))
+                    .request_async(async_http_client)
+                    .await
+                {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::error!(error = ?e, "Unable to perform device auth code request to Github");
+                        // NOTE: We could probably inspect the error a bit to see if this is our
+                        // fault or if we are getting an error from the GH API which would be an
+                        // internal server error and bad gateway respectively
+                        return Ok(reply::reply_from_error(
+                            "Error performing Github auth request",
+                            StatusCode::BAD_GATEWAY,
+                        ));
+                    }
+                };
 
-        todo!()
+                Ok(warp::reply::with_status(
+                    reply::serialized_data(&details, accept_header.unwrap_or_default()),
+                    warp::http::StatusCode::OK,
+                ))
+            }
+        }
     }
 
     //////////// Helper Functions ////////////
