@@ -36,6 +36,14 @@ pub struct Client {
     base_url: Url,
 }
 
+/// The operation being performed against a Bindle server.
+enum Operation {
+    Create,
+    Yank,
+    Get,
+    Query,
+}
+
 /// Options for setting up a `Client`
 pub struct ClientOptions {
     /// Controls whether the client assumes HTTP/2 or attempts to negotiate it.
@@ -163,7 +171,7 @@ impl Client {
     ) -> Result<crate::InvoiceCreateResponse> {
         trace!(?req);
         let resp = req.send().await?;
-        let resp = unwrap_status(resp, Endpoint::Invoice).await?;
+        let resp = unwrap_status(resp, Endpoint::Invoice, Operation::Create).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
     }
 
@@ -208,7 +216,7 @@ impl Client {
         let req = self.client.get(url);
         trace!(?req);
         let resp = req.send().await?;
-        let resp = unwrap_status(resp, Endpoint::Invoice).await?;
+        let resp = unwrap_status(resp, Endpoint::Invoice, Operation::Get).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
     }
 
@@ -226,7 +234,7 @@ impl Client {
             .query(&query_opts);
         trace!(?req);
         let resp = req.send().await?;
-        let resp = unwrap_status(resp, Endpoint::Query).await?;
+        let resp = unwrap_status(resp, Endpoint::Query, Operation::Query).await?;
         Ok(toml::from_slice(&resp.bytes().await?)?)
     }
 
@@ -250,7 +258,7 @@ impl Client {
         ))?);
         trace!(?req);
         let resp = req.send().await?;
-        unwrap_status(resp, Endpoint::Invoice).await?;
+        unwrap_status(resp, Endpoint::Invoice, Operation::Yank).await?;
         Ok(())
     }
 
@@ -351,7 +359,7 @@ impl Client {
         // We can unwrap here because any URL error would be programmers fault
         trace!(?req);
         let resp = req.send().await?;
-        unwrap_status(resp, Endpoint::Parcel).await?;
+        unwrap_status(resp, Endpoint::Parcel, Operation::Create).await?;
         Ok(())
     }
 
@@ -401,7 +409,7 @@ impl Client {
             .header(header::ACCEPT, "*/*");
         trace!(?req);
         let resp = req.send().await?;
-        unwrap_status(resp, Endpoint::Parcel).await
+        unwrap_status(resp, Endpoint::Parcel, Operation::Get).await
     }
 
     //////////////// Relationship Endpoints ////////////////
@@ -424,7 +432,7 @@ impl Client {
         ))?);
         trace!(?req);
         let resp = req.send().await?;
-        let resp = unwrap_status(resp, Endpoint::Invoice).await?;
+        let resp = unwrap_status(resp, Endpoint::Invoice, Operation::Get).await?;
         Ok(toml::from_slice::<crate::MissingParcelsResponse>(&resp.bytes().await?)?.missing)
     }
 }
@@ -540,15 +548,25 @@ enum Endpoint {
     Query,
 }
 
-async fn unwrap_status(resp: reqwest::Response, endpoint: Endpoint) -> Result<reqwest::Response> {
+async fn unwrap_status(
+    resp: reqwest::Response,
+    endpoint: Endpoint,
+    operation: Operation,
+) -> Result<reqwest::Response> {
     match (resp.status(), endpoint) {
         (StatusCode::OK, _) => Ok(resp),
         (StatusCode::ACCEPTED, Endpoint::Invoice) => Ok(resp),
         (StatusCode::CREATED, Endpoint::Invoice) => Ok(resp),
         (StatusCode::NOT_FOUND, Endpoint::Invoice) | (StatusCode::FORBIDDEN, Endpoint::Invoice) => {
-            Err(ClientError::InvoiceNotFound)
+            match operation {
+                Operation::Get => Err(ClientError::InvoiceNotFound),
+                _ => Err(ClientError::ResourceNotFound),
+            }
         }
-        (StatusCode::NOT_FOUND, Endpoint::Parcel) => Err(ClientError::ParcelNotFound),
+        (StatusCode::NOT_FOUND, Endpoint::Parcel) => match operation {
+            Operation::Get => Err(ClientError::ParcelNotFound),
+            _ => Err(ClientError::ResourceNotFound),
+        },
         (StatusCode::CONFLICT, Endpoint::Invoice) => Err(ClientError::InvoiceAlreadyExists),
         (StatusCode::CONFLICT, Endpoint::Parcel) => Err(ClientError::ParcelAlreadyExists),
         (StatusCode::UNAUTHORIZED, _) => Err(ClientError::Unauthorized),
