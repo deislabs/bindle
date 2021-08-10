@@ -1,4 +1,4 @@
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use reqwest::StatusCode;
 
 use super::Authenticator;
@@ -24,6 +24,8 @@ impl GithubAuthenticator {
             ACCEPT,
             HeaderValue::from_static("application/vnd.github.v3+json"),
         );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(USER_AGENT, HeaderValue::from_static("Bindle-Server"));
         let client = reqwest::ClientBuilder::new()
             .default_headers(headers)
             .build()?;
@@ -43,8 +45,15 @@ impl Authenticator for GithubAuthenticator {
     type Item = crate::authz::always::Anonymous;
 
     async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item> {
+        // This is the raw auth data, so we need to chop off the "Bearer" part of the header data
+        // with any starting whitespace. I am not using to_lowercase to avoid an extra string
+        // allocation
+        let trimmed = auth_data
+            .trim_start_matches("Bearer")
+            .trim_start_matches("bearer")
+            .trim_start();
         let value = serde_json::json!({
-            "access_token": auth_data,
+            "access_token": trimmed,
         });
         let raw = serde_json::to_vec(&value).map_err(|e| {
             // For security reasons, do not return the json error to the user, only log it
@@ -67,7 +76,10 @@ impl Authenticator for GithubAuthenticator {
             // TODO: Once we need to fetch data from the response, we can deserialize here
             Ok(crate::authz::always::Anonymous)
         } else {
-            tracing::info!(status_code = %resp.status(), "Token validation failed");
+            let status = resp.status();
+            let body = String::from_utf8_lossy(resp.bytes().await.unwrap_or_default().as_ref())
+                .to_string();
+            tracing::info!(status_code = %status, %body, "Token validation failed");
             anyhow::bail!("Unauthorized")
         }
     }

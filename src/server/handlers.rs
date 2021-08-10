@@ -10,13 +10,11 @@ use crate::provider::{Provider, ProviderError};
 use crate::search::Search;
 
 pub mod v1 {
-    use std::convert::TryFrom;
-
     use super::*;
 
     use crate::{
         signature::{KeyRing, SecretKeyStorage},
-        QueryOptions, SignatureError,
+        LoginParams, LoginProvider, QueryOptions, SignatureError,
     };
 
     use oauth2::reqwest::async_http_client;
@@ -360,30 +358,6 @@ pub mod v1 {
 
     //////////// Login Functions ////////////
 
-    // Keeping these types private for now until we stabilize exactly how we want to handle it
-
-    #[derive(serde::Deserialize, Debug)]
-    pub(crate) struct LoginParams {
-        pub provider: LoginProvider,
-    }
-
-    #[derive(serde::Deserialize, Debug)]
-    #[serde(try_from = "String")]
-    pub(crate) enum LoginProvider {
-        Github,
-    }
-
-    impl TryFrom<String> for LoginProvider {
-        type Error = anyhow::Error;
-
-        fn try_from(value: String) -> Result<Self, Self::Error> {
-            match value.to_lowercase().as_str() {
-                "github" => Ok(LoginProvider::Github),
-                _ => Err(anyhow::anyhow!("Invalid provider {}", value)),
-            }
-        }
-    }
-
     /// Redirects to a login request
     #[instrument(level = "trace")]
     pub(crate) async fn login(
@@ -394,7 +368,7 @@ pub mod v1 {
         match p.provider {
             LoginProvider::Github => {
                 let client = BasicClient::new(
-                    ClientId::new(client_id),
+                    ClientId::new(client_id.clone()),
                     None,
                     // I don't think we actually need this, but including it anyway
                     AuthUrl::new(GITHUB_AUTH_URL.to_owned())
@@ -433,8 +407,21 @@ pub mod v1 {
                     }
                 };
 
+                // Inject in the additional client_id parameter after serializing to a Value
+                let mut intermediate = match serde_json::to_value(details) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!(error = %e, "Unable to serialize device auth response to intermediate value, this shouldn't happen");
+                        return Ok(reply::reply_from_error(
+                            "Error with Github auth request",
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        ));
+                    }
+                };
+                intermediate["client_id"] = client_id.into();
+
                 Ok(warp::reply::with_status(
-                    reply::serialized_data(&details, accept_header.unwrap_or_default()),
+                    reply::serialized_data(&intermediate, accept_header.unwrap_or_default()),
                     warp::http::StatusCode::OK,
                 ))
             }

@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bindle::client::{Client, ClientError, Result};
+use bindle::client::{Client, ClientBuilder, ClientError, Result};
 use bindle::invoice::signature::{
     KeyRing, SecretKeyEntry, SecretKeyFile, SecretKeyStorage, SignatureRole,
 };
@@ -49,14 +49,46 @@ async fn run() -> std::result::Result<(), ClientError> {
     let opts = opts::Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
     tracing_subscriber::fmt::init();
-
-    let bindle_client = Client::new(&opts.server_url)?;
     let bindle_dir = opts.bindle_dir.unwrap_or_else(|| {
         dirs::cache_dir()
             .expect("Unable to infer cache directory")
             .join("bindle")
     });
     tokio::fs::create_dir_all(&bindle_dir).await?;
+    let token_file = opts.token_file.unwrap_or_else(|| {
+        dirs::config_dir()
+            .expect("Unable to infer cache directory")
+            .join("bindle/.token")
+    });
+    // Theoretically, someone could create the token file at /, which would mean this function
+    // wouldn't return anything. This isn't an error, so do not attempt to create the directory if
+    // so
+    if let Some(p) = token_file.parent() {
+        tokio::fs::create_dir_all(p).await?;
+    }
+
+    let token = if !matches!(opts.subcmd, SubCommand::Login(_)) {
+        match tokio::fs::read_to_string(&token_file).await {
+            Ok(t) => Some(t),
+            // Token doesn't exist, so assume they don't want token auth
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => None,
+            Err(e) => return Err(e.into()),
+        }
+    } else {
+        None
+    };
+
+    let mut builder = ClientBuilder::default();
+
+    if let Some(t) = token {
+        builder = builder.auth_token(t);
+    }
+
+    let bindle_client = builder.build(&opts.server_url)?;
+
+    // TODO(thomastaylor312): We should read the token using a JWT parser and see if it is still
+    // valid so we can inform the user
+
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
         bindle::search::NoopEngine::default(),
@@ -256,6 +288,13 @@ async fn run() -> std::result::Result<(), ClientError> {
                 }
                 Err(e) => return Err(e.into()),
             }
+        }
+        SubCommand::Login(_login_opts) => {
+            // TODO: We'll use login opts when we enable additional login providers
+            ClientBuilder::default()
+                .login(&opts.server_url, token_file)
+                .await?;
+            println!("Login successful");
         }
     }
 

@@ -69,6 +69,8 @@ pub mod v1 {
     pub mod auth {
         use super::*;
 
+        use crate::LoginParams;
+
         pub fn login(
             provider_client_id: String,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {

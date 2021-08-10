@@ -6,11 +6,20 @@ pub mod load;
 
 use std::convert::TryInto;
 use std::path::Path;
+use std::time::Duration;
 
+use hyper::header::{HeaderMap, HeaderValue};
+use oauth2::TokenResponse;
+use oauth2::{
+    basic::BasicTokenResponse,
+    devicecode::{DeviceAuthorizationResponse, DeviceCodeErrorResponseType},
+    StandardErrorResponse,
+};
 use reqwest::header;
 use reqwest::Client as HttpClient;
-use reqwest::ClientBuilder;
 use reqwest::{Body, RequestBuilder, StatusCode};
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, info, instrument, trace};
 use url::Url;
@@ -27,7 +36,11 @@ pub type Result<T> = std::result::Result<T, ClientError>;
 pub const INVOICE_ENDPOINT: &str = "_i";
 pub const QUERY_ENDPOINT: &str = "_q";
 pub const RELATIONSHIP_ENDPOINT: &str = "_r";
+pub const LOGIN_ENDPOINT: &str = "login";
 const TOML_MIME_TYPE: &str = "application/toml";
+// TODO: Uncomment once Github is fixed
+// const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
+const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
 /// A client type for interacting with a Bindle server
 #[derive(Clone)]
@@ -42,59 +55,69 @@ enum Operation {
     Yank,
     Get,
     Query,
+    Login,
 }
 
-/// Options for setting up a `Client`
-pub struct ClientOptions {
-    /// Controls whether the client assumes HTTP/2 or attempts to negotiate it.
-    pub http2_prior_knowledge: bool,
-    /// Controls whether the client accepts invalid certificates. The default is
-    /// to reject invalid certificates. It is sometimes necessary to set this
-    /// option in dev-test situations where you may be working with self-signed
-    /// certificates or the like.
-    pub danger_accept_invalid_certs: bool,
+/// A builder for for setting up a `Client`. Created using `Client::builder`
+pub struct ClientBuilder {
+    http2_prior_knowledge: bool,
+    danger_accept_invalid_certs: bool,
+    auth_token: Option<String>,
 }
 
-impl Default for ClientOptions {
+impl Default for ClientBuilder {
     fn default() -> Self {
         Self {
             http2_prior_knowledge: false,
             danger_accept_invalid_certs: false,
+            auth_token: None,
         }
     }
 }
 
-impl Client {
-    /// Returns a new Client with the given URL, configured using the default options.
-    /// This URL should be the FQDN plus any namespacing
-    /// (like `v1`). So if you were running a bindle server mounted at the v1 endpoint, your URL
-    /// would look something like `http://my.bindle.com/v1/`. Will return an error if the URL is not
-    /// valid
-    pub fn new(base_url: &str) -> Result<Self> {
-        Self::new_with_options(base_url, ClientOptions::default())
+impl ClientBuilder {
+    /// Controls whether the client assumes HTTP/2 or attempts to negotiate it. Defaults to false.
+    pub fn http2_prior_knowledge(mut self, http2_prior_knowledge: bool) -> Self {
+        self.http2_prior_knowledge = http2_prior_knowledge;
+        self
     }
 
-    /// Returns a new Client with the given URL, configured using the given options.
-    /// This URL should be the FQDN plus any namespacing
-    /// (like `v1`). So if you were running a bindle server mounted at the v1 endpoint, your URL
-    /// would look something like `http://my.bindle.com/v1/`. Will return an error if the URL is not
-    /// valid
-    pub fn new_with_options(base_url: &str, options: ClientOptions) -> Result<Self> {
-        // Note that the trailing slash is important, otherwise the URL parser will treat is as a
-        // "file" component of the URL. So we need to check that it is added before parsing
-        let mut base = base_url.to_owned();
-        if !base.ends_with('/') {
-            info!("Provided base URL missing trailing slash, adding...");
-            base.push('/');
+    /// Controls whether the client accepts invalid certificates. The default is to reject invalid
+    /// certificates. It is sometimes necessary to set this option in dev-test situations where you
+    /// may be working with self-signed certificates or the like. Defaults to false.
+    pub fn danger_accept_invalid_certs(mut self, danger_accept_invalid_certs: bool) -> Self {
+        self.danger_accept_invalid_certs = danger_accept_invalid_certs;
+        self
+    }
+
+    /// Sets the bearer token to use for authentication with the bindle server, if one already
+    /// exists.
+    ///
+    /// If you need to log in, you can set the token after constructing the `Client` with
+    /// [`set_auth_token`](Client::set_auth_token)
+    pub fn auth_token(mut self, token: String) -> Self {
+        self.auth_token = Some(token);
+        self
+    }
+
+    /// Returns a new Client with the given URL, configured using the set options. If you want to
+    /// build a client while logging into a server, use [`ClientBuilder::login`]
+    ///
+    /// This URL should be the FQDN plus any namespacing (like `v1`). So if you were running a
+    /// bindle server mounted at the v1 endpoint, your URL would look something like
+    /// `http://my.bindle.com/v1/`. Will return an error if the URL is not valid
+    pub fn build(self, base_url: &str) -> Result<Client> {
+        let (base_parsed, mut headers) = base_url_and_headers(base_url)?;
+        if let Some(token) = self.auth_token {
+            let mut header_val = HeaderValue::from_str(&format!("Bearer {}", token))
+                .map_err(|e| ClientError::Other(e.to_string()))?;
+            header_val.set_sensitive(true);
+            headers.insert(header::AUTHORIZATION, header_val);
         }
-        let base_parsed = Url::parse(&base)?;
-        let mut headers = header::HeaderMap::new();
-        headers.insert(header::ACCEPT, "application/toml".parse().unwrap());
-        // TODO: As this evolves, we might want to allow for setting time outs and accepting
-        // self-signed certs
+
         let client = HttpClient::builder()
-            .and_if(options.http2_prior_knowledge, |b| b.http2_prior_knowledge())
-            .and_if(options.danger_accept_invalid_certs, |b| {
+            .and_if(self.http2_prior_knowledge, |b| b.http2_prior_knowledge())
+            .and_if(self.danger_accept_invalid_certs, |b| {
                 b.danger_accept_invalid_certs(true)
             })
             .default_headers(headers)
@@ -104,6 +127,230 @@ impl Client {
             client,
             base_url: base_parsed,
         })
+    }
+
+    /// Logs in to a bindle server, saving the access_token at the configured path (it will
+    /// overwrite any existing data at the path), and then returning a new client configured with
+    /// that token.
+    ///
+    /// Please note that this function requires user interaction. It will request a device code for
+    /// logging in to the CLI, which requires a user to do so in a browser. This information will be
+    /// printed to STDOUT
+    pub async fn login(mut self, base_url: &str, token_path: impl AsRef<Path>) -> Result<Client> {
+        let (base_parsed, headers) = base_url_and_headers(base_url)?;
+
+        let client = HttpClient::builder()
+            .and_if(self.http2_prior_knowledge, |b| b.http2_prior_knowledge())
+            .and_if(self.danger_accept_invalid_certs, |b| {
+                b.danger_accept_invalid_certs(true)
+            })
+            .default_headers(headers.clone())
+            .build()
+            .map_err(|e| ClientError::Other(e.to_string()))?;
+        let login_resp = client
+            .get(base_parsed.join(LOGIN_ENDPOINT).unwrap())
+            .query(&crate::LoginParams {
+                provider: crate::LoginProvider::Github,
+            })
+            .send()
+            .await?;
+        let login_resp = unwrap_status(login_resp, Endpoint::Login, Operation::Login).await?;
+        let device_code_details: DeviceAuthorizationResponse<
+            crate::DeviceAuthorizationExtraFields,
+        > = toml::from_slice(&login_resp.bytes().await?)?;
+
+        println!(
+            "Open this URL in your browser:\n{}\nand then enter the code when prompted: {}",
+            device_code_details.verification_uri().to_string(),
+            device_code_details.user_code().secret().to_string()
+        );
+
+        // HACK(thomastaylor312): Please note that this is how things should work (for pretty much
+        // any device flow), but Github's is in beta and it doesn't return the proper status code
+        // (400) when the user hasn't logged in yet per RFC 8628 section 3.5 and RFC 6749 section
+        // 5.2. So the code completely chokes. Instead we are doing the check manually
+
+        // let oauth_client = BasicClient::new(
+        //     ClientId::new(device_code_details.extra_fields().client_id.clone()),
+        //     None,
+        //     AuthUrl::new(GITHUB_AUTH_URL.to_owned()).unwrap(),
+        //     Some(TokenUrl::new(GITHUB_TOKEN_URL.to_owned()).unwrap()),
+        // );
+
+        // let token_res = match oauth_client
+        //     .exchange_device_access_token(&device_code_details)
+        //     .request_async(async_http_client, tokio::time::sleep, None)
+        //     .await
+        // {
+        //     Ok(t) => t,
+        //     Err(e) => {
+        //         if let oauth2::RequestTokenError::Parse(err, d) = &e {
+        //             println!("Data: {}", String::from_utf8_lossy(&d));
+        //         }
+        //         return Err(ClientError::Other(format!("{:?}", e)));
+        //     }
+        // };
+
+        // let token = token_res.access_token();
+
+        let token = wait_for_auth(device_code_details).await?;
+
+        tracing::info!(path = %token_path.as_ref().display(), "Writing access token to file");
+
+        #[cfg(not(target_family = "windows"))]
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .mode(0o600)
+            .open(token_path)
+            .await?;
+
+        // TODO: Figure out the proper permission for a token on disk for windows
+        #[cfg(target_family = "windows")]
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(token_path)
+            .await?;
+
+        file.write_all(token.as_bytes()).await?;
+
+        self.auth_token = Some(token);
+
+        // Because we can't consume the client and reuse the config, we just need to reconfigure the
+        // whole thing
+        self.build(base_parsed.as_str())
+    }
+}
+
+async fn wait_for_auth(
+    device_code_details: DeviceAuthorizationResponse<crate::DeviceAuthorizationExtraFields>,
+) -> Result<String> {
+    // Add a little wiggle room on the interval
+    let mut interval =
+        tokio::time::interval(device_code_details.interval() + Duration::from_secs(1));
+    // Just skip if we miss a tick so we don't get slow down responses
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Get the maximum time we should wait from the details. We are subtracting the interval from
+    // the max duration so that we have a buffer of time at the end rather than triggering a code
+    // expired error on the last tick
+    let timeout = device_code_details.expires_in() + device_code_details.interval();
+
+    let mut headers = header::HeaderMap::new();
+    headers.insert(header::ACCEPT, "application/json".parse().unwrap());
+    headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+
+    let client = reqwest::ClientBuilder::new()
+        .default_headers(headers)
+        .build()?;
+
+    loop {
+        let elapsed = interval.tick().await;
+        if elapsed.elapsed() >= timeout {
+            return Err(ClientError::Other(
+                "Timeout reached for device code auth. Please login again".into(),
+            ));
+        }
+
+        tracing::debug!("Checking for access token");
+
+        let res = client
+            .post(GITHUB_TOKEN_URL)
+            .body(
+                serde_json::to_vec(&serde_json::json!({
+                    "client_id": device_code_details.extra_fields().client_id,
+                    "device_code": device_code_details.device_code().secret(),
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                }))
+                .expect("Unable to serialize auth token body. This is programmer error"),
+            )
+            .send()
+            .await?;
+
+        match parse_response(res).await? {
+            either::Left(e) => {
+                match e.error() {
+                    DeviceCodeErrorResponseType::AuthorizationPending => {
+                        tracing::debug!(retry_interval = ?device_code_details.interval(), "Device authorization still pending, will retry");
+                        continue
+                    }
+                    DeviceCodeErrorResponseType::SlowDown => tracing::warn!("Token polling operation occurred too quickly, will retry"),
+                    DeviceCodeErrorResponseType::ExpiredToken => return Err(ClientError::Other(e.error_description().map(|s| s.to_owned()).unwrap_or_else(|| "Device login token has expired".into()))),
+                    _ => return Err(ClientError::Other(format!("Unable to continue with device authentication, got error of type {} with description '{}' and error_uri of '{}'", e.error(), e.error_description().map(|s| s.to_owned()).unwrap_or_default(), e.error_uri().map(|s| s.to_owned()).unwrap_or_default())))
+                }
+            }
+            either::Right(s) => {
+                return Ok(s.access_token().secret().to_owned())
+            }
+        }
+    }
+}
+
+async fn parse_response(
+    resp: reqwest::Response,
+) -> Result<either::Either<StandardErrorResponse<DeviceCodeErrorResponseType>, BasicTokenResponse>>
+{
+    let status = resp.status();
+    let raw = resp.bytes().await?;
+    if !status.is_success() {
+        return Err(ClientError::Other(format!(
+            "Got non-success response from Github (status code {}) with the following body: {}",
+            status,
+            String::from_utf8_lossy(&raw)
+        )));
+    }
+
+    // First attempt to parse as an error, if that fails, then parse it as a success
+    match serde_json::from_slice::<StandardErrorResponse<DeviceCodeErrorResponseType>>(&raw) {
+        Ok(r) => return Ok(either::Left(r)),
+        // This means it was a parse error so it isn't an error response
+        Err(e) if e.is_syntax() || e.is_data() => (),
+        Err(_) => {
+            return Err(ClientError::Other(format!(
+                "Invalid data received from Github: {}",
+                String::from_utf8_lossy(&raw)
+            )))
+        }
+    }
+
+    // If we got here, it is probably a success response
+    Ok(either::Right(serde_json::from_slice(&raw).map_err(
+        |_| {
+            ClientError::Other(format!(
+                "Invalid success response received from Github: {}",
+                String::from_utf8_lossy(&raw)
+            ))
+        },
+    )?))
+}
+
+fn base_url_and_headers(base_url: &str) -> Result<(Url, HeaderMap)> {
+    // Note that the trailing slash is important, otherwise the URL parser will treat is as a
+    // "file" component of the URL. So we need to check that it is added before parsing
+    let mut base = base_url.to_owned();
+    if !base.ends_with('/') {
+        info!("Provided base URL missing trailing slash, adding...");
+        base.push('/');
+    }
+    let base_parsed = Url::parse(&base)?;
+    let mut headers = header::HeaderMap::new();
+    headers.insert(header::ACCEPT, TOML_MIME_TYPE.parse().unwrap());
+    Ok((base_parsed, headers))
+}
+
+impl Client {
+    /// Returns a new Client with the given URL, configured using the default options.
+    ///
+    /// This URL should be the FQDN plus any namespacing (like `v1`). So if you were running a
+    /// bindle server mounted at the v1 endpoint, your URL would look something like
+    /// `http://my.bindle.com/v1/`. Will return an error if the URL is not valid
+    pub fn new(base_url: &str) -> Result<Self> {
+        ClientBuilder::default().build(base_url)
+    }
+
+    /// Returns a [`ClientBuilder`](ClientBuilder) configured with defaults
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder::default()
     }
 
     /// Performs a raw request using the underlying HTTP client and returns the raw response. The
@@ -546,6 +793,9 @@ enum Endpoint {
     Invoice,
     Parcel,
     Query,
+    // NOTE: This endpoint currently does nothing, but if we need more specific errors, we can use
+    // this down the line
+    Login,
 }
 
 async fn unwrap_status(
@@ -610,4 +860,4 @@ trait ConditionalBuilder {
     }
 }
 
-impl ConditionalBuilder for ClientBuilder {}
+impl ConditionalBuilder for reqwest::ClientBuilder {}

@@ -12,6 +12,8 @@ pub mod signature;
 pub mod verification;
 
 #[doc(inline)]
+pub(crate) use api::{DeviceAuthorizationExtraFields, LoginParams, LoginProvider};
+#[doc(inline)]
 pub use api::{ErrorResponse, InvoiceCreateResponse, MissingParcelsResponse, QueryOptions};
 #[doc(inline)]
 pub use bindle_spec::BindleSpec;
