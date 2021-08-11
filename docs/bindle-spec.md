@@ -8,7 +8,7 @@ The English word "bindle" refers to a collection or package. A popular portrayal
 
 ## Bindles and Parcels
 
-A _bindle_ is a named and versioned container that enumerates its contents in an _invoice_. The contents of a bindle are opaque blobs of data describes as _parcels_, where each parcel has a _label_ describing it, and a _parcel.dat_ that contains the opaque data of the parcel.
+A _bindle_ is a named and versioned container that enumerates its contents in an _invoice_. The contents of a bindle are opaque blobs of data described as _parcels_, where each parcel has a _label_ describing it, and a _parcel.dat_ that contains the opaque data of the parcel.
 
 ```
 BINDLE
