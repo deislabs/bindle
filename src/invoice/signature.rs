@@ -343,7 +343,7 @@ impl SecretKeyFile {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .mode(0o700)
+            .mode(0o600)
             .open(dest)
             .await?;
 
@@ -439,9 +439,9 @@ mod test {
             let metadata = tokio::fs::metadata(&dest).await.unwrap();
             // This masks out the bits we don't care about
             assert_eq!(
-                metadata.permissions().mode() & 0o00700,
-                0o700,
-                "Permissions of saved key should be 0700"
+                metadata.permissions().mode() & 0o00600,
+                0o600,
+                "Permissions of saved key should be 0600"
             )
         }
         let newfile = SecretKeyFile::load_file(dest)
