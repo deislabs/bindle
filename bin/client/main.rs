@@ -106,10 +106,25 @@ async fn run() -> std::result::Result<(), ClientError> {
         }
         SubCommand::Search(search_opts) => {
             // TODO: Do we want to use the cache for searching?
-            let matches = bindle_client.query_invoices(search_opts.into()).await?;
-            tokio::io::stdout()
-                .write_all(&toml::to_vec(&matches)?)
+            let matches = bindle_client
+                .query_invoices(search_opts.clone().into())
                 .await?;
+
+            match search_opts.output {
+                Some(format) if &format == "toml" => {
+                    tokio::io::stdout()
+                        .write_all(&toml::to_vec(&matches)?)
+                        .await?
+                }
+                Some(format) if &format == "json" => {
+                    tokio::io::stdout()
+                        .write_all(&serde_json::to_vec_pretty(&matches)?)
+                        .await?
+                }
+                Some(format) if &format == "table" => tablify(&matches),
+                Some(format) => Err(ClientError::Other(format!("Unknown format: {}", format)))?,
+                None => tablify(&matches),
+            }
         }
         SubCommand::Get(get_opts) => get_all(cache, get_opts).await?,
         SubCommand::Push(push_opts) => push_all(bindle_client, push_opts).await?,
@@ -468,4 +483,32 @@ async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<Secr
     keys.get_first_matching(role)
         .map(|k| k.to_owned())
         .ok_or_else(|| ClientError::Other("No satisfactory key found".to_owned()))
+}
+
+fn tablify(matches: &bindle::search::Matches) {
+    let last = matches.offset + matches.invoices.len() as u64;
+    let trailer = if matches.more {
+        format!(" - More results are available with --offset={}", last)
+    } else {
+        "".to_owned()
+    };
+
+    for i in matches.invoices.iter() {
+        println!(
+            "{}:\t{}",
+            &i.bindle.id,
+            &i.bindle
+                .description
+                .clone()
+                .unwrap_or_else(|| "[no description available]".to_string())
+        )
+    }
+    println!(
+        "=== Showing results {} to {} of {} (limit: {}){}",
+        matches.offset + 1,
+        last,
+        matches.total,
+        matches.limit,
+        trailer,
+    );
 }

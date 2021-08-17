@@ -168,7 +168,7 @@ The range modifiers will include the following modifiers, all based on the Node.
 - `~` -- at least the given version
 "#;
 
-#[derive(Clap)]
+#[derive(Clap, Clone)]
 pub struct Search {
     // TODO: Figure out output format (like tables)
     #[clap(
@@ -197,6 +197,13 @@ pub struct Search {
         about = "Whether or not to include yanked bindles in the search result"
     )]
     pub yanked: Option<bool>,
+    #[clap(
+        short = 'f',
+        long = "output-format",
+        about = "choose an output format",
+        possible_values = &["json", "toml", "table"],
+    )]
+    pub output: Option<String>,
 }
 
 impl From<Search> for bindle::QueryOptions {
