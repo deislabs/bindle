@@ -13,11 +13,13 @@ pub enum ClientError {
     #[error("Error while performing IO operation")]
     Io(#[from] std::io::Error),
     /// Invalid TOML parsing that can occur when loading an invoice or label from disk
-    #[error("Invalid toml")]
+    #[error("Invalid TOML")]
     InvalidToml(#[from] toml::de::Error),
     /// Invalid TOML serialization that can occur when serializing an object to a request
-    #[error("Invalid toml")]
+    #[error("Failed serializing TOML")]
     TomlSerializationError(#[from] toml::ser::Error),
+    #[error("Failed serializing JSON")]
+    JsonSerializationError(#[from] serde_json::Error),
     /// There was a problem with the http client. This is likely not a user issue. Contains the
     /// underlying error
     #[error("Error creating request")]
