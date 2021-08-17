@@ -29,9 +29,18 @@ pub struct Opts {
     #[clap(
         short = 'r',
         long = "keyring",
+        env = "BINDLE_KEYRING",
         about = "The path to the keyring file. Defaults to $XDG_CONFIG/bindle/keyring.toml"
     )]
     pub keyring: Option<PathBuf>,
+
+    #[clap(
+        short = 't',
+        long = "token-file",
+        env = "BINDLE_TOKEN_FILE",
+        about = "The path to the login token file. If running `bindle login` this is where the file will be saved to. Defaults to $XDG_CONFIG/bindle/.token"
+    )]
+    pub token_file: Option<PathBuf>,
 
     #[clap(subcommand)]
     pub subcmd: SubCommand,
@@ -89,6 +98,11 @@ pub enum SubCommand {
         about = "Print the public key entries for keys from the secret key file. If no '--label' is supplied, public keys for all secret keys are returned."
     )]
     PrintKey(PrintKey),
+    #[clap(
+        name = "login",
+        about = "Logs in to a bindle server, saving the token locally"
+    )]
+    Login(Login),
 }
 
 #[derive(Clap)]
@@ -376,3 +390,6 @@ pub struct PushFile {
     )]
     pub media_type: Option<String>,
 }
+
+#[derive(Clap)]
+pub struct Login {}

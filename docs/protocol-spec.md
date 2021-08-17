@@ -19,6 +19,9 @@ HTTP Endpoints:
 - `/_r`: The relationships endpoint. This endpoint allows for querying of various relationships between parts of a bindle.
     - `/_r/missing/{bindle-name}`: An endpoint for retrieving missing parcels in a bindle. `{bindle-name}` follows the same aforementioned rules around bindle naming
         - `GET`: Returns a list of label objects for missing parcels (i.e. parcels that haven't been uploaded). Yanked bindles are not supported by this endpoint as parcels for yanked bindles should not be uploaded
+- `/login`: Triggers a login flow for the API
+  - `GET`: Redirects to the login provider to start an OIDC (or OAuth2) device login flow. Right now only GitHub is supported, so this endpoint is likely to change as more providers are integrated. This endpoint supports the following query parameters:
+    - `provider` (required): The name of the provider to use: For example: `provider=github`
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_p` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
 

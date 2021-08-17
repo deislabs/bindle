@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Clap;
-use tracing::warn;
+use tracing::{info, warn};
 
 use bindle::{
     invoice::signature::{KeyRing, SignatureRole},
@@ -93,6 +93,24 @@ struct Opts {
         about = "Use the new embedded database provider. This is currently experimental, but fairly stable and more efficient. In the future, this will be the default"
     )]
     use_embedded_db: bool,
+
+    #[clap(
+        name = "github-client-id",
+        long = "github-client-id",
+        env = "BINDLE_GITHUB_CLIENT_ID",
+        requires = "github-client-secret",
+        about = "The Github client ID to use for Oauth2 token authentication. --github-client-secret should be set as well. Please note this flag is likely to be changed or removed in future releases"
+    )]
+    github_client_id: Option<String>,
+
+    #[clap(
+        name = "github-client-secret",
+        long = "github-client-secret",
+        env = "BINDLE_GITHUB_CLIENT_SECRET",
+        requires = "github-client-id",
+        about = "The Github client secret to use for Oauth2 token authentication. --github-client-id should be set as well. Please note this flag is likely to be changed or removed in future releases"
+    )]
+    github_client_secret: Option<String>,
 }
 
 #[tokio::main]
@@ -215,39 +233,96 @@ async fn main() -> anyhow::Result<()> {
         bindle_directory.display()
     );
 
-    if opts.use_embedded_db {
-        warn!("Using EmbeddedProvider. This is currently experimental");
-        let store =
-            provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
-
-        server(
-            store,
-            index,
-            bindle::authn::always::AlwaysAuthenticate,
-            bindle::authz::always::AlwaysAuthorize,
-            addr,
-            tls,
-            secret_store,
-            strategy,
-            keyring,
-        )
-        .await
-    } else {
-        tracing::info!("Using FileProvider");
-        let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
-
-        server(
-            store,
-            index,
-            bindle::authn::always::AlwaysAuthenticate,
-            bindle::authz::always::AlwaysAuthorize,
-            addr,
-            tls,
-            secret_store,
-            strategy,
-            keyring,
-        )
-        .await
+    // TODO: This is really gnarly, but the associated type on `Authenticator` makes turning it into
+    // a Boxed dynner really difficult. I also tried rolling our own type erasure and ran into
+    // similar issues (though I think it could be fixed, it would be a lot of code). So we might
+    // have to resort to some sort of dependency injection here. The same goes for providers as the
+    // methods have generic parameters
+    match (opts.use_embedded_db, opts.github_client_id.is_some()) {
+        // Embedded DB and GH auth
+        (true, true) => {
+            warn!("Using EmbeddedProvider. This is currently experimental");
+            info!("Using Github Oauth token authentication");
+            let store =
+                provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
+            // We can unwrap safely here because Clap checks that both args exist and we already
+            // checked that one of them exists
+            let authn = bindle::authn::github::GithubAuthenticator::new(
+                &opts.github_client_id.unwrap(),
+                &opts.github_client_secret.unwrap(),
+            )?;
+            server(
+                store,
+                index,
+                authn,
+                bindle::authz::always::AlwaysAuthorize,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
+        // Embedded DB and no GH auth
+        (true, false) => {
+            warn!("Using EmbeddedProvider. This is currently experimental");
+            let store =
+                provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
+            server(
+                store,
+                index,
+                bindle::authn::always::AlwaysAuthenticate,
+                bindle::authz::always::AlwaysAuthorize,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
+        // File system and GH auth
+        (false, true) => {
+            info!("Using FileProvider");
+            info!("Using Github Oauth token authentication");
+            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
+            // We can unwrap safely here because Clap checks that both args exist and we already
+            // checked that one of them exists
+            let authn = bindle::authn::github::GithubAuthenticator::new(
+                &opts.github_client_id.unwrap(),
+                &opts.github_client_secret.unwrap(),
+            )?;
+            server(
+                store,
+                index,
+                authn,
+                bindle::authz::always::AlwaysAuthorize,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
+        // File system and no GH auth
+        (false, false) => {
+            info!("Using FileProvider");
+            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
+            server(
+                store,
+                index,
+                bindle::authn::always::AlwaysAuthenticate,
+                bindle::authz::always::AlwaysAuthorize,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
     }
 }
 

@@ -14,10 +14,18 @@ pub mod v1 {
 
     use crate::{
         signature::{KeyRing, SecretKeyStorage},
-        QueryOptions, SignatureError,
+        LoginParams, LoginProvider, QueryOptions, SignatureError,
     };
+
+    use oauth2::reqwest::async_http_client;
+    use oauth2::{basic::BasicClient, devicecode::StandardDeviceAuthorizationResponse};
+    use oauth2::{AuthUrl, ClientId, DeviceAuthorizationUrl, Scope};
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
+    use warp::http::StatusCode;
+
+    const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
+    const GITHUB_DEVICE_AUTH_URL: &str = "https://github.com/login/device/code";
 
     //////////// Invoice Functions ////////////
     #[instrument(level = "trace", skip(index))]
@@ -346,6 +354,78 @@ pub mod v1 {
             ),
             warp::http::StatusCode::OK,
         ))
+    }
+
+    //////////// Login Functions ////////////
+
+    /// Redirects to a login request
+    #[instrument(level = "trace")]
+    pub(crate) async fn login(
+        p: LoginParams,
+        client_id: String,
+        accept_header: Option<String>,
+    ) -> Result<impl warp::Reply, Infallible> {
+        match p.provider {
+            LoginProvider::Github => {
+                let client = BasicClient::new(
+                    ClientId::new(client_id.clone()),
+                    None,
+                    // I don't think we actually need this, but including it anyway
+                    AuthUrl::new(GITHUB_AUTH_URL.to_owned())
+                        .expect("The github auth URL is invalid, this is programmer error"),
+                    None,
+                )
+                .set_device_authorization_url(
+                    DeviceAuthorizationUrl::new(GITHUB_DEVICE_AUTH_URL.to_owned())
+                        .expect("Incorrect device auth url. This is programmer error"),
+                );
+                let device_auth_req = match client.exchange_device_code() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::error!(error = ?e, "Unable to create request for device auth");
+                        return Ok(reply::reply_from_error(
+                            "Error with Github auth request",
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        ));
+                    }
+                };
+                let details: StandardDeviceAuthorizationResponse = match device_auth_req
+                    .add_scope(Scope::new("user:email".into()))
+                    .request_async(async_http_client)
+                    .await
+                {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::error!(error = ?e, "Unable to perform device auth code request to Github");
+                        // NOTE: We could probably inspect the error a bit to see if this is our
+                        // fault or if we are getting an error from the GH API which would be an
+                        // internal server error and bad gateway respectively
+                        return Ok(reply::reply_from_error(
+                            "Error performing Github auth request",
+                            StatusCode::BAD_GATEWAY,
+                        ));
+                    }
+                };
+
+                // Inject in the additional client_id parameter after serializing to a Value
+                let mut intermediate = match serde_json::to_value(details) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!(error = %e, "Unable to serialize device auth response to intermediate value, this shouldn't happen");
+                        return Ok(reply::reply_from_error(
+                            "Error with Github auth request",
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        ));
+                    }
+                };
+                intermediate["client_id"] = client_id.into();
+
+                Ok(warp::reply::with_status(
+                    reply::serialized_data(&intermediate, accept_header.unwrap_or_default()),
+                    warp::http::StatusCode::OK,
+                ))
+            }
+        }
     }
 
     //////////// Helper Functions ////////////

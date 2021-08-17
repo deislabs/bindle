@@ -27,8 +27,8 @@ maintenance = { status = "actively-developed" }
 
 [features]
 default = ["server", "client", "caching", "test-tools"]
-server = ["warp"]
-client = ["reqwest", "mime_guess", "dirs"]
+server = ["warp", "oauth2"]
+client = ["mime_guess", "dirs", "either"]
 caching = []
 test-tools = []
 cli = ["clap", "tracing-subscriber"]
@@ -53,13 +53,14 @@ bytes = "1.0"
 async-trait = "0.1"
 futures = "0.3"
 clap = { version = "3.0.0-beta.2", optional = true }
-reqwest = { version = "0.11", features = ["stream"], optional = true }
+reqwest = { version = "0.11", features = ["stream"] }
 hyper = "0.14"
 url = "2.2"
 tracing-subscriber = { version = "0.2", optional = true }
 dirs = { version = "3.0", optional = true }
 mime_guess = { version = "2.0", optional = true }
 lru = "0.6"
+# We need the older version of rand for dalek
 rand = "0.7"
 ed25519-dalek = "1.0"
 base64 = "0.13"
@@ -68,9 +69,12 @@ tracing-futures = "0.2"
 mime = "0.3"
 sled = "0.34"
 serde_cbor = "0.11"
+oauth2 = {version = "4.1", optional = true, features = ["reqwest"]}
+# Temporary dependency on either in use for our GH auth workaround
+either = { version = "1.6", optional = true }
 
 [dev-dependencies]
-rstest = "0.10"
+rstest = "0.11"
 
 [[bin]]
 name = "bindle-server"
