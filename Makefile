@@ -9,6 +9,9 @@ MIME ?= "application/toml"
 CERT_NAME ?= ssl-example
 TLS_OPTS ?= --tls-cert $(CERT_NAME).crt.pem --tls-key $(CERT_NAME).key.pem
 EMBEDDED_FLAG ?= --use-embedded-db true
+AUTH_MODE ?=
+# Example of HTTP basic auth with the testing fixture data. 
+#AUTH_MODE ?= --htpasswd-file test/data/htpasswd
 
 export RUST_LOG=error,warp=info,bindle=$(BINDLE_LOG_LEVEL)
 
@@ -58,7 +61,7 @@ serve-embedded-tls: _run
 
 .PHONY: _run
 _run:
-	cargo run $(SERVER_FEATURES) --bin $(SERVER_BIN) -- --directory $(BINDLE_DIRECTORY) --address $(BINDLE_IFACE) $(TLS_OPTS) $(EMBEDDED_FLAG)
+	cargo run $(SERVER_FEATURES) --bin $(SERVER_BIN) -- --directory $(BINDLE_DIRECTORY) --address $(BINDLE_IFACE) $(TLS_OPTS) $(EMBEDDED_FLAG) $(AUTH_MODE)
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client

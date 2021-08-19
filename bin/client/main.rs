@@ -84,6 +84,10 @@ async fn run() -> std::result::Result<(), ClientError> {
         builder = builder.auth_token(t);
     }
 
+    if let Some(user) = opts.http_user {
+        builder = builder.user_password(user, opts.http_password.unwrap_or_default());
+    }
+
     let bindle_client = builder.build(&opts.server_url)?;
 
     // TODO(thomastaylor312): We should read the token using a JWT parser and see if it is still

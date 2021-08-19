@@ -118,6 +118,34 @@ myname = "myvalue"
 
 To learn more about the Bindle command, run `bindle --help`.
 
+### Configuring Authentication
+
+There are currently two authentication types supported by Bindle:
+
+- GitHub OAuth2
+- HTTP Basic Auth (username/password)
+
+To use GitHub OAuth2, you must supply `--github-client-id` and `--github-client-secret` at startup.
+
+To use HTTP Basic authentication, you must generate an `htpasswd` file using Bcrypt:
+
+```console
+$ htpasswd -Bc htpasswd admin
+New password: 
+Re-type new password: 
+Adding password for user admin
+```
+
+(The `htpasswd` program comes on many Linux/Unix distros. Officially it is part of the Apache Web Server project.)
+
+Then you need to supply the `--htpasswd-file` option at `bindle-server` startup:
+
+```console
+$ bindle-server --htpasswd-file test/data/htpasswd
+```
+
+> Currently, only bcrypt is supported in htpasswd files. At the time of this writing, bcrypt is the most secure algorithm supported by htpasswd.
+
 ### Configuring Signing
 
 Keys are used for signing and verification.
