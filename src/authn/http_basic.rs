@@ -34,6 +34,7 @@ impl HttpBasic {
         // Parse the records into a map
         let mut authmap = HashMap::new();
         for line in raw.split_terminator('\n') {
+            let line = line.trim();
             // Each line is username:{hash}value
             let pair: Vec<&str> = line.splitn(2, ':').collect();
             authmap.insert(pair[0].to_owned(), pair[1].to_owned());
