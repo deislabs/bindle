@@ -45,11 +45,18 @@ pub struct Opts {
     #[clap(
         long = "http-user",
         about = "Username for HTTP Basic auth",
-        requires = "http-password"
+        requires = "http-password",
+        env = "BINDLE_HTTP_PASSWORD",
+        hide_env_values = true
     )]
     pub http_user: Option<String>,
 
-    #[clap(long = "http-password", about = "Password for HTTP Basic auth")]
+    #[clap(
+        long = "http-password",
+        about = "Password for HTTP Basic auth",
+        requires = "http-user",
+        env = "BINDLE_HTTP_USER"
+    )]
     pub http_password: Option<String>,
 
     #[clap(subcommand)]

@@ -275,7 +275,7 @@ async fn main() -> anyhow::Result<()> {
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
             // We can unwrap safely here because Clap checks that both args exist and we already
             // checked that one of them exists
-            let authn = bindle::authn::always::AlwaysAuthenticate; //bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
+            let authn = bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
             server(
                 store,
                 index,
@@ -314,7 +314,7 @@ async fn main() -> anyhow::Result<()> {
             let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
             // We can unwrap safely here because Clap checks that both args exist and we already
             // checked that one of them exists
-            let authn = bindle::authn::always::AlwaysAuthenticate; //bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
+            let authn = bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
             server(
                 store,
                 index,

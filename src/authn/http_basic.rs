@@ -37,7 +37,9 @@ impl HttpBasic {
             let line = line.trim();
             // Each line is username:{hash}value
             let pair: Vec<&str> = line.splitn(2, ':').collect();
-            authmap.insert(pair[0].to_owned(), pair[1].to_owned());
+            if pair.len() == 2 {
+                authmap.insert(pair[0].to_owned(), pair[1].to_owned());
+            }
         }
         // Attach the map to the struct
         Ok(HttpBasic { authmap })
