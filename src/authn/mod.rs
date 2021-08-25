@@ -2,8 +2,8 @@
 //! feature is enabled
 
 pub mod always;
-pub mod github;
 pub mod http_basic;
+pub mod oidc;
 
 use crate::authz::Authorizable;
 
@@ -18,8 +18,23 @@ pub trait Authenticator {
     /// auth will be indicated by an empty auth_data string
     async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item>;
 
+    // TODO(thomastaylor312): Perhaps we should create a single method that returns another trait
+    // implementing type for actually authenticating with a service. That way we can encapsulate all
+    // the data we need rather than dangling all these methods we need here
+
     /// The client_id to use for this authentication. Defaults to an empty string if not implemented
     fn client_id(&self) -> &str {
+        ""
+    }
+
+    /// The device code authorization url to use for this authentication. Defaults to an empty
+    /// string if not implemented
+    fn auth_url(&self) -> &str {
+        ""
+    }
+
+    /// The token url to use for this authentication. Defaults to an empty string if not implemented
+    fn token_url(&self) -> &str {
         ""
     }
 }

@@ -27,8 +27,8 @@ maintenance = { status = "actively-developed" }
 
 [features]
 default = ["server", "client", "caching", "test-tools"]
-server = ["warp", "oauth2"]
-client = ["mime_guess", "dirs", "either"]
+server = ["warp", "openid"]
+client = ["mime_guess", "dirs", "chrono"]
 caching = []
 test-tools = []
 cli = ["clap", "tracing-subscriber"]
@@ -52,7 +52,7 @@ warp = { version = "0.3", features = ["tls"], optional = true }
 bytes = "1.0"
 async-trait = "0.1"
 futures = "0.3"
-clap = { version = "3.0.0-beta.2", optional = true }
+clap = { version = "3.0.0-beta.4", optional = true }
 reqwest = { version = "0.11", features = ["stream"] }
 hyper = "0.14"
 url = "2.2"
@@ -69,10 +69,11 @@ tracing-futures = "0.2"
 mime = "0.3"
 sled = "0.34"
 serde_cbor = "0.11"
-oauth2 = {version = "4.1", optional = true, features = ["reqwest"]}
-# Temporary dependency on either in use for our GH auth workaround
-either = { version = "1.6", optional = true }
+oauth2 = {version = "4.1", features = ["reqwest"]}
+jsonwebtoken = "7.2"
+openid = {version = "0.9", optional = true}
 bcrypt = "0.10"
+chrono = { version = "0.4", features = ["serde"], optional = true }
 
 [dev-dependencies]
 rstest = "0.11"

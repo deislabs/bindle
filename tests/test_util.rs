@@ -1,9 +1,9 @@
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 
-use bindle::client::Client;
+use bindle::client::{tokens::NoToken, Client};
 
 pub struct TestController {
-    pub client: Client,
+    pub client: Client<NoToken>,
     pub base_url: String,
     server_handle: std::process::Child,
     // Keep a handle to the tempdir so it doesn't drop until the controller drops
@@ -67,7 +67,7 @@ impl TestController {
             }
         }
 
-        let client = Client::new(&base_url).expect("unable to setup bindle client");
+        let client = Client::new(&base_url, NoToken).expect("unable to setup bindle client");
         TestController {
             client,
             base_url,

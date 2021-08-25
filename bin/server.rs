@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Clap;
 use tracing::{info, warn};
@@ -13,8 +13,8 @@ use bindle::{
 };
 
 enum AuthType {
-    /// Use GitHub with the given Client Id and Secret (in that order)
-    Github(String, String),
+    /// Use Oidc with the given Client Id, issuer URL, and device URL (in that order)
+    Oidc(String, String, String),
     /// Use an HTPassword file at the given path
     HttpBasic(PathBuf),
     /// Do not perform auth.
@@ -104,30 +104,42 @@ struct Opts {
     use_embedded_db: bool,
 
     #[clap(
-        name = "github-client-id",
-        long = "github-client-id",
-        env = "BINDLE_GITHUB_CLIENT_ID",
-        requires = "github-client-secret",
-        about = "The Github client ID to use for Oauth2 token authentication. --github-client-secret should be set as well. Please note this flag is likely to be changed or removed in future releases"
-    )]
-    github_client_id: Option<String>,
-
-    #[clap(
-        name = "github-client-secret",
-        long = "github-client-secret",
-        env = "BINDLE_GITHUB_CLIENT_SECRET",
-        requires = "github-client-id",
-        about = "The Github client secret to use for Oauth2 token authentication. --github-client-id should be set as well. Please note this flag is likely to be changed or removed in future releases"
-    )]
-    github_client_secret: Option<String>,
-
-    #[clap(
         name = "htpasswd-file",
         long = "htpasswd-file",
         env = "BINDLE_HTPASSWD_FILE",
         about = "If set, this will turn on HTTP Basic Auth for Bindle and load the given htpasswd file. Use 'htpasswd -Bc' to create one."
     )]
     htpasswd_file: Option<PathBuf>,
+
+    #[clap(
+        name = "oidc-client-id",
+        long = "oidc-client-id",
+        env = "BINDLE_OIDC_CLIENT_ID",
+        requires_all = &["oidc-device-url", "oidc-issuer-url"],
+        about = "The OIDC client ID to use for Oauth2 token authentication"
+    )]
+    oidc_client_id: Option<String>,
+
+    // TODO(thomastaylor312): This could be obtained purely by using the discovery endpoint, but
+    // `device_authorization_endpoint` is not in the spec. If it seems like most major providers
+    // support this, we could make this optional as a fallback
+    #[clap(
+        name = "oidc-device-url",
+        long = "oidc-device-url",
+        env = "BINDLE_OIDC_DEVICE_URL",
+        requires_all = &["oidc-client-id", "oidc-issuer-url"],
+        about = "The URL to the device code authentication for your OIDC provider"
+    )]
+    oidc_device_url: Option<String>,
+
+    #[clap(
+        name = "oidc-issuer-url",
+        long = "oidc-issuer-url",
+        env = "BINDLE_OIDC_ISSUER_URL",
+        requires_all = &["oidc-device-url", "oidc-client-id"],
+        about = "The URL of the OIDC issuer your tokens should be issued by. This is used for verification of the token and for OIDC discovery"
+    )]
+    oidc_issuer_url: Option<String>,
 }
 
 #[tokio::main]
@@ -250,10 +262,13 @@ async fn main() -> anyhow::Result<()> {
         bindle_directory.display()
     );
 
-    let auth_method = if opts.github_client_id.is_some() {
-        AuthType::Github(
-            opts.github_client_id.unwrap(),
-            opts.github_client_secret.unwrap(),
+    let auth_method = if opts.oidc_client_id.is_some() {
+        // We can unwrap safely here because Clap checks that all args exist and we already
+        // checked that one of them exists
+        AuthType::Oidc(
+            opts.oidc_client_id.unwrap(),
+            opts.oidc_issuer_url.unwrap(),
+            opts.oidc_device_url.unwrap(),
         )
     } else if let Some(htpasswd) = opts.htpasswd_file {
         AuthType::HttpBasic(htpasswd)
@@ -267,15 +282,16 @@ async fn main() -> anyhow::Result<()> {
     // have to resort to some sort of dependency injection here. The same goes for providers as the
     // methods have generic parameters
     match (opts.use_embedded_db, auth_method) {
-        // Embedded DB and GH auth
-        (true, AuthType::Github(id, secret)) => {
+        // Embedded DB and oidc auth
+        (true, AuthType::Oidc(client_id, issuer, token_url)) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
-            info!("Using Github Oauth token authentication");
+            info!("Using OIDC token authentication");
             let store =
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
-            // We can unwrap safely here because Clap checks that both args exist and we already
-            // checked that one of them exists
-            let authn = bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
+
+            let authn =
+                bindle::authn::oidc::OidcAuthenticator::new(&issuer, &token_url, &client_id)
+                    .await?;
             server(
                 store,
                 index,
@@ -307,14 +323,15 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        // File system and GH auth
-        (false, AuthType::Github(id, secret)) => {
+        // File system and oidc auth
+        (false, AuthType::Oidc(client_id, issuer, token_url)) => {
             info!("Using FileProvider");
-            info!("Using Github Oauth token authentication");
+            info!("Using OIDC token authentication");
             let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
-            // We can unwrap safely here because Clap checks that both args exist and we already
-            // checked that one of them exists
-            let authn = bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
+
+            let authn =
+                bindle::authn::oidc::OidcAuthenticator::new(&issuer, &token_url, &client_id)
+                    .await?;
             server(
                 store,
                 index,

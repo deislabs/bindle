@@ -205,7 +205,8 @@ async fn test_push() {
         .expect("Should be able to read standalone bindle");
 
     let client =
-        bindle::client::Client::new("http://127.0.0.1:8080/v1/").expect("Invalid client config");
+        bindle::client::Client::new("http://127.0.0.1:8080/v1/", bindle::client::tokens::NoToken)
+            .expect("Invalid client config");
 
     read.push(&client)
         .await

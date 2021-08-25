@@ -1,8 +1,6 @@
 //! Contains various type definitions for API request and response types that leverage the Bindle
 //! objects
 
-use std::convert::TryFrom;
-
 use serde::{Deserialize, Serialize};
 
 use crate::invoice::{Invoice, Label};
@@ -64,33 +62,7 @@ impl From<QueryOptions> for SearchOptions {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct LoginParams {
-    pub provider: LoginProvider,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(try_from = "String")]
-#[serde(into = "String")]
-pub(crate) enum LoginProvider {
-    Github,
-}
-
-impl TryFrom<String> for LoginProvider {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str() {
-            "github" => Ok(LoginProvider::Github),
-            _ => Err(anyhow::anyhow!("Invalid provider {}", value)),
-        }
-    }
-}
-
-impl From<LoginProvider> for String {
-    fn from(p: LoginProvider) -> Self {
-        match p {
-            LoginProvider::Github => "github".to_owned(),
-        }
-    }
+    pub provider: String,
 }
 
 /// Adds extra fields onto the device authorization response so we can pass back the client id that
@@ -98,6 +70,7 @@ impl From<LoginProvider> for String {
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct DeviceAuthorizationExtraFields {
     pub client_id: String,
+    pub token_url: String,
 }
 
 impl oauth2::devicecode::ExtraDeviceAuthorizationFields for DeviceAuthorizationExtraFields {}

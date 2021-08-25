@@ -223,7 +223,7 @@ impl VerificationStrategy {
                     // would only need to attach a known-bad signature, and that would
                     // prevent the module from ever being usable. This is marginally
                     // better if we only verify signatures on known keys.
-                    self.verify_signature(&s, cleartext.as_bytes())?;
+                    self.verify_signature(s, cleartext.as_bytes())?;
                     debug!("Signature verified");
 
                     if !target_role && !all_verified {
@@ -262,7 +262,7 @@ impl VerificationStrategy {
                 // that at least one of each requested role is present.
                 if all_roles {
                     for should_role in roles {
-                        if !filled_roles.contains(&should_role) {
+                        if !filled_roles.contains(should_role) {
                             return Err(SignatureError::Unverified(format!(
                                 "No signature found for role {:?}",
                                 should_role,
