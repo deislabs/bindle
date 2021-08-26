@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Clap;
 use tracing::{info, warn};
@@ -11,6 +11,15 @@ use bindle::{
     signature::SecretKeyFile,
     SecretKeyEntry,
 };
+
+enum AuthType {
+    /// Use GitHub with the given Client Id and Secret (in that order)
+    Github(String, String),
+    /// Use an HTPassword file at the given path
+    HttpBasic(PathBuf),
+    /// Do not perform auth.
+    None,
+}
 
 const DESCRIPTION: &str = r#"
 The Bindle Server
@@ -111,6 +120,14 @@ struct Opts {
         about = "The Github client secret to use for Oauth2 token authentication. --github-client-id should be set as well. Please note this flag is likely to be changed or removed in future releases"
     )]
     github_client_secret: Option<String>,
+
+    #[clap(
+        name = "htpasswd-file",
+        long = "htpasswd-file",
+        env = "BINDLE_HTPASSWD_FILE",
+        about = "If set, this will turn on HTTP Basic Auth for Bindle and load the given htpasswd file. Use 'htpasswd -Bc' to create one."
+    )]
+    htpasswd_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -233,24 +250,32 @@ async fn main() -> anyhow::Result<()> {
         bindle_directory.display()
     );
 
+    let auth_method = if opts.github_client_id.is_some() {
+        AuthType::Github(
+            opts.github_client_id.unwrap(),
+            opts.github_client_secret.unwrap(),
+        )
+    } else if let Some(htpasswd) = opts.htpasswd_file {
+        AuthType::HttpBasic(htpasswd)
+    } else {
+        AuthType::None
+    };
+
     // TODO: This is really gnarly, but the associated type on `Authenticator` makes turning it into
     // a Boxed dynner really difficult. I also tried rolling our own type erasure and ran into
     // similar issues (though I think it could be fixed, it would be a lot of code). So we might
     // have to resort to some sort of dependency injection here. The same goes for providers as the
     // methods have generic parameters
-    match (opts.use_embedded_db, opts.github_client_id.is_some()) {
+    match (opts.use_embedded_db, auth_method) {
         // Embedded DB and GH auth
-        (true, true) => {
+        (true, AuthType::Github(id, secret)) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
             info!("Using Github Oauth token authentication");
             let store =
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
             // We can unwrap safely here because Clap checks that both args exist and we already
             // checked that one of them exists
-            let authn = bindle::authn::github::GithubAuthenticator::new(
-                &opts.github_client_id.unwrap(),
-                &opts.github_client_secret.unwrap(),
-            )?;
+            let authn = bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
             server(
                 store,
                 index,
@@ -265,7 +290,7 @@ async fn main() -> anyhow::Result<()> {
             .await
         }
         // Embedded DB and no GH auth
-        (true, false) => {
+        (true, AuthType::None) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
             let store =
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
@@ -283,16 +308,13 @@ async fn main() -> anyhow::Result<()> {
             .await
         }
         // File system and GH auth
-        (false, true) => {
+        (false, AuthType::Github(id, secret)) => {
             info!("Using FileProvider");
             info!("Using Github Oauth token authentication");
             let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
             // We can unwrap safely here because Clap checks that both args exist and we already
             // checked that one of them exists
-            let authn = bindle::authn::github::GithubAuthenticator::new(
-                &opts.github_client_id.unwrap(),
-                &opts.github_client_secret.unwrap(),
-            )?;
+            let authn = bindle::authn::github::GithubAuthenticator::new(&id, &secret)?;
             server(
                 store,
                 index,
@@ -307,13 +329,52 @@ async fn main() -> anyhow::Result<()> {
             .await
         }
         // File system and no GH auth
-        (false, false) => {
+        (false, AuthType::None) => {
             info!("Using FileProvider");
             let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
             server(
                 store,
                 index,
                 bindle::authn::always::AlwaysAuthenticate,
+                bindle::authz::always::AlwaysAuthorize,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
+        // DB with HttpBasic
+        (true, AuthType::HttpBasic(filename)) => {
+            warn!("Using EmbeddedProvider. This is currently experimental");
+            info!("Auth mode: HTTP Basic Auth");
+            let store =
+                provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
+            let authn = bindle::authn::http_basic::HttpBasic::from_file(filename).await?;
+            server(
+                store,
+                index,
+                authn,
+                bindle::authz::always::AlwaysAuthorize,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
+        // File system with HttpBasic
+        (false, AuthType::HttpBasic(filename)) => {
+            info!("Using FileProvider");
+            info!("Auth mode: HTTP Basic Auth");
+            let authn = bindle::authn::http_basic::HttpBasic::from_file(filename).await?;
+            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
+            server(
+                store,
+                index,
+                authn,
                 bindle::authz::always::AlwaysAuthorize,
                 addr,
                 tls,

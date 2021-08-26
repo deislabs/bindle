@@ -63,6 +63,8 @@ pub struct ClientBuilder {
     http2_prior_knowledge: bool,
     danger_accept_invalid_certs: bool,
     auth_token: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 }
 
 impl Default for ClientBuilder {
@@ -71,6 +73,8 @@ impl Default for ClientBuilder {
             http2_prior_knowledge: false,
             danger_accept_invalid_certs: false,
             auth_token: None,
+            username: None,
+            password: None,
         }
     }
 }
@@ -100,6 +104,12 @@ impl ClientBuilder {
         self
     }
 
+    pub fn user_password(mut self, user: String, password: String) -> Self {
+        self.username = Some(user);
+        self.password = Some(password);
+        self
+    }
+
     /// Returns a new Client with the given URL, configured using the set options. If you want to
     /// build a client while logging into a server, use [`ClientBuilder::login`]
     ///
@@ -108,8 +118,17 @@ impl ClientBuilder {
     /// `http://my.bindle.com/v1/`. Will return an error if the URL is not valid
     pub fn build(self, base_url: &str) -> Result<Client> {
         let (base_parsed, mut headers) = base_url_and_headers(base_url)?;
+
+        // Token auth overrides user auth
         if let Some(token) = self.auth_token {
             let mut header_val = HeaderValue::from_str(&format!("Bearer {}", token))
+                .map_err(|e| ClientError::Other(e.to_string()))?;
+            header_val.set_sensitive(true);
+            headers.insert(header::AUTHORIZATION, header_val);
+        } else if let Some(username) = self.username {
+            let pw = self.password.unwrap_or_default();
+            let data = base64::encode(format!("{}:{}", username, pw));
+            let mut header_val = HeaderValue::from_str(&format!("Basic {}", data))
                 .map_err(|e| ClientError::Other(e.to_string()))?;
             header_val.set_sensitive(true);
             headers.insert(header::AUTHORIZATION, header_val);

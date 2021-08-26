@@ -3,6 +3,7 @@
 
 pub mod always;
 pub mod github;
+pub mod http_basic;
 
 use crate::authz::Authorizable;
 
