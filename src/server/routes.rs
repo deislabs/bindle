@@ -37,6 +37,7 @@ where
                     verification_strategy.clone(),
                     wrapped_keyring.clone(),
                 ))
+                .boxed()
                 .or(v1::invoice::create_json(
                     store.clone(),
                     secret_store,
