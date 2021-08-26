@@ -102,7 +102,11 @@ fn parse_basic(auth_data: &str) -> anyhow::Result<(String, String)> {
             // suffix should be base64 string
             let decoded = String::from_utf8(base64::decode(suffix)?)?;
             let pair: Vec<&str> = decoded.splitn(2, ':').collect();
-            Ok((pair[0].to_owned(), pair[1].to_owned()))
+            if pair.len() != 2 {
+                anyhow::bail!("Malformed Basic header")
+            } else {
+                Ok((pair[0].to_owned(), pair[1].to_owned()))
+            }
         }
     }
 }
