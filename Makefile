@@ -11,7 +11,6 @@ TLS_OPTS ?= --tls-cert $(CERT_NAME).crt.pem --tls-key $(CERT_NAME).key.pem
 AUTH_MODE ?=
 # Example of HTTP basic auth with the testing fixture data. 
 #AUTH_MODE ?= --htpasswd-file test/data/htpasswd
-EMBEDDED_FLAG ?= --use-embedded-db
 
 export RUST_LOG=error,warp=info,bindle=$(BINDLE_LOG_LEVEL)
 
@@ -46,22 +45,12 @@ serve-tls: _run
 .PHONY: serve
 serve: TLS_OPTS =
 serve: EMBEDDED_FLAG =
-serve: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles
+serve: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
 serve: _run
-
-.PHONY: serve-embedded
-serve-embedded: TLS_OPTS =
-serve-embedded: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
-serve-embedded: _run
-
-.PHONY: serve-embedded-tls
-serve-embedded-tls: $(CERT_NAME).crt.pem
-serve-embedded-tls: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
-serve-embedded-tls: _run
 
 .PHONY: _run
 _run:
-	cargo run $(SERVER_FEATURES) --bin $(SERVER_BIN) -- --directory $(BINDLE_DIRECTORY) --address $(BINDLE_IFACE) $(TLS_OPTS) $(EMBEDDED_FLAG) $(AUTH_MODE)
+	cargo run $(SERVER_FEATURES) --bin $(SERVER_BIN) -- --directory $(BINDLE_DIRECTORY) --address $(BINDLE_IFACE) $(TLS_OPTS) $(AUTH_MODE)
 
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client

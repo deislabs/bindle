@@ -95,15 +95,6 @@ struct Opts {
     verification_strategy: Option<bindle::VerificationStrategy>,
 
     #[clap(
-        name = "use_embedded_db",
-        long = "use-embedded-db",
-        short = 'e',
-        env = "BINDLE_USE_EMBEDDED_DB",
-        about = "Use the new embedded database provider. This is currently experimental, but fairly stable and more efficient. In the future, this will be the default"
-    )]
-    use_embedded_db: bool,
-
-    #[clap(
         name = "htpasswd-file",
         long = "htpasswd-file",
         env = "BINDLE_HTPASSWD_FILE",
@@ -281,10 +272,8 @@ async fn main() -> anyhow::Result<()> {
     // similar issues (though I think it could be fixed, it would be a lot of code). So we might
     // have to resort to some sort of dependency injection here. The same goes for providers as the
     // methods have generic parameters
-    match (opts.use_embedded_db, auth_method) {
-        // Embedded DB and oidc auth
-        (true, AuthType::Oidc(client_id, issuer, token_url)) => {
-            warn!("Using EmbeddedProvider. This is currently experimental");
+    match auth_method {
+        AuthType::Oidc(client_id, issuer, token_url) => {
             info!("Using OIDC token authentication");
             let store =
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
@@ -305,9 +294,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        // Embedded DB and no GH auth
-        (true, AuthType::None) => {
-            warn!("Using EmbeddedProvider. This is currently experimental");
+        AuthType::None => {
             let store =
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
             server(
@@ -323,71 +310,12 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        // File system and oidc auth
-        (false, AuthType::Oidc(client_id, issuer, token_url)) => {
-            info!("Using FileProvider");
-            info!("Using OIDC token authentication");
-            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
-
-            let authn =
-                bindle::authn::oidc::OidcAuthenticator::new(&issuer, &token_url, &client_id)
-                    .await?;
-            server(
-                store,
-                index,
-                authn,
-                bindle::authz::always::AlwaysAuthorize,
-                addr,
-                tls,
-                secret_store,
-                strategy,
-                keyring,
-            )
-            .await
-        }
-        // File system and no GH auth
-        (false, AuthType::None) => {
-            info!("Using FileProvider");
-            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
-            server(
-                store,
-                index,
-                bindle::authn::always::AlwaysAuthenticate,
-                bindle::authz::always::AlwaysAuthorize,
-                addr,
-                tls,
-                secret_store,
-                strategy,
-                keyring,
-            )
-            .await
-        }
-        // DB with HttpBasic
-        (true, AuthType::HttpBasic(filename)) => {
+        AuthType::HttpBasic(filename) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
             info!("Auth mode: HTTP Basic Auth");
             let store =
                 provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
             let authn = bindle::authn::http_basic::HttpBasic::from_file(filename).await?;
-            server(
-                store,
-                index,
-                authn,
-                bindle::authz::always::AlwaysAuthorize,
-                addr,
-                tls,
-                secret_store,
-                strategy,
-                keyring,
-            )
-            .await
-        }
-        // File system with HttpBasic
-        (false, AuthType::HttpBasic(filename)) => {
-            info!("Using FileProvider");
-            info!("Auth mode: HTTP Basic Auth");
-            let authn = bindle::authn::http_basic::HttpBasic::from_file(filename).await?;
-            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
             server(
                 store,
                 index,
