@@ -22,40 +22,44 @@ where
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
+    let health = warp::path("healthz").map(|| "OK");
+
     // Use an Arc to avoid a possibly expensive clone of the keyring on every API call
     let wrapped_keyring = Arc::new(keyring);
-    warp::path("v1").and(
-        v1::auth::login(authn.client_id().to_owned())
-            .with(warp::trace::request())
-            .or(filters::authenticate_and_authorize(authn.clone(), authz)
-                .untuple_one()
-                .and(
-                    v1::invoice::query(index)
-                        .or(v1::invoice::create_toml(
-                            store.clone(),
-                            secret_store.clone(),
-                            verification_strategy.clone(),
-                            wrapped_keyring.clone(),
-                        ))
-                        .or(v1::invoice::create_json(
-                            store.clone(),
-                            secret_store,
-                            verification_strategy,
-                            wrapped_keyring,
-                        ))
-                        .or(v1::invoice::get(store.clone()))
-                        .or(v1::invoice::head(store.clone()))
-                        .or(v1::invoice::yank(store.clone()))
-                        .or(v1::parcel::create(store.clone()))
-                        .or(v1::parcel::get(store.clone()))
-                        .or(v1::parcel::head(store.clone()))
-                        .or(v1::relationships::get_missing_parcels(store)),
-                )
-                .recover(filters::handle_invalid_request_path)
-                .recover(filters::handle_authn_rejection)
-                .recover(filters::handle_authz_rejection)
-                .with(warp::trace::request())),
-    )
+    warp::path("v1")
+        .and(
+            v1::auth::login(authn.client_id().to_owned())
+                .with(warp::trace::request())
+                .or(filters::authenticate_and_authorize(authn.clone(), authz)
+                    .untuple_one()
+                    .and(
+                        v1::invoice::query(index)
+                            .or(v1::invoice::create_toml(
+                                store.clone(),
+                                secret_store.clone(),
+                                verification_strategy.clone(),
+                                wrapped_keyring.clone(),
+                            ))
+                            .or(v1::invoice::create_json(
+                                store.clone(),
+                                secret_store,
+                                verification_strategy,
+                                wrapped_keyring,
+                            ))
+                            .or(v1::invoice::get(store.clone()))
+                            .or(v1::invoice::head(store.clone()))
+                            .or(v1::invoice::yank(store.clone()))
+                            .or(v1::parcel::create(store.clone()))
+                            .or(v1::parcel::get(store.clone()))
+                            .or(v1::parcel::head(store.clone()))
+                            .or(v1::relationships::get_missing_parcels(store)),
+                    )
+                    .recover(filters::handle_invalid_request_path)
+                    .recover(filters::handle_authn_rejection)
+                    .recover(filters::handle_authz_rejection)
+                    .with(warp::trace::request())),
+        )
+        .or(health)
 }
 
 pub mod v1 {
