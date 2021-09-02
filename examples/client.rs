@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::var("CARGO_MANIFEST_DIR")?;
     let root_path = std::path::PathBuf::from(root);
 
-    let bindle_client = client::Client::new(&url)?;
+    let bindle_client = client::Client::new(&url, client::tokens::NoToken)?;
 
     // Load an invoice manually and send it to the server
     println!("Creating invoice 1");

@@ -28,36 +28,40 @@ where
     let wrapped_keyring = Arc::new(keyring);
     warp::path("v1")
         .and(
-            v1::auth::login(authn.client_id().to_owned())
-                .with(warp::trace::request())
-                .or(filters::authenticate_and_authorize(authn.clone(), authz)
-                    .untuple_one()
-                    .and(
-                        v1::invoice::query(index)
-                            .or(v1::invoice::create_toml(
-                                store.clone(),
-                                secret_store.clone(),
-                                verification_strategy.clone(),
-                                wrapped_keyring.clone(),
-                            ))
-                            .or(v1::invoice::create_json(
-                                store.clone(),
-                                secret_store,
-                                verification_strategy,
-                                wrapped_keyring,
-                            ))
-                            .or(v1::invoice::get(store.clone()))
-                            .or(v1::invoice::head(store.clone()))
-                            .or(v1::invoice::yank(store.clone()))
-                            .or(v1::parcel::create(store.clone()))
-                            .or(v1::parcel::get(store.clone()))
-                            .or(v1::parcel::head(store.clone()))
-                            .or(v1::relationships::get_missing_parcels(store)),
-                    )
-                    .recover(filters::handle_invalid_request_path)
-                    .recover(filters::handle_authn_rejection)
-                    .recover(filters::handle_authz_rejection)
-                    .with(warp::trace::request())),
+            v1::auth::login(
+                authn.client_id().to_owned(),
+                authn.auth_url().to_owned(),
+                authn.token_url().to_owned(),
+            )
+            .with(warp::trace::request())
+            .or(filters::authenticate_and_authorize(authn.clone(), authz)
+                .untuple_one()
+                .and(
+                    v1::invoice::query(index)
+                        .or(v1::invoice::create_toml(
+                            store.clone(),
+                            secret_store.clone(),
+                            verification_strategy.clone(),
+                            wrapped_keyring.clone(),
+                        ))
+                        .or(v1::invoice::create_json(
+                            store.clone(),
+                            secret_store,
+                            verification_strategy,
+                            wrapped_keyring,
+                        ))
+                        .or(v1::invoice::get(store.clone()))
+                        .or(v1::invoice::head(store.clone()))
+                        .or(v1::invoice::yank(store.clone()))
+                        .or(v1::parcel::create(store.clone()))
+                        .or(v1::parcel::get(store.clone()))
+                        .or(v1::parcel::head(store.clone()))
+                        .or(v1::relationships::get_missing_parcels(store)),
+                )
+                .recover(filters::handle_invalid_request_path)
+                .recover(filters::handle_authn_rejection)
+                .recover(filters::handle_authz_rejection)
+                .with(warp::trace::request())),
         )
         .or(health)
 }
@@ -77,11 +81,15 @@ pub mod v1 {
 
         pub fn login(
             provider_client_id: String,
+            device_auth_url: String,
+            token_url: String,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             warp::path("login")
                 .and(warp::get())
                 .and(warp::query::<LoginParams>())
                 .and(warp::any().map(move || provider_client_id.clone()))
+                .and(warp::any().map(move || device_auth_url.clone()))
+                .and(warp::any().map(move || token_url.clone()))
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(crate::server::handlers::v1::login)
         }

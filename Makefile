@@ -8,10 +8,10 @@ BINDLE_IFACE ?= 127.0.0.1:8080
 MIME ?= "application/toml"
 CERT_NAME ?= ssl-example
 TLS_OPTS ?= --tls-cert $(CERT_NAME).crt.pem --tls-key $(CERT_NAME).key.pem
-EMBEDDED_FLAG ?= --use-embedded-db true
 AUTH_MODE ?=
 # Example of HTTP basic auth with the testing fixture data. 
 #AUTH_MODE ?= --htpasswd-file test/data/htpasswd
+EMBEDDED_FLAG ?= --use-embedded-db
 
 export RUST_LOG=error,warp=info,bindle=$(BINDLE_LOG_LEVEL)
 

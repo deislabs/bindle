@@ -2,7 +2,10 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bindle::client::{Client, ClientBuilder, ClientError, Result};
+use bindle::client::{
+    tokens::{HttpBasic, NoToken, OidcToken, TokenManager},
+    Client, ClientError, Result,
+};
 use bindle::invoice::signature::{
     KeyRing, SecretKeyEntry, SecretKeyFile, SecretKeyStorage, SignatureRole,
 };
@@ -45,6 +48,30 @@ async fn main() {
     }
 }
 
+/// An internal token type so we dynamically choose between various token types. We can't box dynner
+/// them for some reason, so we need to basically do our own fake dynamic dispatch. If this could be
+/// useful for other consumers of the bindle crate, we could add this in the future
+#[derive(Clone)]
+enum PickYourAuth {
+    None(NoToken),
+    Http(HttpBasic),
+    Oidc(OidcToken),
+}
+
+#[async_trait::async_trait]
+impl TokenManager for PickYourAuth {
+    async fn apply_auth_header(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder> {
+        match &self {
+            PickYourAuth::None(nt) => nt.apply_auth_header(builder).await,
+            PickYourAuth::Http(h) => h.apply_auth_header(builder).await,
+            PickYourAuth::Oidc(oidc) => oidc.apply_auth_header(builder).await,
+        }
+    }
+}
+
 async fn run() -> std::result::Result<(), ClientError> {
     let opts = opts::Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
@@ -68,30 +95,31 @@ async fn run() -> std::result::Result<(), ClientError> {
     }
 
     let token = if !matches!(opts.subcmd, SubCommand::Login(_)) {
-        match tokio::fs::read_to_string(&token_file).await {
-            Ok(t) => Some(t),
-            // Token doesn't exist, so assume they don't want token auth
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => None,
-            Err(e) => return Err(e.into()),
+        match OidcToken::new_from_file(&token_file).await {
+            Ok(t) => {
+                tracing::debug!("Found and loaded token file");
+                PickYourAuth::Oidc(t)
+            }
+            // Token doesn't exist on disk, so assume they don't want token auth
+            Err(ClientError::Io(e)) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
+                tracing::debug!("No token file located, no token authentication will be used");
+                // If we have basic auth set, and no token was found, use that
+                if let Some(user) = opts.http_user {
+                    PickYourAuth::Http(HttpBasic::new(
+                        &user,
+                        &opts.http_password.unwrap_or_default(),
+                    ))
+                } else {
+                    PickYourAuth::None(NoToken)
+                }
+            }
+            Err(e) => return Err(e),
         }
     } else {
-        None
+        PickYourAuth::None(NoToken)
     };
 
-    let mut builder = ClientBuilder::default();
-
-    if let Some(t) = token {
-        builder = builder.auth_token(t);
-    }
-
-    if let Some(user) = opts.http_user {
-        builder = builder.user_password(user, opts.http_password.unwrap_or_default());
-    }
-
-    let bindle_client = builder.build(&opts.server_url)?;
-
-    // TODO(thomastaylor312): We should read the token using a JWT parser and see if it is still
-    // valid so we can inform the user
+    let bindle_client = Client::new(&opts.server_url, token)?;
 
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
@@ -158,7 +186,9 @@ async fn run() -> std::result::Result<(), ClientError> {
                         .await?
                 }
                 Some(format) if &format == "table" => tablify(&matches),
-                Some(format) => Err(ClientError::Other(format!("Unknown format: {}", format)))?,
+                Some(format) => {
+                    return Err(ClientError::Other(format!("Unknown format: {}", format)))
+                }
                 None => tablify(&matches),
             }
         }
@@ -310,9 +340,7 @@ async fn run() -> std::result::Result<(), ClientError> {
         }
         SubCommand::Login(_login_opts) => {
             // TODO: We'll use login opts when we enable additional login providers
-            ClientBuilder::default()
-                .login(&opts.server_url, token_file)
-                .await?;
+            OidcToken::login(&opts.server_url, token_file).await?;
             println!("Login successful");
         }
     }
@@ -374,7 +402,10 @@ async fn get_parcel<C: Cache + Send + Sync + Clone>(cache: C, opts: GetParcel) -
     Ok(())
 }
 
-async fn push_all(client: Client, opts: Push) -> Result<()> {
+async fn push_all<T: TokenManager + Send + Sync + Clone + 'static>(
+    client: Client<T>,
+    opts: Push,
+) -> Result<()> {
     let standalone = StandaloneRead::new(opts.path, &opts.bindle_id).await?;
     standalone.push(&client).await?;
     println!("Pushed bindle {}", opts.bindle_id);

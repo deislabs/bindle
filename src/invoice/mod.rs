@@ -12,7 +12,7 @@ pub mod signature;
 pub mod verification;
 
 #[doc(inline)]
-pub(crate) use api::{DeviceAuthorizationExtraFields, LoginParams, LoginProvider};
+pub(crate) use api::{DeviceAuthorizationExtraFields, LoginParams};
 #[doc(inline)]
 pub use api::{ErrorResponse, InvoiceCreateResponse, MissingParcelsResponse, QueryOptions};
 #[doc(inline)]

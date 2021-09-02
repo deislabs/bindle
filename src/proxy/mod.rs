@@ -9,7 +9,7 @@ use tokio_stream::{Stream, StreamExt};
 use crate::provider::{Provider, ProviderError, Result};
 use crate::verification::Verified;
 use crate::{
-    client::{Client, ClientError},
+    client::{tokens::TokenManager, Client, ClientError},
     signature::SignatureRole,
     SecretKeyEntry,
 };
@@ -19,21 +19,21 @@ use crate::{Id, Signed};
 /// [`Client`](crate::client::Client). The proxy implementation will verify and sign invoice create
 /// operations and sign any fetched invoices
 #[derive(Clone)]
-pub struct Proxy {
-    client: Client,
+pub struct Proxy<T> {
+    client: Client<T>,
     secret_key: SecretKeyEntry,
 }
 
-impl Proxy {
+impl<T> Proxy<T> {
     /// Returns a new proxy configured to connect to an upstream using the given client and verify
     /// and sign using the given secret key and keyring
-    pub fn new(client: Client, secret_key: SecretKeyEntry) -> Self {
+    pub fn new(client: Client<T>, secret_key: SecretKeyEntry) -> Self {
         Proxy { client, secret_key }
     }
 }
 
 #[async_trait::async_trait]
-impl Provider for Proxy {
+impl<T: TokenManager + Send + Sync + 'static> Provider for Proxy<T> {
     /// Creates the invoice on the upstream server, signing the invoice as a proxy. The role and
     /// secret key parameters do not matter here
     async fn create_invoice<I>(&self, invoice: I) -> Result<(crate::Invoice, Vec<crate::Label>)>

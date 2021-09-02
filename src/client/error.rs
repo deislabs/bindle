@@ -28,6 +28,11 @@ pub enum ClientError {
     #[error("Invalid id")]
     InvalidId(#[from] crate::id::ParseError),
 
+    /// An error occurred with the authentication token as described by the contained message. These
+    /// errors can vary widely depending on the authentication method used.
+    #[error("Token error: {0}")]
+    TokenError(String),
+
     // API errors
     /// The invoice was not found. Note that this does not necessarily mean it doesn't exist. It
     /// could also be hidden because it is yanked or due to user permissions
@@ -60,6 +65,7 @@ pub enum ClientError {
     #[error("User has invalid credentials or is not authorized to access the requested resource")]
     Unauthorized,
 
+    /// There was an error with the signature on an invoice
     #[error("Signature error")]
     SignatureError(#[from] crate::invoice::signature::SignatureError),
 

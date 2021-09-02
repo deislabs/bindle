@@ -14,7 +14,7 @@ pub mod v1 {
 
     use crate::{
         signature::{KeyRing, SecretKeyStorage},
-        LoginParams, LoginProvider, QueryOptions, SignatureError,
+        LoginParams, QueryOptions, SignatureError,
     };
 
     use oauth2::reqwest::async_http_client;
@@ -23,9 +23,6 @@ pub mod v1 {
     use tokio_stream::{self as stream, StreamExt};
     use tracing::Instrument;
     use warp::http::StatusCode;
-
-    const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
-    const GITHUB_DEVICE_AUTH_URL: &str = "https://github.com/login/device/code";
 
     //////////// Invoice Functions ////////////
     #[instrument(level = "trace", skip(index))]
@@ -361,71 +358,85 @@ pub mod v1 {
     /// Redirects to a login request
     #[instrument(level = "trace")]
     pub(crate) async fn login(
-        p: LoginParams,
+        _p: LoginParams,
         client_id: String,
+        device_auth_url: String,
+        token_url: String,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
-        match p.provider {
-            LoginProvider::Github => {
-                let client = BasicClient::new(
-                    ClientId::new(client_id.clone()),
-                    None,
-                    // I don't think we actually need this, but including it anyway
-                    AuthUrl::new(GITHUB_AUTH_URL.to_owned())
-                        .expect("The github auth URL is invalid, this is programmer error"),
-                    None,
-                )
-                .set_device_authorization_url(
-                    DeviceAuthorizationUrl::new(GITHUB_DEVICE_AUTH_URL.to_owned())
-                        .expect("Incorrect device auth url. This is programmer error"),
-                );
-                let device_auth_req = match client.exchange_device_code() {
-                    Ok(r) => r,
-                    Err(e) => {
-                        tracing::error!(error = ?e, "Unable to create request for device auth");
-                        return Ok(reply::reply_from_error(
-                            "Error with Github auth request",
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                        ));
-                    }
-                };
-                let details: StandardDeviceAuthorizationResponse = match device_auth_req
-                    .add_scope(Scope::new("user:email".into()))
-                    .request_async(async_http_client)
-                    .await
-                {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!(error = ?e, "Unable to perform device auth code request to Github");
-                        // NOTE: We could probably inspect the error a bit to see if this is our
-                        // fault or if we are getting an error from the GH API which would be an
-                        // internal server error and bad gateway respectively
-                        return Ok(reply::reply_from_error(
-                            "Error performing Github auth request",
-                            StatusCode::BAD_GATEWAY,
-                        ));
-                    }
-                };
-
-                // Inject in the additional client_id parameter after serializing to a Value
-                let mut intermediate = match serde_json::to_value(details) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::error!(error = %e, "Unable to serialize device auth response to intermediate value, this shouldn't happen");
-                        return Ok(reply::reply_from_error(
-                            "Error with Github auth request",
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                        ));
-                    }
-                };
-                intermediate["client_id"] = client_id.into();
-
-                Ok(warp::reply::with_status(
-                    reply::serialized_data(&intermediate, accept_header.unwrap_or_default()),
-                    warp::http::StatusCode::OK,
-                ))
+        // TODO: When we support multiple providers, we'll need to select them based on name
+        let device_url = match DeviceAuthorizationUrl::new(device_auth_url) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!(error = ?e, "Unable to parse device auth url");
+                return Ok(reply::reply_from_error(
+                    "Error with auth request",
+                    StatusCode::BAD_REQUEST,
+                ));
             }
-        }
+        };
+        let client = BasicClient::new(
+            ClientId::new(client_id.clone()),
+            None,
+            AuthUrl::new("https://not.needed.com".to_owned())
+                .expect("The auth URL is invalid, this is programmer error"),
+            None,
+        )
+        .set_device_authorization_url(device_url)
+        .set_auth_type(oauth2::AuthType::RequestBody);
+        let device_auth_req = match client.exchange_device_code() {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = ?e, "Unable to create request for device auth");
+                return Ok(reply::reply_from_error(
+                    "Error with auth request",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ));
+            }
+        };
+
+        let details: StandardDeviceAuthorizationResponse = match device_auth_req
+            .add_scope(Scope::new("openid".into()))
+            .add_scope(Scope::new("profile".into()))
+            .add_scope(Scope::new("email".into()))
+            // Not all OIDC providers support groups claims. Ideally, we can look at the supported
+            // claims list from the discovery API once we do need groups
+            //.add_scope(Scope::new("groups".into()))
+            .add_scope(Scope::new("offline_access".into())) // For refresh token
+            .request_async(async_http_client)
+            .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!(error = ?e, "Unable to perform device auth code request");
+                // NOTE: We could probably inspect the error a bit to see if this is our fault or if
+                // we are getting an error from the upstream server which would be an internal
+                // server error and bad gateway respectively
+                return Ok(reply::reply_from_error(
+                    "Error performing auth request",
+                    StatusCode::BAD_GATEWAY,
+                ));
+            }
+        };
+
+        // Inject in the additional client_id and token_url parameter after serializing to a Value
+        let mut intermediate = match serde_json::to_value(details) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(error = %e, "Unable to serialize device auth response to intermediate value, this shouldn't happen");
+                return Ok(reply::reply_from_error(
+                    "Error with auth request",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ));
+            }
+        };
+        intermediate["client_id"] = client_id.into();
+        intermediate["token_url"] = token_url.into();
+
+        Ok(warp::reply::with_status(
+            reply::serialized_data(&intermediate, accept_header.unwrap_or_default()),
+            warp::http::StatusCode::OK,
+        ))
     }
 
     //////////// Helper Functions ////////////

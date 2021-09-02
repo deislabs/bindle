@@ -9,7 +9,7 @@ use tokio_stream::{Stream, StreamExt};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tracing::{debug, info, instrument, trace};
 
-use crate::client::{Client, ClientError, Result};
+use crate::client::{tokens::TokenManager, Client, ClientError, Result};
 use crate::Id;
 
 /// The name of the invoice file
@@ -71,7 +71,7 @@ impl StandaloneRead {
     /// automatically handle cases where the invoice or some of the parcels already exist on the
     /// target bindle server
     #[instrument(level = "trace", skip(self, client))]
-    pub async fn push(&self, client: &Client) -> Result<()> {
+    pub async fn push<T: TokenManager + Clone>(&self, client: &Client<T>) -> Result<()> {
         let inv_create = create_or_get_invoice(client, &self.invoice_file).await?;
         let missing = inv_create.missing.unwrap_or_default();
         let inv = inv_create.invoice;
@@ -102,7 +102,7 @@ impl StandaloneRead {
 
         let parcel_futures = to_upload
             .into_iter()
-            .map(|(sha, path)| (sha, path, inv.bindle.id.clone(), client.clone()))
+            .map(|(sha, path)| (sha, path, inv.bindle.id.clone(), (*client).clone()))
             .map(|(sha, path, bindle_id, client)| async move {
                 debug!(%sha, "Uploading parcel to server");
                 client
@@ -164,8 +164,8 @@ impl StandaloneRead {
 /// Helper function for creating an invoice or fetching it if it already exists. For security
 /// reasons, we need to fetch the invoice (and its missing parcels) if it already exists as the user
 /// submitted one could be incorrect (intentionally or unintentionally)
-async fn create_or_get_invoice(
-    client: &Client,
+async fn create_or_get_invoice<T: TokenManager>(
+    client: &Client<T>,
     invoice_path: &Path,
 ) -> Result<crate::InvoiceCreateResponse> {
     // Load the invoice into memory so we can have access to its ID for fetching if needed
@@ -397,7 +397,7 @@ mod test {
 
         // Create parcel
         let parcel_data = "I'm a test fixture".as_bytes();
-        let sha = Sha256::digest(&parcel_data);
+        let sha = Sha256::digest(parcel_data);
         let sha_string = format!("{:x}", sha);
 
         // Add parcel

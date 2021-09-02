@@ -2,14 +2,14 @@
 mod test_util;
 use test_util::TestController;
 
-use bindle::client::Client;
+use bindle::client::{tokens::TokenManager, Client};
 use bindle::testing;
 
 const ENV_BINDLE_URL: &str = "BINDLE_URL";
 const BINARY_NAME: &str = "bindle-server";
 
 // Inserts data into the test server for fetching
-async fn setup_data(client: &Client) {
+async fn setup_data<T: TokenManager>(client: &Client<T>) {
     // For now let's just put in a simple manifest and one with a lot of parcels
     for name in &["valid_v1", "lotsa_parcels"] {
         let scaffold = testing::Scaffold::load(*name).await;
