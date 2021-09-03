@@ -296,7 +296,7 @@ async fn main() -> anyhow::Result<()> {
                 store,
                 index,
                 authn,
-                bindle::authz::always::AlwaysAuthorize,
+                bindle::authz::anonymous_get::AnonymousGet,
                 addr,
                 tls,
                 secret_store,
@@ -305,7 +305,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        // Embedded DB and no GH auth
+        // Embedded DB and no auth
         (true, AuthType::None) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
             let store =
@@ -336,7 +336,7 @@ async fn main() -> anyhow::Result<()> {
                 store,
                 index,
                 authn,
-                bindle::authz::always::AlwaysAuthorize,
+                bindle::authz::anonymous_get::AnonymousGet,
                 addr,
                 tls,
                 secret_store,
@@ -373,7 +373,7 @@ async fn main() -> anyhow::Result<()> {
                 store,
                 index,
                 authn,
-                bindle::authz::always::AlwaysAuthorize,
+                bindle::authz::anonymous_get::AnonymousGet,
                 addr,
                 tls,
                 secret_store,
@@ -392,7 +392,7 @@ async fn main() -> anyhow::Result<()> {
                 store,
                 index,
                 authn,
-                bindle::authz::always::AlwaysAuthorize,
+                bindle::authz::anonymous_get::AnonymousGet,
                 addr,
                 tls,
                 secret_store,

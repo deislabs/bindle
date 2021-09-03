@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use super::Authenticator;
-use crate::authz::always::Anonymous;
+use crate::authz::Authorizable;
 
 /// HTTP header prefix
 const HTTP_BASIC_PREFIX: &str = "Basic ";
@@ -45,10 +45,10 @@ impl HttpBasic {
         Ok(HttpBasic { authmap })
     }
 
-    fn check_credentials(&self, username: String, password: String) -> bool {
+    fn check_credentials(&self, username: &str, password: &str) -> bool {
         // Note that it is consider a security risk to leak any information about
         // why an auth failed. So returning a bool provides the minimal info necessary.
-        match self.authmap.get(&username) {
+        match self.authmap.get(username) {
             Some(ciphertext) => {
                 if ciphertext.starts_with("$2y$") {
                     match bcrypt::verify(password, ciphertext) {
@@ -79,8 +79,7 @@ impl HttpBasic {
 
 #[async_trait::async_trait]
 impl Authenticator for HttpBasic {
-    // TODO: When Authz is plumbed in, we should be more specific.
-    type Item = Anonymous;
+    type Item = HttpUser;
 
     async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item> {
         if auth_data.is_empty() {
@@ -88,8 +87,8 @@ impl Authenticator for HttpBasic {
         }
 
         let (username, password) = parse_basic(auth_data)?;
-        match self.check_credentials(username, password) {
-            true => Ok(Anonymous),
+        match self.check_credentials(&username, &password) {
+            true => Ok(HttpUser { username }),
             false => anyhow::bail!("Authentication failed"),
         }
     }
@@ -108,6 +107,22 @@ fn parse_basic(auth_data: &str) -> anyhow::Result<(String, String)> {
                 Ok((pair[0].to_owned(), pair[1].to_owned()))
             }
         }
+    }
+}
+
+/// A representation of a user authenticated by HTTP basic auth. This user contains no groups and
+/// will match the username given in the basic auth header
+pub struct HttpUser {
+    username: String,
+}
+
+impl Authorizable for HttpUser {
+    fn principal(&self) -> String {
+        self.username.clone()
+    }
+
+    fn groups(&self) -> Vec<String> {
+        Vec::with_capacity(0)
     }
 }
 
@@ -130,16 +145,16 @@ mod test {
             .await
             .expect("File should load");
         assert!(
-            basic.check_credentials("admin".to_owned(), "sw0rdf1sh".to_owned()),
+            basic.check_credentials("admin", "sw0rdf1sh"),
             "The password is always swordfish"
         );
 
         assert!(
-            !basic.check_credentials("nope".to_owned(), "password".to_owned()),
+            !basic.check_credentials("nope", "password"),
             "should fail on nonexistent user"
         );
         assert!(
-            !basic.check_credentials("admin".to_owned(), "swordfish".to_owned()),
+            !basic.check_credentials("admin", "swordfish"),
             "The password is not swordfish"
         );
     }

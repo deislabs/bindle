@@ -2,6 +2,7 @@
 //! is enabled
 
 pub mod always;
+pub mod anonymous_get;
 
 /// A trait that can be implemented on any type (such as a custom `User` or `Token` type) so that it
 /// can be authorized by an [`Authorizer`](Authorizer)
@@ -24,6 +25,6 @@ pub trait Authorizer {
         &self,
         item: A,
         path: &str,
-        method: warp::http::Method,
+        method: &warp::http::Method,
     ) -> anyhow::Result<()>;
 }

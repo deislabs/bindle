@@ -8,7 +8,7 @@ pub struct Anonymous;
 
 impl Authorizable for Anonymous {
     fn principal(&self) -> String {
-        String::from("anonymous")
+        String::new()
     }
 
     fn groups(&self) -> Vec<String> {
@@ -25,7 +25,7 @@ impl Authorizer for AlwaysAuthorize {
         &self,
         _: A,
         _: &str,
-        _: warp::http::Method,
+        _: &warp::http::Method,
     ) -> anyhow::Result<()> {
         Ok(())
     }
