@@ -6,7 +6,10 @@ use bindle::client::{tokens::TokenManager, Client};
 use bindle::testing;
 
 const ENV_BINDLE_URL: &str = "BINDLE_URL";
+#[cfg(not(target_family = "windows"))]
 const BINARY_NAME: &str = "bindle-server";
+#[cfg(target_family = "windows")]
+const BINARY_NAME: &str = "bindle-server.exe";
 
 // Inserts data into the test server for fetching
 async fn setup_data<T: TokenManager>(client: &Client<T>) {

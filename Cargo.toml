@@ -74,6 +74,7 @@ jsonwebtoken = "7.2"
 openid = {version = "0.9", optional = true}
 bcrypt = "0.10"
 chrono = { version = "0.4", features = ["serde"], optional = true }
+either = "1.6"
 
 # NOTE: This is a workaround due to a dependency issue in oauth2: https://github.com/tkaitchuck/ahash/issues/95#issuecomment-903560879
 indexmap = "~1.6.2"

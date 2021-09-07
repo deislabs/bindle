@@ -750,4 +750,100 @@ mod test {
             "Newly created invoice should be signed by the host"
         );
     }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_anonymous_get<T>(
+        #[values(testing::setup(), testing::setup_embedded())]
+        #[future]
+        provider_setup: (T, StrictEngine, MockKeyStore),
+    ) where
+        T: Provider + Clone + Send + Sync + 'static,
+    {
+        let (store, index, ks) = provider_setup.await;
+
+        let api = super::routes::api(
+            store,
+            index,
+            crate::authn::http_basic::HttpBasic::from_file("test/data/htpasswd")
+                .await
+                .expect("Unable to load htpasswd file"),
+            crate::authz::anonymous_get::AnonymousGet,
+            ks,
+            VerificationStrategy::default(),
+            KeyRing::default(),
+        );
+
+        let scaffold = testing::RawScaffold::load("valid_v1").await;
+
+        // Creating the invoice without a token should fail
+        let res = warp::test::request()
+            .method("POST")
+            .header("Content-Type", "application/toml")
+            .path("/v1/_i")
+            .body(&scaffold.invoice)
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::FORBIDDEN,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+
+        // Creating with a token should succeed
+        let res = warp::test::request()
+            .method("POST")
+            .header("Content-Type", "application/toml")
+            .header(
+                "Authorization",
+                format!("Basic {}", base64::encode(b"admin:sw0rdf1sh")),
+            )
+            .path("/v1/_i")
+            .body(&scaffold.invoice)
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::ACCEPTED,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+
+        let scaffold: testing::Scaffold = scaffold.into();
+
+        // Fetching with a token should work
+        let res = warp::test::request()
+            .method("GET")
+            .header(
+                "Authorization",
+                format!("Basic {}", base64::encode(b"admin:sw0rdf1sh")),
+            )
+            .path(&format!("/v1/_i/{}", scaffold.invoice.bindle.id))
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::OK,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+
+        // Fetching without a token should work
+        let res = warp::test::request()
+            .method("GET")
+            .path(&format!("/v1/_i/{}", scaffold.invoice.bindle.id))
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::OK,
+            "Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+    }
 }

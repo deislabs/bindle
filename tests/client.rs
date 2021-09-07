@@ -10,7 +10,10 @@ use bindle::testing;
 
 use tokio_stream::StreamExt;
 
+#[cfg(not(target_family = "windows"))]
 const BINARY_NAME: &str = "bindle-server";
+#[cfg(target_family = "windows")]
+const BINARY_NAME: &str = "bindle-server.exe";
 
 #[tokio::test]
 async fn test_successful() {

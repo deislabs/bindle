@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::Read;
 
+use either::Either;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use tracing::{debug, instrument, trace, warn};
@@ -11,6 +12,7 @@ use warp::Filter;
 
 use super::TOML_MIME_TYPE;
 use crate::authn::Authenticator;
+use crate::authz::always::Anonymous;
 use crate::authz::Authorizer;
 
 pub(crate) const PARCEL_ID_SEPARATOR: char = '@';
@@ -95,7 +97,7 @@ fn handle_tail(tail: &str) -> Result<(String, Option<String>), Rejection> {
 /// A warp filter for adding an authenticator
 fn authenticate<Authn: Authenticator + Clone + Send + Sync>(
     authn: Authn,
-) -> impl Filter<Extract = (Authn::Item,), Error = Rejection> + Clone {
+) -> impl Filter<Extract = (Either<Anonymous, Authn::Item>,), Error = Rejection> + Clone {
     // We get the header optionally as anonymous auth could be enabled
     warp::any()
         .map(move || authn.clone())
@@ -107,10 +109,14 @@ fn authenticate<Authn: Authenticator + Clone + Send + Sync>(
 async fn _authenticate<A: Authenticator + Clone + Send>(
     authn: A,
     auth_data: Option<String>,
-) -> Result<A::Item, Rejection> {
-    // If there was no auth available, that means anonymous auth, so we can safely unwrap to an empty string
-    match authn.authenticate(&auth_data.unwrap_or_default()).await {
-        Ok(a) => Ok(a),
+) -> Result<Either<Anonymous, A::Item>, Rejection> {
+    let data = match auth_data {
+        Some(s) => s,
+        // If we had no auth data, that means this is anonymous
+        None => return Ok(Either::Left(Anonymous)),
+    };
+    match authn.authenticate(&data).await {
+        Ok(a) => Ok(Either::Right(a)),
         Err(e) => {
             debug!(error = %e, "Authentication error");
             Err(warp::reject::custom(AuthnFail))
@@ -151,10 +157,16 @@ pub(crate) fn authenticate_and_authorize<
         .and(warp::method())
         .and(warp::any().map(move || authz.clone()))
         .and_then(
-            |item: Authn::Item, path: warp::path::FullPath, method, authz: Authz| {
+            |item: Either<Anonymous, Authn::Item>,
+             path: warp::path::FullPath,
+             method: warp::http::Method,
+             authz: Authz| {
                 async move {
                     trace!(path = path.as_str(), %method, "Authorizing request");
-                    if let Err(e) = authz.authorize(item, path.as_str(), method) {
+                    if let Err(e) = item.either(
+                        |anon| authz.authorize(anon, path.as_str(), &method),
+                        |i| authz.authorize(i, path.as_str(), &method),
+                    ) {
                         debug!(error = %e, "Authorization error");
                         return Err(warp::reject::custom(AuthzFail));
                     }
