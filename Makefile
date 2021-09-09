@@ -11,7 +11,7 @@ TLS_OPTS ?= --tls-cert $(CERT_NAME).crt.pem --tls-key $(CERT_NAME).key.pem
 AUTH_MODE ?=
 # Example of HTTP basic auth with the testing fixture data. 
 #AUTH_MODE ?= --htpasswd-file test/data/htpasswd
-EMBEDDED_FLAG ?= --use-embedded-db
+EMBEDDED_FLAG ?= --use-embedded-db true
 
 export RUST_LOG=error,warp=info,bindle=$(BINDLE_LOG_LEVEL)
 
