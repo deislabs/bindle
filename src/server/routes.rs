@@ -18,7 +18,7 @@ pub fn api<P, I, Authn, Authz, S>(
 where
     P: crate::provider::Provider + Clone + Send + Sync + 'static,
     I: crate::search::Search + Clone + Send + Sync + 'static,
-    S: crate::invoice::signature::SecretKeyStorage + Clone + Send + Sync,
+    S: crate::invoice::signature::SecretKeyStorage + Clone + Send + Sync + 'static,
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
@@ -37,25 +37,36 @@ where
                     verification_strategy.clone(),
                     wrapped_keyring.clone(),
                 ))
+                .boxed()
                 .or(v1::invoice::create_json(
                     store.clone(),
                     secret_store,
                     verification_strategy,
                     wrapped_keyring,
                 ))
+                .boxed()
                 .or(v1::invoice::get(store.clone()))
+                .boxed()
                 .or(v1::invoice::head(store.clone()))
+                .boxed()
                 .or(v1::invoice::yank(store.clone()))
+                .boxed()
                 .or(v1::parcel::create(store.clone()))
+                .boxed()
                 .or(v1::parcel::get(store.clone()))
+                .boxed()
                 .or(v1::parcel::head(store.clone()))
+                .boxed()
                 .or(v1::relationships::get_missing_parcels(store))
+                .boxed()
                 .or(v1::auth::login(
                     authn.client_id().to_owned(),
                     authn.auth_url().to_owned(),
                     authn.token_url().to_owned(),
                 ))
-                .or(health),
+                .boxed()
+                .or(health)
+                .boxed(),
         )
         .recover(filters::handle_invalid_request_path)
         .recover(filters::handle_authn_rejection)
@@ -89,6 +100,7 @@ pub mod v1 {
                 .and(warp::any().map(move || token_url.clone()))
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(crate::server::handlers::v1::login)
+                .boxed()
         }
     }
 
