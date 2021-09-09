@@ -101,7 +101,7 @@ struct Opts {
         env = "BINDLE_USE_EMBEDDED_DB",
         about = "Use the new embedded database provider. This is currently experimental, but fairly stable and more efficient. In the future, this will be the default"
     )]
-    use_embedded_db: bool,
+    use_embedded_db: Option<bool>,
 
     #[clap(
         name = "htpasswd-file",
@@ -159,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let config: Opts = load_toml(config_file_path).await.unwrap_or_else(|e| {
-        warn!(error = %e, "No server.toml file loaded");
+        warn!(error = %e, "No config file loaded");
         Opts::default()
     });
 
@@ -281,7 +281,8 @@ async fn main() -> anyhow::Result<()> {
     // similar issues (though I think it could be fixed, it would be a lot of code). So we might
     // have to resort to some sort of dependency injection here. The same goes for providers as the
     // methods have generic parameters
-    match (opts.use_embedded_db, auth_method) {
+    let use_embedded_db = opts.use_embedded_db.unwrap_or_default();
+    match (use_embedded_db, auth_method) {
         // Embedded DB and oidc auth
         (true, AuthType::Oidc(client_id, issuer, token_url)) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
