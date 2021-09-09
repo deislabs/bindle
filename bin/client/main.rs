@@ -113,7 +113,10 @@ async fn run() -> std::result::Result<(), ClientError> {
                     PickYourAuth::None(NoToken)
                 }
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                let message = format!("Error loading token file {:?}: {}", &token_file, e);
+                return Err(ClientError::InvalidConfig(message));
+            }
         }
     } else {
         PickYourAuth::None(NoToken)
