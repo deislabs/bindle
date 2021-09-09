@@ -44,6 +44,7 @@ where
                     verification_strategy,
                     wrapped_keyring,
                 ))
+                .boxed()
                 .or(v1::invoice::get(store.clone()))
                 .boxed()
                 .or(v1::invoice::head(store.clone()))
