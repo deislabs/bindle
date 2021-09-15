@@ -58,7 +58,7 @@ pub enum ClientError {
         message: Option<String>,
     },
     /// A server error was encountered. Contains an optional message from the server
-    #[error("Server has encountered an error: {}", .0.clone().unwrap_or_else(||"Protocol error. Verify the Bindle URL".to_owned()))]
+    #[error("Error contacting server: {}", .0.clone().unwrap_or_else(||"Protocol error. Verify the Bindle URL".to_owned()))]
     ServerError(Option<String>),
     /// Invalid credentials were used or user does not have access to the requested resource. This
     /// is only valid if the server supports authentication and/or permissions
