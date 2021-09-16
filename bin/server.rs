@@ -153,57 +153,28 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let opts = Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // load config file if it exists
-    let config_file_path = match opts.config_file {
-        Some(c) => c,
-        None => default_config_file()
-            .ok_or_else(|| anyhow::anyhow!("could not find a default config path"))?,
-    };
+    let config = merged_opts().await?;
 
-    let config: Opts = load_toml(config_file_path).await.unwrap_or_else(|e| {
-        warn!(error = %e, "No config file loaded");
-        Opts::default()
-    });
-
-    // find socket address
-    //   1. cli options if set
-    //   2. config file if set
-    //   3. default
-    let addr: SocketAddr = opts
+    let addr: SocketAddr = config
         .address
-        .or(config.address)
         .unwrap_or_else(|| String::from("127.0.0.1:8080"))
         .parse()?;
 
-    // find bindle directory
-    //   1. cli options if set
-    //   2. config file if set
-    //   3. default
-    let bindle_directory: PathBuf = opts
-        .bindle_directory
-        .or(config.bindle_directory)
-        .unwrap_or_else(|| {
-            dirs::data_dir()
-                .expect("Unable to infer data directory")
-                .join("bindle")
-        });
+    let bindle_directory: PathBuf = config.bindle_directory.unwrap_or_else(|| {
+        dirs::data_dir()
+            .expect("Unable to infer data directory")
+            .join("bindle")
+    });
 
-    // find bindle directory
-    //   1. cli options if set
-    //   2. config file if set
-    //   3. default
-    //   4. hardcoded `./.bindle/keyring.toml`
     // TODO: Should we ensure a keyring?
-    let keyring_file: PathBuf = opts
+    let keyring_file: PathBuf = config
         .keyring_file
-        .or(config.keyring_file)
         .unwrap_or_else(|| default_config_dir().join("keyring.toml"));
 
     // We might want to do something different in the future. But what we do here is
@@ -228,31 +199,24 @@ async fn main() -> anyhow::Result<()> {
     // - --signing-keys filename
     // - or config file signing-keys entry
     // - or $XDG_DATA/bindle/signing-keys.toml
-    let signing_keys_config: Option<PathBuf> = opts.signing_file.or(config.signing_file);
-
-    let signing_keys = match signing_keys_config {
+    let signing_keys: PathBuf = match config.signing_file {
         Some(keypath) => keypath,
         None => ensure_signing_keys().await?,
     };
 
-    let cert_path = opts.cert_path.or(config.cert_path);
-
-    let key_path = opts.key_path.or(config.key_path);
-
     // Map doesn't work here because we've already moved data out of opts
     #[allow(clippy::manual_map)]
-    let tls = match cert_path {
+    let tls = match config.cert_path {
         None => None,
         Some(p) => Some(TlsConfig {
             cert_path: p,
-            key_path: key_path.expect("--key-path should be set if --cert-path was set"),
+            key_path: config
+                .key_path
+                .expect("--key-path should be set if --cert-path was set"),
         }),
     };
 
-    let strategy = opts
-        .verification_strategy
-        .or(config.verification_strategy)
-        .unwrap_or_default();
+    let strategy = config.verification_strategy.unwrap_or_default();
 
     tracing::info!("Using verification strategy of {:?}", strategy);
 
@@ -271,17 +235,17 @@ async fn main() -> anyhow::Result<()> {
         bindle_directory.display()
     );
 
-    let auth_method = if opts.oidc_client_id.is_some() {
+    let auth_method = if config.oidc_client_id.is_some() {
         // We can unwrap safely here because Clap checks that all args exist and we already
         // checked that one of them exists
         AuthType::Oidc(
-            opts.oidc_client_id.unwrap(),
-            opts.oidc_issuer_url.unwrap(),
-            opts.oidc_device_url.unwrap(),
+            config.oidc_client_id.unwrap(),
+            config.oidc_issuer_url.unwrap(),
+            config.oidc_device_url.unwrap(),
         )
-    } else if let Some(htpasswd) = opts.htpasswd_file {
+    } else if let Some(htpasswd) = config.htpasswd_file {
         AuthType::HttpBasic(htpasswd)
-    } else if opts.unauthenticated || config.unauthenticated {
+    } else if config.unauthenticated {
         AuthType::None
     } else {
         anyhow::bail!(
@@ -294,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
     // similar issues (though I think it could be fixed, it would be a lot of code). So we might
     // have to resort to some sort of dependency injection here. The same goes for providers as the
     // methods have generic parameters
-    match (opts.use_embedded_db, auth_method) {
+    match (config.use_embedded_db, auth_method) {
         // Embedded DB and oidc auth
         (true, AuthType::Oidc(client_id, issuer, token_url)) => {
             warn!("Using EmbeddedProvider. This is currently experimental");
@@ -469,6 +433,39 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
             e
         )),
     }
+}
+
+async fn merged_opts() -> anyhow::Result<Opts> {
+    let opts = Opts::parse();
+
+    // load config file if it exists
+    let config_file_path = match opts.config_file.clone() {
+        Some(c) => c,
+        None => default_config_file()
+            .ok_or_else(|| anyhow::anyhow!("could not find a default config path"))?,
+    };
+
+    let config: Opts = load_toml(config_file_path).await.unwrap_or_else(|e| {
+        warn!(error = %e, "No config file loaded");
+        Opts::default()
+    });
+
+    Ok(Opts {
+        address: opts.address.or(config.address),
+        bindle_directory: opts.bindle_directory.or(config.bindle_directory),
+        cert_path: opts.cert_path.or(config.cert_path),
+        config_file: opts.config_file,
+        htpasswd_file: opts.htpasswd_file.or(config.htpasswd_file),
+        unauthenticated: opts.unauthenticated || config.unauthenticated,
+        key_path: opts.key_path.or(config.key_path),
+        keyring_file: opts.keyring_file.or(config.keyring_file),
+        oidc_client_id: opts.oidc_client_id.or(config.oidc_client_id),
+        oidc_device_url: opts.oidc_device_url.or(config.oidc_device_url),
+        oidc_issuer_url: opts.oidc_issuer_url.or(config.oidc_issuer_url),
+        signing_file: opts.signing_file.or(config.signing_file),
+        use_embedded_db: opts.use_embedded_db || config.use_embedded_db,
+        verification_strategy: opts.verification_strategy.or(config.verification_strategy),
+    })
 }
 
 async fn load_toml<T>(file: PathBuf) -> anyhow::Result<T>
