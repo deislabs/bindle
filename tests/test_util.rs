@@ -42,6 +42,7 @@ impl TestController {
                 .join(server_binary_name),
         )
         .args(&[
+            "--unauthenticated",
             "-d",
             tempdir.path().to_string_lossy().to_string().as_str(),
             "-i",

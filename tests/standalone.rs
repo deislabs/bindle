@@ -172,6 +172,7 @@ async fn test_push() {
             "--bin",
             "bindle-server",
             "--",
+            "--unauthenticated",
             "-i",
             address,
             "-d",

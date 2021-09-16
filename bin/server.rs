@@ -141,6 +141,14 @@ struct Opts {
         about = "The URL of the OIDC issuer your tokens should be issued by. This is used for verification of the token and for OIDC discovery"
     )]
     oidc_issuer_url: Option<String>,
+
+    #[clap(
+        name = "unauthenticated",
+        long = "unauthenticated",
+        about = "Run server in develepment mode"
+    )]
+    #[serde(default)]
+    unauthenticated: bool,
 }
 
 #[tokio::main]
@@ -273,8 +281,12 @@ async fn main() -> anyhow::Result<()> {
         )
     } else if let Some(htpasswd) = opts.htpasswd_file {
         AuthType::HttpBasic(htpasswd)
-    } else {
+    } else if opts.unauthenticated || config.unauthenticated {
         AuthType::None
+    } else {
+        anyhow::bail!(
+            "An authentication method must be specified.  Use --unauthenticated to run server without authentication"
+        );
     };
 
     // TODO: This is really gnarly, but the associated type on `Authenticator` makes turning it into
