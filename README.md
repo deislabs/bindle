@@ -4,7 +4,7 @@
 
 ## Aggregate Object Storage Means Keeping Related Things Together
 
-A photo album. A sock drawer. A bookshelf. We like storage solutions that less us keep related things in a single location.
+A photo album. A sock drawer. A bookshelf. We like storage solutions that let us keep related things in a single location.
 
 Consider the humble silverware drawer. When we set the table for dinner, it's convenient to open one drawer and get the forks, spoons, and knives. Yes, a fork is a different thing than a knife. Yes, there are multiple different kinds of spoons. And, yes, silverware is not even uniform in size or shape brand-to-brand, model-to-model. Some people keep chopsticks with the silverware. Others toss in those tiny spreader things you use to slather on the cream cheese at a fancy party. In my house we keep the straws in the silverware drawer. Drawers are flexible. They can accommodate these variances.
 
