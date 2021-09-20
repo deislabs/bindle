@@ -136,6 +136,13 @@ pub struct Info {
         about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
+    #[clap(
+        short = 'f',
+        long = "output-format",
+        about = "choose an output format",
+        possible_values = &["json", "toml"],
+    )]
+    pub output: Option<String>,
 }
 
 #[derive(Clap)]
