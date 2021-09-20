@@ -8,8 +8,8 @@ BINDLE_IFACE ?= 127.0.0.1:8080
 MIME ?= "application/toml"
 CERT_NAME ?= ssl-example
 TLS_OPTS ?= --tls-cert $(CERT_NAME).crt.pem --tls-key $(CERT_NAME).key.pem
-AUTH_MODE ?=
-# Example of HTTP basic auth with the testing fixture data. 
+AUTH_MODE ?= --unauthenticated
+# Example of HTTP basic auth with the testing fixture data.
 #AUTH_MODE ?= --htpasswd-file test/data/htpasswd
 EMBEDDED_FLAG ?= --use-embedded-db
 
@@ -66,7 +66,7 @@ _run:
 # Sort of a wacky hack if you want to do `$(make client) --help`
 .PHONY: client
 client:
-	@echo cargo run $(CLIENT_FEATURES) --bin $(CLIENT_BIN) -- 
+	@echo cargo run $(CLIENT_FEATURES) --bin $(CLIENT_BIN) --
 
 .PHONY: build
 build: build-server
