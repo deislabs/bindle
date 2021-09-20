@@ -144,7 +144,21 @@ async fn run() -> std::result::Result<(), ClientError> {
             }
             .await
             .map_err(map_storage_error)?;
-            tokio::io::stdout().write_all(&toml::to_vec(&inv)?).await?;
+
+            match info_opts.output {
+                Some(format) if &format == "toml" => {
+                    tokio::io::stdout().write_all(&toml::to_vec(&inv)?).await?
+                }
+                Some(format) if &format == "json" => {
+                    tokio::io::stdout()
+                        .write_all(&serde_json::to_vec_pretty(&inv)?)
+                        .await?
+                }
+                Some(format) => {
+                    return Err(ClientError::Other(format!("Unknown format: {}", format)))
+                }
+                None => tokio::io::stdout().write_all(&toml::to_vec(&inv)?).await?,
+            }
         }
         SubCommand::GetInvoice(gi_opts) => {
             let inv = match gi_opts.yanked {
