@@ -46,17 +46,14 @@ serve-tls: _run
 .PHONY: serve
 serve: TLS_OPTS =
 serve: EMBEDDED_FLAG =
-serve: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles
 serve: _run
 
 .PHONY: serve-embedded
 serve-embedded: TLS_OPTS =
-serve-embedded: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
 serve-embedded: _run
 
 .PHONY: serve-embedded-tls
 serve-embedded-tls: $(CERT_NAME).crt.pem
-serve-embedded-tls: BINDLE_DIRECTORY = $(HOME)/.bindle/bindles-embedded
 serve-embedded-tls: _run
 
 .PHONY: _run
