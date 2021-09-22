@@ -82,7 +82,7 @@ To build Bindle, you can use `make` or `cargo`:
 $ # Recommended
 $ make build
 $ # The above is approximately equivalent to:
-$ cargo build --feature=cli --bin bindle
+$ cargo build --features=cli --bin bindle
 $ cargo build --all-features --bin bindle-server
 ```
 
