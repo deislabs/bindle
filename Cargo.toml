@@ -91,13 +91,3 @@ required-features = ["cli"]
 name = "bindle"
 path = "bin/client/main.rs"
 required-features = ["cli"]
-
-[[bin]]
-name = "cargo2bindle"
-path = "bin/cargo2bindle.rs"
-required-features = ["cli"]
-
-[[bin]]
-name = "as2bindle"
-path = "bin/as2bindle.rs"
-required-features = ["cli"]
