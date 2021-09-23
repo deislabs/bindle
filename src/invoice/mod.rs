@@ -31,7 +31,7 @@ pub use signature::{SecretKeyEntry, Signature, SignatureError, SignatureRole};
 pub use verification::VerificationStrategy;
 
 use ed25519_dalek::{Signature as EdSignature, Signer};
-use semver::{Compat, Version, VersionReq};
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -377,20 +377,20 @@ fn version_compare(version: &Version, requirement: &str) -> bool {
         return true;
     }
 
-    // Setting Compat::Npm follows the rules here:
-    // https://www.npmjs.com/package/semver
-    //
-    // Most importantly, the requirement "1.2.3" is treated as "= 1.2.3".
-    // Without the compat mode, "1.2.3" is treated as "^1.2.3".
-    match VersionReq::parse_compat(requirement, Compat::Npm) {
-        Ok(req) => {
-            return req.matches(version);
-        }
+    // For compatibility with npm (https://www.npmjs.com/package/semver),
+    // check if the requirement is just a version; if so, treat it as equality (`=`) rather
+    // than Rust's default (`^`).
+    if let Ok(v) = Version::parse(requirement) {
+        return *version == v;
+    }
+
+    match VersionReq::parse(requirement) {
+        Ok(req) => req.matches(version),
         Err(e) => {
             tracing::log::error!("SemVer range could not parse: {}", e);
+            false
         }
     }
-    false
 }
 
 #[cfg(test)]
