@@ -53,9 +53,9 @@ jobs:
         shell: bash
         run: |
           mkdir _dist
-          cp README.md LICENSE.txt target/release/bindle${{ matrix.config.extension }} target/release/bindle-server${{ matrix.config.extension }} target/release/cargo2bindle${{ matrix.config.extension }} target/release/as2bindle${{ matrix.config.extension }} _dist/
+          cp README.md LICENSE.txt target/release/bindle${{ matrix.config.extension }} target/release/bindle-server${{ matrix.config.extension }} _dist/
           cd _dist
-          tar czf bindle-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz README.md LICENSE.txt bindle${{ matrix.config.extension }} bindle-server${{ matrix.config.extension }} cargo2bindle${{ matrix.config.extension }} as2bindle${{ matrix.config.extension }}
+          tar czf bindle-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz README.md LICENSE.txt bindle${{ matrix.config.extension }} bindle-server${{ matrix.config.extension }}
 
       - uses: actions/upload-artifact@v1
         with:
