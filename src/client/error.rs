@@ -52,13 +52,13 @@ pub enum ClientError {
     ParcelAlreadyExists,
     /// The error returned when the request is invalid. Contains the underlying HTTP status code and
     /// any message returned from the API
-    #[error("Invalid request (status code {status_code:?}): {message:?}")]
+    #[error("Invalid request (status code {status_code:?}): {}", .message.clone().unwrap_or_else(|| "unknown error".to_owned()))]
     InvalidRequest {
         status_code: reqwest::StatusCode,
         message: Option<String>,
     },
     /// A server error was encountered. Contains an optional message from the server
-    #[error("Server has encountered an error: {0:?}")]
+    #[error("Error contacting server: {}", .0.clone().unwrap_or_else(||"Protocol error. Verify the Bindle URL".to_owned()))]
     ServerError(Option<String>),
     /// Invalid credentials were used or user does not have access to the requested resource. This
     /// is only valid if the server supports authentication and/or permissions
