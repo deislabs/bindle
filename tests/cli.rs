@@ -344,9 +344,10 @@ async fn test_no_bindles() {
         output.status.success(),
         "Should be able to search for bindles"
     );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim_end(),
-        "No matching bindles were found",
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .ends_with("No matching bindles were found"),
         "Should get no bindles found message"
     );
 }
