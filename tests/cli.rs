@@ -324,6 +324,34 @@ async fn test_yank() {
     assert_status(output, "Should be able to yank a bindle");
 }
 
+#[tokio::test]
+async fn test_no_bindles() {
+    let controller = TestController::new(BINARY_NAME).await;
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "search",
+        ])
+        .env(ENV_BINDLE_URL, &controller.base_url)
+        .output()
+        .expect("Should be able to run command");
+    assert!(
+        output.status.success(),
+        "Should be able to search for bindles"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .ends_with("No matching bindles were found"),
+        "Should get no bindles found message"
+    );
+}
+
 fn assert_status(output: std::process::Output, message: &str) {
     assert!(
         output.status.success(),

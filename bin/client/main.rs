@@ -594,12 +594,16 @@ fn tablify(matches: &bindle::search::Matches) {
                 .unwrap_or_else(|| "[no description available]".to_string())
         )
     }
-    println!(
-        "=== Showing results {} to {} of {} (limit: {}){}",
-        matches.offset + 1,
-        last,
-        matches.total,
-        matches.limit,
-        trailer,
-    );
+    if matches.total > 0 {
+        println!(
+            "=== Showing results {} to {} of {} (limit: {}){}",
+            matches.offset + 1,
+            last,
+            matches.total,
+            matches.limit,
+            trailer,
+        );
+    } else {
+        println!("No matching bindles were found");
+    }
 }
