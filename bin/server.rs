@@ -5,6 +5,7 @@ use clap::Clap;
 use tracing::{info, warn};
 
 use bindle::{
+    events::{defaultsink::DefaultEventSink, filesink::FileEventSink, EventSyncs},
     invoice::signature::{KeyRing, SignatureRole},
     provider, search,
     server::{server, TlsConfig},
@@ -149,6 +150,15 @@ struct Opts {
     )]
     #[serde(default)]
     unauthenticated: bool,
+
+    #[clap(
+        name = "events",
+        long = "events",
+        env = "BINDLE_EMIT_EVENTS",
+        about = "Emit events for changes in binlde data"
+    )]
+    #[serde(default)]
+    emit_events: bool,
 }
 
 #[tokio::main]
@@ -253,6 +263,12 @@ async fn main() -> anyhow::Result<()> {
         );
     };
 
+    let eventsink = if config.emit_events {
+        EventSyncs::FileEventSink(FileEventSink::new(bindle_directory.clone()))
+    } else {
+        EventSyncs::DefaultEventSink(DefaultEventSink::new())
+    };
+
     // TODO: This is really gnarly, but the associated type on `Authenticator` makes turning it into
     // a Boxed dynner really difficult. I also tried rolling our own type erasure and ran into
     // similar issues (though I think it could be fixed, it would be a lot of code). So we might
@@ -279,6 +295,7 @@ async fn main() -> anyhow::Result<()> {
                 secret_store,
                 strategy,
                 keyring,
+                eventsink,
             )
             .await
         }
@@ -297,6 +314,7 @@ async fn main() -> anyhow::Result<()> {
                 secret_store,
                 strategy,
                 keyring,
+                eventsink,
             )
             .await
         }
@@ -319,6 +337,7 @@ async fn main() -> anyhow::Result<()> {
                 secret_store,
                 strategy,
                 keyring,
+                eventsink,
             )
             .await
         }
@@ -336,6 +355,7 @@ async fn main() -> anyhow::Result<()> {
                 secret_store,
                 strategy,
                 keyring,
+                eventsink,
             )
             .await
         }
@@ -356,6 +376,7 @@ async fn main() -> anyhow::Result<()> {
                 secret_store,
                 strategy,
                 keyring,
+                eventsink,
             )
             .await
         }
@@ -375,6 +396,7 @@ async fn main() -> anyhow::Result<()> {
                 secret_store,
                 strategy,
                 keyring,
+                eventsink,
             )
             .await
         }
@@ -455,6 +477,7 @@ async fn merged_opts() -> anyhow::Result<Opts> {
         bindle_directory: opts.bindle_directory.or(config.bindle_directory),
         cert_path: opts.cert_path.or(config.cert_path),
         config_file: opts.config_file,
+        emit_events: opts.emit_events || config.emit_events,
         htpasswd_file: opts.htpasswd_file.or(config.htpasswd_file),
         unauthenticated: opts.unauthenticated || config.unauthenticated,
         key_path: opts.key_path.or(config.key_path),
