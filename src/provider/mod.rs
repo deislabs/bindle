@@ -88,11 +88,11 @@ pub trait Provider {
         I: TryInto<Id> + Send,
         I::Error: Into<ProviderError>;
 
-    // Checks if the given parcel ID exists within an invoice. The default implementation will fetch
-    // the parcel and check if the given parcel ID exists. Returns the parcel label if valid. Most
-    // providers should implement some sort of caching for `get_yanked_invoice` to avoid fetching
-    // the invoice every single time a parcel is requested. Provider implementations may also
-    // implement this function to include other validation logic if desired.
+    /// Checks if the given parcel ID exists within an invoice. The default implementation will fetch
+    /// the parcel and check if the given parcel ID exists. Returns the parcel label if valid. Most
+    /// providers should implement some sort of caching for `get_yanked_invoice` to avoid fetching
+    /// the invoice every single time a parcel is requested. Provider implementations may also
+    /// implement this function to include other validation logic if desired.
     async fn validate_parcel<I>(&self, bindle_id: I, parcel_id: &str) -> Result<crate::Label>
     where
         I: TryInto<Id> + Send,
