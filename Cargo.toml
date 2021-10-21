@@ -5,7 +5,7 @@ authors = [
     "Matt Butcher <matt.butcher@microsoft.com>",
     "Taylor Thomas <taylor.thomas@microsoft.com>"
 ]
-edition = "2018"
+edition = "2021"
 license-file = "LICENSE.txt"
 description = "An aggregate object storage system for applications"
 repository = "https://github.com/deislabs/bindle"
