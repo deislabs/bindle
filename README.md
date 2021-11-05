@@ -42,7 +42,7 @@ Bindle goes one step further, though: It allows you to express relationships bet
 
 To that end, Bindle supports a more complex notion of composition. We might have a case where one part of the application has requirements that can be satisfied by multiple different parts. Here's an example: Say we have an application that reads through a pool of sports data and makes projections about who will win this weekend's SportsBall game.
 
-A frontend is the user interface, and it connections to some prediction engine. The prediction engine might use a set of simple statistical prediction rules, or it might use a sophisticated machine learning algorithm. Which engine we use may be determined by a range of factors, including the capabilities of the system on which it is run or the accuracy demanded of the output.
+A frontend is the user interface, and it connects to some prediction engine. The prediction engine might use a set of simple statistical prediction rules, or it might use a sophisticated machine learning algorithm. Which engine we use may be determined by a range of factors, including the capabilities of the system on which it is run or the accuracy demanded of the output.
 
 Bindle can model this situation by keeping all of the objects stored together, and letting the client figure out which combination it needs. So the Bindle looks like this:
 
