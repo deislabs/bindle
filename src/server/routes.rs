@@ -64,10 +64,10 @@ where
                     authn.auth_url().to_owned(),
                     authn.token_url().to_owned(),
                 ))
-                .boxed()
-                .or(health)
                 .boxed(),
         )
+        .or(health)
+        .boxed()
         .recover(filters::handle_invalid_request_path)
         .recover(filters::handle_authn_rejection)
         .recover(filters::handle_authz_rejection)
