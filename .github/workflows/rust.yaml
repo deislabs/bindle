@@ -21,6 +21,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - name: Install latest Rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          components: clippy, rustfmt
       - name: Build
         run: make build
       - name: Run tests
@@ -46,6 +52,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - name: Install latest Rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          components: clippy, rustfmt
       - uses: EmbarkStudios/cargo-deny-action@v1
         with:
           command: check ${{ matrix.checks }}
