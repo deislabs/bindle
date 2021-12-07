@@ -6,7 +6,6 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{serde::ts_seconds, DateTime, Utc};
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     basic::*, devicecode::DeviceAuthorizationResponse, AuthUrl, Client as Oauth2Client, ClientId,
@@ -16,6 +15,7 @@ use reqwest::{
     header::{HeaderValue, AUTHORIZATION},
     Client as HttpClient, RequestBuilder,
 };
+use time::{serde::timestamp, OffsetDateTime};
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
@@ -40,8 +40,8 @@ impl oauth2::ExtraTokenFields for OidcTokenExtraFields {}
 #[derive(serde::Deserialize, Debug)]
 struct Claims {
     pub iss: String,
-    #[serde(with = "ts_seconds")]
-    pub exp: DateTime<Utc>,
+    #[serde(with = "timestamp")]
+    pub exp: OffsetDateTime,
 }
 
 /// A trait that can be implemented by anything that can provide a valid token for use in a client.
@@ -129,7 +129,7 @@ type LockData<T> = Arc<RwLock<T>>;
 pub struct OidcToken {
     id_token: LockData<String>,
     refresh_token: LockData<RefreshToken>,
-    expiry_time: LockData<DateTime<Utc>>,
+    expiry_time: LockData<OffsetDateTime>,
     issuer: String,
     scopes: Vec<String>,
     client_id: String,
@@ -287,8 +287,8 @@ impl OidcToken {
         // Magic number: wiggle room of 1 minute. If we are under 1 minute of expiring, then we
         // should refresh. Also, we are locking inline here so the read lock is dropped as soon as
         // possible
-        let is_expired =
-            Utc::now() - chrono::Duration::minutes(1) >= *self.expiry_time.read().await;
+        let is_expired = OffsetDateTime::now_utc() - time::Duration::minutes(1)
+            >= *self.expiry_time.read().await;
         if is_expired {
             tracing::debug!("Token has expired, attempting to refresh token");
             let oauth_client: Oauth2Client<
@@ -412,7 +412,7 @@ impl TokenManager for OidcToken {
     }
 }
 
-fn data_from_token(token: &str) -> Result<(DateTime<Utc>, String)> {
+fn data_from_token(token: &str) -> Result<(OffsetDateTime, String)> {
     let parsed_token = jsonwebtoken::dangerous_insecure_decode::<Claims>(token)
         .map_err(|e| ClientError::TokenError(format!("Invalid token data: {}", e)))?;
 

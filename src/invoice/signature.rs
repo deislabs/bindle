@@ -7,7 +7,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use tracing::error;
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::path::Path;
 use std::str::FromStr;
@@ -204,7 +204,7 @@ impl KeyEntry {
             }
             Some(txt) => {
                 let decoded_txt = base64::decode(txt)?;
-                let sig = EdSignature::new(decoded_txt.as_slice().try_into()?);
+                let sig = EdSignature::from_bytes(decoded_txt.as_slice())?;
                 key.verify_strict(self.label.as_bytes(), &sig)?;
                 Ok(())
             }

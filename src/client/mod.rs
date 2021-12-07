@@ -48,18 +48,10 @@ enum Operation {
 }
 
 /// A builder for for setting up a `Client`. Created using `Client::builder`
+#[derive(Default)]
 pub struct ClientBuilder {
     http2_prior_knowledge: bool,
     danger_accept_invalid_certs: bool,
-}
-
-impl Default for ClientBuilder {
-    fn default() -> Self {
-        Self {
-            http2_prior_knowledge: false,
-            danger_accept_invalid_certs: false,
-        }
-    }
 }
 
 impl ClientBuilder {
