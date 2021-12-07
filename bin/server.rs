@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use clap::Clap;
+use clap::Parser;
 use tracing::{info, warn};
 
 use bindle::{
@@ -28,7 +28,7 @@ Bindle is a technology for storing and retrieving aggregate applications.
 This program runs an HTTP frontend for a Bindle repository.
 "#;
 
-#[derive(Clap, serde::Deserialize, Default)]
+#[derive(Parser, serde::Deserialize, Default)]
 #[clap(name = "bindle-server", version = clap::crate_version!(), author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
 struct Opts {
     #[clap(

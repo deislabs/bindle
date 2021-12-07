@@ -6,7 +6,6 @@ use ed25519_dalek::{PublicKey, Signature as EdSignature};
 use tracing::{debug, info};
 
 use std::borrow::{Borrow, BorrowMut};
-use std::convert::TryInto;
 use std::fmt::Debug;
 use std::str::FromStr;
 
@@ -144,12 +143,8 @@ impl VerificationStrategy {
 
         let pubkey =
             PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let ed_sig = EdSignature::new(
-            sig_block
-                .as_slice()
-                .try_into()
-                .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?,
-        );
+        let ed_sig = EdSignature::from_bytes(sig_block.as_slice())
+            .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
         pubkey
             .verify_strict(cleartext, &ed_sig)
             .map_err(|_| SignatureError::Unverified(sig.key.clone()))
@@ -356,6 +351,7 @@ where
 mod test {
     use super::*;
     use crate::invoice::*;
+    use std::convert::TryInto;
 
     #[test]
     fn test_parse_verification_strategies() {

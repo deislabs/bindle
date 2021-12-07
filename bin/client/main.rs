@@ -18,7 +18,7 @@ use bindle::{
     provider::Provider,
 };
 
-use clap::Clap;
+use clap::Parser;
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;

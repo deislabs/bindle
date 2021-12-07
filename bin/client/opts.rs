@@ -1,4 +1,4 @@
-use clap::Clap;
+use clap::Parser;
 use std::path::PathBuf;
 
 const DESCRIPTION: &str = r#"
@@ -8,7 +8,7 @@ Bindle is a technology for storing and retrieving aggregate applications.
 This program provides tools for working with Bindle servers.
 "#;
 
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(name = "bindle", version = clap::crate_version!(), author = "DeisLabs at Microsoft Azure", about = DESCRIPTION)]
 pub struct Opts {
     #[clap(
@@ -63,7 +63,7 @@ pub struct Opts {
     pub subcmd: SubCommand,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub enum SubCommand {
     #[clap(name = "info", about = "Get the bindle invoice and display it")]
     Info(Info),
@@ -122,7 +122,7 @@ pub enum SubCommand {
     Login(Login),
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct Info {
     #[clap(
         index = 1,
@@ -145,7 +145,7 @@ pub struct Info {
     pub output: Option<String>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct Push {
     #[clap(
         index = 1,
@@ -162,7 +162,7 @@ pub struct Push {
     pub path: PathBuf,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct Get {
     #[clap(
         index = 1,
@@ -184,7 +184,7 @@ pub struct Get {
     pub export: Option<PathBuf>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct Yank {
     #[clap(
         index = 1,
@@ -206,7 +206,7 @@ The range modifiers will include the following modifiers, all based on the Node.
 - `~` -- at least the given version
 "#;
 
-#[derive(Clap, Clone)]
+#[derive(Parser, Clone)]
 pub struct Search {
     // TODO: Figure out output format (like tables)
     #[clap(
@@ -257,7 +257,7 @@ impl From<Search> for bindle::QueryOptions {
     }
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct GetParcel {
     #[clap(
         index = 1,
@@ -280,7 +280,7 @@ pub struct GetParcel {
     pub output: PathBuf,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct GetInvoice {
     #[clap(
         index = 1,
@@ -303,7 +303,7 @@ pub struct GetInvoice {
     pub yanked: bool,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct GenerateLabel {
     #[clap(
         index = 1,
@@ -325,7 +325,7 @@ pub struct GenerateLabel {
     pub media_type: Option<String>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct CreateKey {
     #[clap(
         index = 1,
@@ -341,7 +341,7 @@ pub struct CreateKey {
     pub secret_file: Option<PathBuf>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct PrintKey {
     #[clap(
         short = 'f',
@@ -359,7 +359,7 @@ pub struct PrintKey {
     pub label: Option<String>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct SignInvoice {
     #[clap(
         index = 1,
@@ -387,7 +387,7 @@ pub struct SignInvoice {
     pub destination: Option<String>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct PushInvoice {
     #[clap(
         index = 1,
@@ -398,7 +398,7 @@ pub struct PushInvoice {
     pub path: PathBuf,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct PushFile {
     #[clap(index = 1, value_name = "BINDLE_ID")]
     pub bindle_id: bindle::Id,
@@ -422,5 +422,5 @@ pub struct PushFile {
     pub media_type: Option<String>,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct Login {}

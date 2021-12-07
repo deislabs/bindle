@@ -246,9 +246,9 @@ pub fn sign<I>(
 where
     I: BorrowMut<Invoice> + Into<crate::Invoice>,
 {
-    let mut inv = invoice.borrow_mut();
+    let inv = invoice.borrow_mut();
     for (role, key) in sign_with {
-        sign_one(&mut inv, role, key)?;
+        sign_one(inv, role, key)?;
     }
 
     Ok(SignedInvoice(invoice))
