@@ -130,7 +130,10 @@ pub struct OidcToken {
     id_token: LockData<String>,
     refresh_token: LockData<RefreshToken>,
     expiry_time: LockData<OffsetDateTime>,
+    // We still need these available on the struct even though we don't use them here
+    #[allow(dead_code)]
     issuer: String,
+    #[allow(dead_code)]
     scopes: Vec<String>,
     client_id: String,
     token_url: String,
@@ -413,7 +416,13 @@ impl TokenManager for OidcToken {
 }
 
 fn data_from_token(token: &str) -> Result<(OffsetDateTime, String)> {
-    let parsed_token = jsonwebtoken::dangerous_insecure_decode::<Claims>(token)
+    // This basically turns all validation off as all we are trying to do is parse the data from the
+    // token. Validation happens on the server
+    let mut validation = jsonwebtoken::Validation::default();
+    validation.validate_exp = false;
+    validation.insecure_disable_signature_validation();
+    let fake_key = jsonwebtoken::DecodingKey::from_secret(b"fake");
+    let parsed_token = jsonwebtoken::decode::<Claims>(token, &fake_key, &validation)
         .map_err(|e| ClientError::TokenError(format!("Invalid token data: {}", e)))?;
 
     Ok((parsed_token.claims.exp, parsed_token.claims.iss))

@@ -48,7 +48,13 @@ notice = "warn"
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    #"RUSTSEC-0000-0000",
+    # The `time` advisories, which are included through `chrono`
+    "RUSTSEC-2021-0127",
+    "RUSTSEC-2020-0071",
+    # The `chrono` advisory, as chrono is currently pulled in through the `openid` crate. All other
+    # imports of `chrono` have been handled. We should remove this if openid updates to just use
+    # plain `time`.
+    "RUSTSEC-2020-0159"
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories

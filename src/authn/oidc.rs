@@ -6,7 +6,10 @@ use tokio::sync::{RwLock, RwLockReadGuard};
 use tokio::time::{Duration, Instant};
 use url::Url;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use super::Authenticator;
 use crate::authz::Authorizable;
@@ -26,7 +29,7 @@ pub struct OidcAuthenticator {
     token_url: String,
     // We are using RwLocks for interior mutability and so that if any cloned authenticator (like
     // what happens in warp) updates the data, it is reflected everywhere
-    key_cache: Arc<RwLock<HashMap<String, DecodingKey<'static>>>>,
+    key_cache: Arc<RwLock<HashMap<String, DecodingKey>>>,
     last_refresh: Arc<RwLock<Instant>>,
     validator: Validation,
 }
@@ -55,6 +58,12 @@ impl OidcAuthenticator {
         .await
         .map_err(|e| anyhow::anyhow!("Unable to fetch discovery data: {}", e))?;
 
+        let mut issuers = HashSet::with_capacity(1);
+        issuers.insert(authority_url.to_string());
+        let mut validator = Validation::default();
+        validator.validate_nbf = true;
+        validator.iss = Some(issuers);
+        validator.algorithms = SUPPORTED_ALGORITHMS.to_owned();
         let me = OidcAuthenticator {
             authority_url: authority_url.clone(),
             device_auth_url: device_auth_url.to_owned(),
@@ -62,12 +71,7 @@ impl OidcAuthenticator {
             token_url: discovery.config().token_endpoint.to_string(),
             key_cache: Arc::new(RwLock::new(HashMap::new())),
             last_refresh: Arc::new(RwLock::new(Instant::now())),
-            validator: Validation {
-                validate_nbf: true,
-                iss: Some(authority_url.to_string()),
-                algorithms: SUPPORTED_ALGORITHMS.to_owned(),
-                ..Default::default()
-            },
+            validator,
         };
 
         // Do the initial discovery of keys
@@ -76,10 +80,7 @@ impl OidcAuthenticator {
     }
 
     /// Finds the given key id from well known keys, updating the keys if not found.
-    async fn find_key(
-        &self,
-        kid: &str,
-    ) -> anyhow::Result<RwLockReadGuard<'_, DecodingKey<'static>>> {
+    async fn find_key(&self, kid: &str) -> anyhow::Result<RwLockReadGuard<'_, DecodingKey>> {
         // 1. Check if key exists
         // 2. If key is not found and refresh timer is expired, fetch well-known keys and merge.
         //    Then reset timer
@@ -108,10 +109,7 @@ impl OidcAuthenticator {
     }
 
     /// Looks up if a key with the given ID exists
-    async fn lookup_key(
-        &self,
-        kid: &str,
-    ) -> anyhow::Result<RwLockReadGuard<'_, DecodingKey<'static>>> {
+    async fn lookup_key(&self, kid: &str) -> anyhow::Result<RwLockReadGuard<'_, DecodingKey>> {
         let keys = self.key_cache.read().await;
         RwLockReadGuard::try_map(keys, |k| k.get(kid))
             .map_err(|_| anyhow::anyhow!("A key with a key_id of {} was not found", kid))
@@ -154,7 +152,7 @@ impl OidcAuthenticator {
                         // misconfiguration on the OIDC provider's part), just skip it
                         let raw =
                             base64::decode(k.common.x509_chain.unwrap_or_default().pop()?).ok()?;
-                        DecodingKey::from_ec_der(&raw).into_static()
+                        DecodingKey::from_ec_der(&raw)
                     }
                     KeyType::RSA => {
                         if let AlgorithmParameters::RSA(rsa) = k.algorithm {
@@ -169,8 +167,10 @@ impl OidcAuthenticator {
                                     rsa.e.to_bytes_be(),
                                     base64::URL_SAFE_NO_PAD,
                                 ),
-                            )
-                            .into_static()
+                            ).map_or_else(|e| {
+                                tracing::error!(error = %e, "Unable to parse decoding key from discovery client, skipping");
+                                None
+                            }, Some)?
                         } else {
                             return None;
                         }
