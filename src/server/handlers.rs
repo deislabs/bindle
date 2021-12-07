@@ -13,6 +13,7 @@ pub mod v1 {
     use super::*;
 
     use crate::{
+        events::{EventSink, EventType},
         signature::{KeyRing, SecretKeyStorage},
         LoginParams, QueryOptions, SignatureError,
     };
@@ -57,10 +58,11 @@ pub mod v1 {
         ))
     }
 
-    #[instrument(level = "trace", skip(store, secret_store))]
-    pub async fn create_invoice<P: Provider, S: SecretKeyStorage>(
+    #[instrument(level = "trace", skip(store, secret_store, eventsink))]
+    pub async fn create_invoice<P: Provider, S: SecretKeyStorage, E: EventSink>(
         store: P,
         secret_store: S,
+        eventsink: E,
         strategy: VerificationStrategy,
         keyring: std::sync::Arc<KeyRing>,
         inv: crate::Invoice,
@@ -98,6 +100,14 @@ pub mod v1 {
                 return Ok(reply::into_reply(e));
             }
         };
+
+        eventsink
+            .raise_event(EventType::InvoiceCreated(&invoice))
+            .await
+            .unwrap_or_else(|err| {
+                tracing::log::error!("Failed to raise event InvoiceCreated: {}", err)
+            });
+
         // If there are missing parcels that still need to be created, return a 202 to indicate that
         // things were accepted, but will not be fetchable until further action is taken
         if !labels.is_empty() {
@@ -106,6 +116,14 @@ pub mod v1 {
                 missing = labels.len(),
                 "Newly created invoice is missing parcels",
             );
+            for label in &labels {
+                eventsink
+                    .raise_event(EventType::MissingParcel(label))
+                    .await
+                    .unwrap_or_else(|err| {
+                        tracing::log::error!("Failed to raise event MissingParcel: {}", err)
+                    });
+            }
             Ok(warp::reply::with_status(
                 reply::serialized_data(
                     &crate::InvoiceCreateResponse {
@@ -162,10 +180,11 @@ pub mod v1 {
         Ok::<Box<dyn warp::Reply>, Infallible>(res)
     }
 
-    #[instrument(level = "trace", skip(store), fields(id = tail.as_str()))]
-    pub async fn yank_invoice<P: Provider>(
+    #[instrument(level = "trace", skip(store, eventsink), fields(id = tail.as_str()))]
+    pub async fn yank_invoice<P: Provider, E: EventSink>(
         tail: warp::path::Tail,
         store: P,
+        eventsink: E,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible> {
         let id = tail.as_str();
@@ -173,6 +192,13 @@ pub mod v1 {
             debug!(error = %e, "Got error during yank invoice request");
             return Ok(reply::into_reply(e));
         }
+
+        eventsink
+            .raise_event(EventType::InvoiceYanked(id))
+            .await
+            .unwrap_or_else(|err| {
+                tracing::log::error!("Failed to raise event InvoiceYanked: {}", err)
+            });
 
         let mut resp = std::collections::HashMap::new();
         resp.insert("message", "invoice yanked");
@@ -201,17 +227,19 @@ pub mod v1 {
     }
 
     //////////// Parcel Functions ////////////
-    #[instrument(level = "trace", skip(store, body))]
-    pub async fn create_parcel<P, B, D>(
+    #[instrument(level = "trace", skip(store, body, eventsink))]
+    pub async fn create_parcel<P, B, D, E>(
         (bindle_id, sha): (String, String),
         body: B,
         store: P,
+        eventsink: E,
         accept_header: Option<String>,
     ) -> Result<impl warp::Reply, Infallible>
     where
         P: Provider + Sync,
         B: stream::Stream<Item = Result<D, warp::Error>> + Send + Sync + Unpin + 'static,
         D: bytes::Buf + Send,
+        E: EventSink + Send + Sync,
     {
         trace!("Checking if parcel exists in bindle");
 
@@ -222,7 +250,7 @@ pub mod v1 {
 
         if let Err(e) = store
             .create_parcel(
-                bindle_id,
+                &bindle_id,
                 &sha,
                 body.map(|res| {
                     res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
@@ -233,6 +261,13 @@ pub mod v1 {
             debug!(error = %e, "Got error while creating parcel in store");
             return Ok(reply::into_reply(e));
         }
+
+        eventsink
+            .raise_event(EventType::ParcelCreated((bindle_id, &sha)))
+            .await
+            .unwrap_or_else(|err| {
+                tracing::log::error!("Failed to raise event ParcelCreated: {}", err)
+            });
 
         let mut resp = std::collections::HashMap::new();
         resp.insert("message", "parcel created");

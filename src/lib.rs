@@ -31,6 +31,7 @@ pub mod testing;
 pub mod authn;
 #[cfg(feature = "server")]
 pub mod authz;
+pub mod events;
 pub mod filters;
 
 #[doc(inline)]

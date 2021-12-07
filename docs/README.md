@@ -214,6 +214,29 @@ This file can be moved from system to system, just like OpenPGP or SSH key sets.
 - To create a signing key for a client, use `bindle create-key`
 - By default, if Bindle does not find an existing keyring, it creates one of these when it first starts.
 
+## Generating Change Events
+
+Starting bindle with the `--events`  flag will cause it to emit an record of the event to a file named `bindle-event.log` in the bindle data directory.
+
+Each event is serialized as a JSON object in the following format:
+``` json
+{
+  "event_date": "2021-10-05T20:05:51.028318270Z",
+  "event_data": {
+    "EventType": EventSpecificData
+  }
+}
+```
+
+The following event types are recorded:
+
+- **InvoiceCreated** - occurs when an invoice is created.
+- **MissingParcel** - occurs when an invoice is created, but a parcel is missing.
+- **ParcelCreated** - occurs when a parcel is created.
+- **InvoiceYanked** - occurs when an invoice is yanked.
+
+Examples of each event can be found [here](example-events.md).
+
 ## Specification
 
 1. The specification for the Bindle format and design begins with the [Bindle Specification](bindle-spec.md).

@@ -75,6 +75,7 @@ openid = { version = "0.9.3", optional = true }
 bcrypt = "0.10.1"
 chrono = { version = "0.4.19", features = ["serde"], optional = true }
 either = "1.6.1"
+async-std = "1.9.0"
 
 # NOTE: This is a workaround due to a dependency issue in oauth2: https://github.com/tkaitchuck/ahash/issues/95#issuecomment-903560879
 indexmap = "~1.6.2"

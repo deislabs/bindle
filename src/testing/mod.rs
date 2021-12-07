@@ -11,10 +11,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::events::defaultsink::DefaultEventSink;
 use crate::invoice::signature::{SecretKeyEntry, SecretKeyStorage, SignatureRole};
 use crate::provider::embedded::EmbeddedProvider;
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
+use serde::{Deserialize, Serialize};
 
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
@@ -153,25 +155,37 @@ impl From<RawScaffold> for Scaffold {
 }
 
 /// Returns a file `Provider` implementation configured with a temporary directory, strict Search
-/// implementation, and a mock key store for use in testing API endpoints
-pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine, MockKeyStore) {
+/// implementation,a mock key store and a default noop event sink for use in testing API endpoints
+pub async fn setup() -> (
+    FileProvider<StrictEngine>,
+    StrictEngine,
+    MockKeyStore,
+    DefaultEventSink,
+) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
     let store = FileProvider::new(temp.path().to_owned(), index.clone()).await;
     let kstore = MockKeyStore::new();
-    (store, index, kstore)
+    let eventsink = DefaultEventSink::new();
+    (store, index, kstore, eventsink)
 }
 
 /// Returns an embedded `Provider` implementation configured with a temporary directory, strict
-/// Search implementation, and a mock key store for use in testing API endpoints
-pub async fn setup_embedded() -> (EmbeddedProvider<StrictEngine>, StrictEngine, MockKeyStore) {
+/// Search implementation, a mock key store  and a default noop event sink for use in testing API endpoints
+pub async fn setup_embedded() -> (
+    EmbeddedProvider<StrictEngine>,
+    StrictEngine,
+    MockKeyStore,
+    DefaultEventSink,
+) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
     let store = EmbeddedProvider::new(temp.path().to_owned(), index.clone())
         .await
         .expect("Unable to configure embedded provider");
     let kstore = MockKeyStore::new();
-    (store, index, kstore)
+    let eventsink = DefaultEventSink::new();
+    (store, index, kstore, eventsink)
 }
 
 /// Loads all scaffolds in the scaffolds directory, returning them as a hashmap with the directory
@@ -266,4 +280,55 @@ impl SecretKeyStorage for MockKeyStore {
     fn get_first_matching(&self, _role: &SignatureRole) -> Option<&SecretKeyEntry> {
         Some(&self.mock_secret_key)
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InvoiceYankedEventData {
+    #[serde(rename = "InvoiceYanked")]
+    pub invoice_yanked: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MissingParcelEventData {
+    #[serde(rename = "MissingParcel")]
+    pub missing_parcel: ParcelEventData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ParcelCreatedEventData {
+    #[serde(rename = "ParcelCreated")]
+    pub parcel_created: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InvoiceCreatedEventData {
+    #[serde(rename = "InvoiceCreated")]
+    pub invoice_created: InvoiceEventData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InvoiceEventData {
+    #[serde(rename = "bindleVersion")]
+    pub bindle_version: String,
+    pub bindle: BindleEventData,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BindleEventData {
+    pub name: String,
+    pub version: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ParcelEventData {
+    pub sha256: String,
+    pub name: String,
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BindleEvent<T> {
+    pub event_date: String,
+    pub event_data: T,
 }

@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use tracing::debug;
 
 use super::provider::Provider;
+use crate::events::EventSink;
 use crate::signature::KeyRing;
 use crate::{search::Search, signature::SecretKeyStorage};
 
@@ -30,9 +31,10 @@ pub struct TlsConfig {
 /// configuration is given, the server will be configured to use TLS. Otherwise it will use plain
 /// HTTP
 #[allow(clippy::too_many_arguments)]
-pub async fn server<P, I, Authn, Authz, S>(
+pub async fn server<P, I, Authn, Authz, S, E>(
     store: P,
     index: I,
+
     authn: Authn,
     authz: Authz,
     addr: impl Into<SocketAddr> + 'static,
@@ -40,6 +42,7 @@ pub async fn server<P, I, Authn, Authz, S>(
     keystore: S,
     verification_strategy: crate::VerificationStrategy,
     keyring: KeyRing,
+    eventsink: E,
 ) -> anyhow::Result<()>
 where
     P: Provider + Clone + Send + Sync + 'static,
@@ -47,6 +50,7 @@ where
     S: SecretKeyStorage + Clone + Send + Sync + 'static,
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
+    E: EventSink + Clone + Send + Sync + 'static,
 {
     // V1 API paths, currently the only version
     let api = routes::api(
@@ -57,6 +61,7 @@ where
         keystore,
         verification_strategy,
         keyring,
+        eventsink,
     );
 
     let server = warp::serve(api);
@@ -94,19 +99,28 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod test {
+    use async_std::fs::File;
+    use async_std::prelude::*;
+    use chrono::naive::serde::ts_milliseconds::deserialize;
     use std::convert::TryInto;
+    use std::path::PathBuf;
 
     use crate::authn::always::AlwaysAuthenticate;
     use crate::authz::always::AlwaysAuthorize;
+    use crate::events::{defaultsink::DefaultEventSink, filesink::FileEventSink};
     use crate::invoice::{
         signature::{KeyRing, SecretKeyEntry},
         SignatureRole, VerificationStrategy,
     };
     use crate::provider::Provider;
     use crate::search::StrictEngine;
-    use crate::testing::{self, MockKeyStore};
+    use crate::testing::{
+        self, BindleEvent, InvoiceCreatedEventData, InvoiceYankedEventData, MissingParcelEventData,
+        MockKeyStore, ParcelCreatedEventData,
+    };
 
     use rstest::rstest;
+    use tempfile::tempdir;
     use testing::Scaffold;
     use tokio_util::codec::{BytesCodec, FramedRead};
 
@@ -115,12 +129,16 @@ mod test {
     async fn test_successful_workflow<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
         let bindles = testing::load_all_files().await;
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, _) = provider_setup.await;
+        let temp = tempdir().expect("unable to create tempdir");
+        let directory = PathBuf::from(temp.path());
+        let filename = directory.join(crate::events::filesink::EVENT_SINK_FILE_NAME);
+        let es = FileEventSink::new(directory);
 
         let api = super::routes::api(
             store,
@@ -130,6 +148,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
 
         // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
@@ -158,6 +177,36 @@ mod test {
             "Invoice should have missing parcels"
         );
 
+        // Check that we got a Invoice Created event and a missing parcel event.
+
+        let mut file = File::open(filename).await.unwrap();
+        let mut buf = [0u8; 4096];
+        let bytes = file.read(&mut buf).await.unwrap();
+        assert!(
+            bytes < buf.len(),
+            "Should have read less than the buffer size"
+        );
+        let json_string = String::from_utf8_lossy(&buf);
+        let deserializer = serde_json::Deserializer::from_str(&json_string);
+        let mut iterator = deserializer.into_iter::<serde_json::Value>();
+
+        let inv = iterator.next().unwrap().unwrap();
+        let event: BindleEvent<InvoiceCreatedEventData> = serde_json::from_value(inv).unwrap();
+        assert_eq!(
+            "enterprise.com/warpcore",
+            event.event_data.invoice_created.bindle.name
+        );
+        assert_eq!("1.0.0", event.event_data.invoice_created.bindle.version);
+
+        let missing = iterator.next().unwrap().unwrap();
+        let event: BindleEvent<MissingParcelEventData> = serde_json::from_value(missing).unwrap();
+        assert_eq!(
+            "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5",
+            event.event_data.missing_parcel.sha256
+        );
+        assert_eq!("text/plain", event.event_data.missing_parcel.media_type);
+        assert_eq!("isolinear_chip.txt", event.event_data.missing_parcel.name);
+
         // Upload the parcels for one of the invoices
 
         for file in valid_v1.parcel_files.values() {
@@ -177,6 +226,28 @@ mod test {
                 String::from_utf8_lossy(res.body())
             );
         }
+
+        // Check that we got a parcel created event for the parcel.
+
+        let bytes = file.read(&mut buf).await.unwrap();
+        assert!(
+            bytes < buf.len(),
+            "Should have read less than the buffer size"
+        );
+        let json_string = String::from_utf8_lossy(&buf);
+        let deserializer = serde_json::Deserializer::from_str(&json_string);
+        let mut iterator = deserializer.into_iter::<serde_json::Value>();
+
+        let parcel = iterator.next().unwrap().unwrap();
+        let event: BindleEvent<ParcelCreatedEventData> = serde_json::from_value(parcel).unwrap();
+        assert_eq!(
+            "enterprise.com/warpcore/1.0.0",
+            event.event_data.parcel_created[0]
+        );
+        assert_eq!(
+            "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5",
+            event.event_data.parcel_created[1]
+        );
 
         // Now create another invoice that references the same parcel and validated that it returns
         // the proper response
@@ -207,6 +278,25 @@ mod test {
             "Invoice should not have missing parcels"
         );
 
+        // Check that we got a Invoice Created event.
+
+        let bytes = file.read(&mut buf).await.unwrap();
+        assert!(
+            bytes < buf.len(),
+            "Should have read less than the buffer size"
+        );
+        let json_string = String::from_utf8_lossy(&buf);
+        let deserializer = serde_json::Deserializer::from_str(&json_string);
+        let mut iterator = deserializer.into_iter::<serde_json::Value>();
+
+        let inv = iterator.next().unwrap().unwrap();
+        let event: BindleEvent<InvoiceCreatedEventData> = serde_json::from_value(inv).unwrap();
+        assert_eq!(
+            "another.com/bindle",
+            event.event_data.invoice_created.bindle.name
+        );
+        assert_eq!("1.0.0", event.event_data.invoice_created.bindle.version);
+
         // Create a second version of the same invoice with some missing and already existing
         // parcels and make sure the correct response is returned
         let valid_v2 = bindles.get("valid_v2").expect("Missing scaffold");
@@ -234,8 +324,27 @@ mod test {
                 .expect("Should have missing parcels")
                 .len(),
             1,
-            "Invoice should not have missing parcels"
+            "Invoice should have missing parcels"
         );
+
+        // Check that we got a Invoice Created event and a missing parcel event.
+
+        let bytes = file.read(&mut buf).await.unwrap();
+        assert!(
+            bytes < buf.len(),
+            "Should have read less than the buffer size"
+        );
+        let json_string = String::from_utf8_lossy(&buf);
+        let deserializer = serde_json::Deserializer::from_str(&json_string);
+        let mut iterator = deserializer.into_iter::<serde_json::Value>();
+
+        let inv = iterator.next().unwrap().unwrap();
+        let event: BindleEvent<InvoiceCreatedEventData> = serde_json::from_value(inv).unwrap();
+        assert_eq!(
+            "enterprise.com/warpcore",
+            event.event_data.invoice_created.bindle.name
+        );
+        assert_eq!("2.0.0", event.event_data.invoice_created.bindle.version);
 
         // Get an invoice
         let res = warp::test::request()
@@ -286,11 +395,15 @@ mod test {
     async fn test_yank<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, _) = provider_setup.await;
+        let temp = tempdir().expect("unable to create tempdir");
+        let directory = PathBuf::from(temp.path());
+        let filename = directory.join(crate::events::filesink::EVENT_SINK_FILE_NAME);
+        let es = FileEventSink::new(directory);
 
         let api = super::routes::api(
             store.clone(),
@@ -300,6 +413,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
 
         let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
@@ -328,6 +442,26 @@ mod test {
             warp::http::StatusCode::OK,
             "Body: {}",
             String::from_utf8_lossy(res.body())
+        );
+
+        // Check that we got a Invoice Yanked Event.
+
+        let mut file = File::open(filename).await.unwrap();
+        let mut buf = [0u8; 4096];
+        let bytes = file.read(&mut buf).await.unwrap();
+        assert!(
+            bytes < buf.len(),
+            "Should have read less than the buffer size"
+        );
+        let json_string = String::from_utf8_lossy(&buf);
+        let deserializer = serde_json::Deserializer::from_str(&json_string);
+        let mut iterator = deserializer.into_iter::<serde_json::Value>();
+
+        let inv = iterator.next().unwrap().unwrap();
+        let event: BindleEvent<InvoiceYankedEventData> = serde_json::from_value(inv).unwrap();
+        assert_eq!(
+            "enterprise.com/bridge/1.0.0",
+            event.event_data.invoice_yanked
         );
 
         // Attempt to fetch the invoice and make sure it doesn't return
@@ -362,12 +496,12 @@ mod test {
     async fn test_invoice_validation<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
         let bindles = testing::load_all_files().await;
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, es) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -377,6 +511,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
         let valid = testing::Scaffold::from(valid_raw.clone());
@@ -413,11 +548,11 @@ mod test {
     async fn test_parcel_validation<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
-        let (store, index, keystore) = provider_setup.await;
+        let (store, index, keystore, es) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -427,6 +562,7 @@ mod test {
             keystore.clone(),
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
         // Insert a parcel
         let scaffold = testing::Scaffold::load("valid_v1").await;
@@ -510,12 +646,12 @@ mod test {
     async fn test_queries<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
         // Insert data into store
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, es) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -525,6 +661,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
@@ -625,11 +762,11 @@ mod test {
     async fn test_missing<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, es) = provider_setup.await;
 
         let api = super::routes::api(
             store.clone(),
@@ -639,6 +776,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
@@ -705,11 +843,11 @@ mod test {
     async fn test_host_signed<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, es) = provider_setup.await;
 
         let api = super::routes::api(
             store,
@@ -719,6 +857,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
 
         let scaffold = testing::RawScaffold::load("valid_v1").await;
@@ -756,11 +895,11 @@ mod test {
     async fn test_anonymous_get<T>(
         #[values(testing::setup(), testing::setup_embedded())]
         #[future]
-        provider_setup: (T, StrictEngine, MockKeyStore),
+        provider_setup: (T, StrictEngine, MockKeyStore, DefaultEventSink),
     ) where
         T: Provider + Clone + Send + Sync + 'static,
     {
-        let (store, index, ks) = provider_setup.await;
+        let (store, index, ks, es) = provider_setup.await;
 
         let api = super::routes::api(
             store,
@@ -772,6 +911,7 @@ mod test {
             ks,
             VerificationStrategy::default(),
             KeyRing::default(),
+            es.clone(),
         );
 
         let scaffold = testing::RawScaffold::load("valid_v1").await;

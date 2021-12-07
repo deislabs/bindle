@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use warp::Filter;
 
-use crate::{server::filters, signature::KeyRing};
+use crate::{events::EventSink, server::filters, signature::KeyRing};
 
 /// A helper function that aggregates all routes into a complete API filter. If you only wish to
 /// serve specific endpoints or versions, you can assemble them with the individual submodules
-pub fn api<P, I, Authn, Authz, S>(
+pub fn api<P, I, Authn, Authz, S, E>(
     store: P,
     index: I,
     authn: Authn,
@@ -14,6 +14,7 @@ pub fn api<P, I, Authn, Authz, S>(
     secret_store: S,
     verification_strategy: crate::VerificationStrategy,
     keyring: KeyRing,
+    eventsink: E,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
 where
     P: crate::provider::Provider + Clone + Send + Sync + 'static,
@@ -21,6 +22,7 @@ where
     S: crate::invoice::signature::SecretKeyStorage + Clone + Send + Sync + 'static,
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
+    E: EventSink + Clone + Send + Sync + 'static,
 {
     let health = warp::path("healthz").map(|| "OK");
 
@@ -36,6 +38,7 @@ where
                     secret_store.clone(),
                     verification_strategy.clone(),
                     wrapped_keyring.clone(),
+                    eventsink.clone(),
                 ))
                 .boxed()
                 .or(v1::invoice::create_json(
@@ -43,15 +46,16 @@ where
                     secret_store,
                     verification_strategy,
                     wrapped_keyring,
+                    eventsink.clone(),
                 ))
                 .boxed()
                 .or(v1::invoice::get(store.clone()))
                 .boxed()
                 .or(v1::invoice::head(store.clone()))
                 .boxed()
-                .or(v1::invoice::yank(store.clone()))
+                .or(v1::invoice::yank(store.clone(), eventsink.clone()))
                 .boxed()
-                .or(v1::parcel::create(store.clone()))
+                .or(v1::parcel::create(store.clone(), eventsink.clone()))
                 .boxed()
                 .or(v1::parcel::get(store.clone()))
                 .boxed()
@@ -78,7 +82,7 @@ pub mod v1 {
     use crate::provider::Provider;
     use crate::search::Search;
     use crate::server::handlers::v1::*;
-    use crate::server::{filters, routes::with_store};
+    use crate::server::{filters, routes::with_eventsink, routes::with_store};
 
     use warp::Filter;
 
@@ -106,6 +110,7 @@ pub mod v1 {
 
     pub mod invoice {
         use crate::{
+            events::EventSink,
             server::routes::with_secret_store,
             signature::{KeyRing, SecretKeyStorage},
         };
@@ -128,21 +133,24 @@ pub mod v1 {
                 .and_then(query_invoices)
         }
 
-        pub fn create_toml<P, S>(
+        pub fn create_toml<P, S, E>(
             store: P,
             secret_store: S,
             verification_strategy: crate::VerificationStrategy,
             keyring: Arc<KeyRing>,
+            eventsink: E,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
             S: SecretKeyStorage + Clone + Send + Sync,
+            E: EventSink + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::end())
                 .and(warp::post())
                 .and(with_store(store))
                 .and(with_secret_store(secret_store))
+                .and(with_eventsink(eventsink))
                 .and(warp::any().map(move || verification_strategy.clone()))
                 .and(warp::any().map(move || keyring.clone()))
                 .and(filters::toml())
@@ -150,21 +158,24 @@ pub mod v1 {
                 .and_then(create_invoice)
                 .recover(filters::handle_deserialize_rejection)
         }
-        pub fn create_json<P, S>(
+        pub fn create_json<P, S, E>(
             store: P,
             secret_store: S,
             verification_strategy: crate::VerificationStrategy,
             keyring: Arc<KeyRing>,
+            eventsink: E,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
             S: SecretKeyStorage + Clone + Send + Sync,
+            E: EventSink + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::end())
                 .and(warp::post())
                 .and(with_store(store))
                 .and(with_secret_store(secret_store))
+                .and(with_eventsink(eventsink))
                 .and(warp::any().map(move || verification_strategy.clone()))
                 .and(warp::any().map(move || keyring.clone()))
                 .and(warp::body::json())
@@ -202,16 +213,19 @@ pub mod v1 {
                 .and_then(head_invoice)
         }
 
-        pub fn yank<P>(
+        pub fn yank<P, E>(
             store: P,
+            eventsink: E,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
+            E: EventSink + Clone + Send + Sync,
         {
             warp::path("_i")
                 .and(warp::path::tail())
                 .and(warp::delete())
                 .and(with_store(store))
+                .and(with_eventsink(eventsink))
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(yank_invoice)
         }
@@ -219,17 +233,21 @@ pub mod v1 {
 
     pub mod parcel {
         use super::*;
+        use crate::events::EventSink;
 
-        pub fn create<P>(
+        pub fn create<P, E>(
             store: P,
+            eventsink: E,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
+            E: EventSink + Clone + Send + Sync,
         {
             filters::parcel()
                 .and(warp::post())
                 .and(warp::body::stream())
                 .and(with_store(store))
+                .and(with_eventsink(eventsink))
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(create_parcel)
         }
@@ -298,4 +316,14 @@ where
 {
     // We have to clone for this to be Fn instead of FnOnce
     warp::any().map(move || store.clone())
+}
+
+pub(crate) fn with_eventsink<E>(
+    eventsink: E,
+) -> impl Filter<Extract = (E,), Error = std::convert::Infallible> + Clone
+where
+    E: crate::events::EventSink + Clone + Send,
+{
+    // We have to clone for this to be Fn instead of FnOnce
+    warp::any().map(move || eventsink.clone())
 }
