@@ -2,6 +2,7 @@ SERVER_FEATURES = --features cli
 SERVER_BIN := bindle-server
 CLIENT_FEATURES ?= --features=cli
 CLIENT_BIN := bindle
+BINDLE_DIRECTORY ?= ${HOME}/.bindle/bindles
 BINDLE_LOG_LEVEL ?= debug
 BINDLE_ID ?= enterprise.com/warpcore/1.0.0
 BINDLE_IFACE ?= 127.0.0.1:8080
