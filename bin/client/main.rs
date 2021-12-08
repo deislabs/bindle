@@ -75,7 +75,11 @@ impl TokenManager for PickYourAuth {
 async fn run() -> std::result::Result<(), ClientError> {
     let opts = opts::Opts::parse();
     // TODO: Allow log level setting outside of RUST_LOG (this is easier with this subscriber)
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_ansi(atty::is(atty::Stream::Stderr))
+        .init();
     let bindle_dir = opts.bindle_dir.unwrap_or_else(|| {
         dirs::cache_dir()
             .expect("Unable to infer cache directory")
