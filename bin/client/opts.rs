@@ -59,6 +59,14 @@ pub struct Opts {
     )]
     pub http_password: Option<String>,
 
+    #[clap(
+        short = 'k',
+        long = "insecure",
+        about = "If set, ignore server certificate errors",
+        takes_value = false
+    )]
+    pub insecure: bool,
+
     #[clap(subcommand)]
     pub subcmd: SubCommand,
 }
