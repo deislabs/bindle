@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use bindle::client::{
     tokens::{HttpBasic, NoToken, OidcToken, TokenManager},
-    Client, ClientError, Result,
+    Client, ClientBuilder, ClientError, Result,
 };
 use bindle::invoice::signature::{
     KeyRing, SecretKeyEntry, SecretKeyFile, SecretKeyStorage, SignatureRole,
@@ -126,7 +126,9 @@ async fn run() -> std::result::Result<(), ClientError> {
         PickYourAuth::None(NoToken)
     };
 
-    let bindle_client = Client::new(&opts.server_url, token)?;
+    let bindle_client = ClientBuilder::default()
+        .danger_accept_invalid_certs(opts.insecure)
+        .build(&opts.server_url, token)?;
 
     let local = bindle::provider::file::FileProvider::new(
         bindle_dir,
