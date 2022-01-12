@@ -52,7 +52,7 @@ warp = { version = "0.3", features = ["tls"], optional = true }
 bytes = "1.1.0"
 async-trait = "0.1.51"
 futures = "0.3.17"
-clap = { version = "3.0.0-beta.5", optional = true }
+clap = { version = "3", features = ["derive", "env", "cargo"], optional = true }
 reqwest = { version = "0.11.4", features = ["stream"] }
 hyper = "0.14.12"
 url = "2.2.2"

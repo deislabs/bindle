@@ -35,7 +35,7 @@ struct Opts {
         short = 'i',
         long = "address",
         env = "BINDLE_IP_ADDRESS_PORT",
-        about = "the IP address and port to listen on [default: 127.0.0.1:8080]"
+        help = "the IP address and port to listen on [default: 127.0.0.1:8080]"
     )]
     address: Option<String>,
     #[clap(
@@ -43,7 +43,7 @@ struct Opts {
         short = 'd',
         long = "directory",
         env = "BINDLE_DIRECTORY",
-        about = "the path to the directory in which bindles will be stored [default: $XDG_DATA_HOME/bindle]"
+        help = "the path to the directory in which bindles will be stored [default: $XDG_DATA_HOME/bindle]"
     )]
     bindle_directory: Option<PathBuf>,
     #[clap(
@@ -52,7 +52,7 @@ struct Opts {
         long = "tls-cert",
         env = "BINDLE_TLS_CERT",
         requires = "key_path",
-        about = "the path to the TLS certificate to use. If set, --key-path must be set as well. If not set, the server will use HTTP"
+        help = "the path to the TLS certificate to use. If set, --key-path must be set as well. If not set, the server will use HTTP"
     )]
     cert_path: Option<PathBuf>,
     #[clap(
@@ -61,20 +61,20 @@ struct Opts {
         long = "tls-key",
         env = "BINDLE_TLS_KEY",
         requires = "cert_path",
-        about = "the path to the TLS certificate key to use. If set, --cert-path must be set as well. If not set, the server will use HTTP"
+        help = "the path to the TLS certificate key to use. If set, --cert-path must be set as well. If not set, the server will use HTTP"
     )]
     key_path: Option<PathBuf>,
     #[clap(
         name = "config_file",
         long = "config-path",
-        about = "the path to a configuration file"
+        help = "the path to a configuration file"
     )]
     config_file: Option<PathBuf>,
     #[clap(
         name = "keyring",
         short = 'r',
         long = "keyring",
-        about = "the path to the public keyring file used for verifying signatures"
+        help = "the path to the public keyring file used for verifying signatures"
     )]
     keyring_file: Option<PathBuf>,
 
@@ -82,7 +82,7 @@ struct Opts {
         name = "signing_keys",
         long = "signing-keys",
         env = "BINDLE_SIGNING_KEYS",
-        about = "location of the TOML file that holds the signing keys used for creating signatures"
+        help = "location of the TOML file that holds the signing keys used for creating signatures"
     )]
     signing_file: Option<PathBuf>,
 
@@ -90,7 +90,7 @@ struct Opts {
         name = "verification_strategy",
         long = "strategy",
         env = "BINDLE_VERIFICATION_STRATEGY",
-        about = "The verification strategy to use on the server. Must be one of: CreativeIntegrity, AuthoritativeIntegrity, GreedyVerification, ExhaustiveVerification, MultipleAttestation, MultipleAttestationGreedy. For either of the multiple attestation strategies, you can specify the roles using the following syntax: `MultipleAttestation[Creator, Approver]`"
+        help = "The verification strategy to use on the server. Must be one of: CreativeIntegrity, AuthoritativeIntegrity, GreedyVerification, ExhaustiveVerification, MultipleAttestation, MultipleAttestationGreedy. For either of the multiple attestation strategies, you can specify the roles using the following syntax: `MultipleAttestation[Creator, Approver]`"
     )]
     verification_strategy: Option<bindle::VerificationStrategy>,
 
@@ -99,7 +99,7 @@ struct Opts {
         long = "use-embedded-db",
         short = 'e',
         env = "BINDLE_USE_EMBEDDED_DB",
-        about = "Use the new embedded database provider. This is currently experimental, but fairly stable and more efficient. In the future, this will be the default"
+        help = "Use the new embedded database provider. This is currently experimental, but fairly stable and more efficient. In the future, this will be the default"
     )]
     #[serde(default)]
     use_embedded_db: bool,
@@ -108,7 +108,7 @@ struct Opts {
         name = "htpasswd-file",
         long = "htpasswd-file",
         env = "BINDLE_HTPASSWD_FILE",
-        about = "If set, this will turn on HTTP Basic Auth for Bindle and load the given htpasswd file. Use 'htpasswd -Bc' to create one."
+        help = "If set, this will turn on HTTP Basic Auth for Bindle and load the given htpasswd file. Use 'htpasswd -Bc' to create one."
     )]
     htpasswd_file: Option<PathBuf>,
 
@@ -117,7 +117,7 @@ struct Opts {
         long = "oidc-client-id",
         env = "BINDLE_OIDC_CLIENT_ID",
         requires_all = &["oidc-device-url", "oidc-issuer-url"],
-        about = "The OIDC client ID to use for Oauth2 token authentication"
+        help = "The OIDC client ID to use for Oauth2 token authentication"
     )]
     oidc_client_id: Option<String>,
 
@@ -129,7 +129,7 @@ struct Opts {
         long = "oidc-device-url",
         env = "BINDLE_OIDC_DEVICE_URL",
         requires_all = &["oidc-client-id", "oidc-issuer-url"],
-        about = "The URL to the device code authentication for your OIDC provider"
+        help = "The URL to the device code authentication for your OIDC provider"
     )]
     oidc_device_url: Option<String>,
 
@@ -138,14 +138,14 @@ struct Opts {
         long = "oidc-issuer-url",
         env = "BINDLE_OIDC_ISSUER_URL",
         requires_all = &["oidc-device-url", "oidc-client-id"],
-        about = "The URL of the OIDC issuer your tokens should be issued by. This is used for verification of the token and for OIDC discovery"
+        help = "The URL of the OIDC issuer your tokens should be issued by. This is used for verification of the token and for OIDC discovery"
     )]
     oidc_issuer_url: Option<String>,
 
     #[clap(
         name = "unauthenticated",
         long = "unauthenticated",
-        about = "Run server in develepment mode"
+        help = "Run server in develepment mode"
     )]
     #[serde(default)]
     unauthenticated: bool,

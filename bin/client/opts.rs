@@ -15,14 +15,14 @@ pub struct Opts {
         short = 's',
         long = "server",
         env = "BINDLE_URL",
-        about = "The address of the bindle server. For the default local server, this should be http://localhost:8080/v1"
+        help = "The address of the bindle server. For the default local server, this should be http://localhost:8080/v1"
     )]
     pub server_url: String,
     #[clap(
         short = 'd',
         long = "bindle-dir",
         env = "BINDLE_DIRECTORY",
-        about = "The directory where bindles are stored/cached, defaults to $XDG_CACHE_HOME"
+        help = "The directory where bindles are stored/cached, defaults to $XDG_CACHE_HOME"
     )]
     pub bindle_dir: Option<PathBuf>,
 
@@ -30,7 +30,7 @@ pub struct Opts {
         short = 'r',
         long = "keyring",
         env = "BINDLE_KEYRING",
-        about = "The path to the keyring file. Defaults to $XDG_CONFIG/bindle/keyring.toml"
+        help = "The path to the keyring file. Defaults to $XDG_CONFIG/bindle/keyring.toml"
     )]
     pub keyring: Option<PathBuf>,
 
@@ -38,13 +38,13 @@ pub struct Opts {
         short = 't',
         long = "token-file",
         env = "BINDLE_TOKEN_FILE",
-        about = "The path to the login token file. If running `bindle login` this is where the file will be saved to. Defaults to $XDG_CONFIG/bindle/.token"
+        help = "The path to the login token file. If running `bindle login` this is where the file will be saved to. Defaults to $XDG_CONFIG/bindle/.token"
     )]
     pub token_file: Option<PathBuf>,
 
     #[clap(
         long = "http-user",
-        about = "Username for HTTP Basic auth",
+        help = "Username for HTTP Basic auth",
         requires = "http-password",
         env = "BINDLE_HTTP_PASSWORD",
         hide_env_values = true
@@ -53,7 +53,7 @@ pub struct Opts {
 
     #[clap(
         long = "http-password",
-        about = "Password for HTTP Basic auth",
+        help = "Password for HTTP Basic auth",
         requires = "http-user",
         env = "BINDLE_HTTP_USER"
     )]
@@ -62,7 +62,7 @@ pub struct Opts {
     #[clap(
         short = 'k',
         long = "insecure",
-        about = "If set, ignore server certificate errors",
+        help = "If set, ignore server certificate errors",
         takes_value = false
     )]
     pub insecure: bool,
@@ -135,19 +135,19 @@ pub struct Info {
     #[clap(
         index = 1,
         value_name = "BINDLE",
-        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+        help = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
     )]
     pub bindle_id: String,
     #[clap(
         short = 'y',
         long = "yanked",
-        about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+        help = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
     #[clap(
         short = 'f',
         long = "output-format",
-        about = "choose an output format",
+        help = "choose an output format",
         possible_values = &["json", "toml"],
     )]
     pub output: Option<String>,
@@ -158,14 +158,14 @@ pub struct Push {
     #[clap(
         index = 1,
         value_name = "BINDLE",
-        about = "The name of the bindle, e.g. foo/bar/baz/1.2.3"
+        help = "The name of the bindle, e.g. foo/bar/baz/1.2.3"
     )]
     pub bindle_id: String,
     #[clap(
         short = 'p',
         long = "path",
         default_value = "./",
-        about = "A path where the standalone bindle directory is located"
+        help = "A path where the standalone bindle directory is located"
     )]
     pub path: PathBuf,
 }
@@ -175,19 +175,19 @@ pub struct Get {
     #[clap(
         index = 1,
         value_name = "BINDLE",
-        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+        help = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
     )]
     pub bindle_id: String,
     #[clap(
         short = 'y',
         long = "yanked",
-        about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+        help = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
     #[clap(
         short = 'e',
         long = "export",
-        about = "If specified, export the bindle as a standlone bindle in the given directory"
+        help = "If specified, export the bindle as a standlone bindle in the given directory"
     )]
     pub export: Option<PathBuf>,
 }
@@ -197,7 +197,7 @@ pub struct Yank {
     #[clap(
         index = 1,
         value_name = "BINDLE",
-        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+        help = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
     )]
     pub bindle_id: String,
 }
@@ -220,33 +220,33 @@ pub struct Search {
     #[clap(
         short = 'q',
         long = "query",
-        about = "Filter bindles by this query. Typically, the query is a bindle name or part of a name"
+        help = "Filter bindles by this query. Typically, the query is a bindle name or part of a name"
     )]
     pub query: Option<String>,
-    #[clap(short = 'b', long = "bindle-version", about = "version constraint of the bindle to search for", long_about = VERSION_QUERY)]
+    #[clap(short = 'b', long = "bindle-version", help = "version constraint of the bindle to search for", long_help = VERSION_QUERY)]
     pub version: Option<String>,
     #[clap(
         long = "offset",
-        about = "The offset where to start the next page of results"
+        help = "The offset where to start the next page of results"
     )]
     pub offset: Option<u64>,
-    #[clap(long = "limit", about = "the limit of results per page")]
+    #[clap(long = "limit", help = "the limit of results per page")]
     pub limit: Option<u8>,
     #[clap(
         long = "strict",
-        about = "Whether or not to use strict mode",
-        long_about = "Whether or not to use strict mode. Please note that bindle servers must implement a strict mode per the specification, a non-strict (standard) mode is optional"
+        help = "Whether or not to use strict mode",
+        long_help = "Whether or not to use strict mode. Please note that bindle servers must implement a strict mode per the specification, a non-strict (standard) mode is optional"
     )]
     pub strict: Option<bool>,
     #[clap(
         long = "yanked",
-        about = "Whether or not to include yanked bindles in the search result"
+        help = "Whether or not to include yanked bindles in the search result"
     )]
     pub yanked: Option<bool>,
     #[clap(
         short = 'f',
         long = "output-format",
-        about = "choose an output format",
+        help = "choose an output format",
         possible_values = &["json", "toml", "table"],
     )]
     pub output: Option<String>,
@@ -270,20 +270,20 @@ pub struct GetParcel {
     #[clap(
         index = 1,
         value_name = "BINDLE_ID",
-        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+        help = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
     )]
     pub bindle_id: bindle::Id,
     #[clap(
         index = 2,
         value_name = "PARCEL_SHA",
-        about = "The SHA256 of the parcel"
+        help = "The SHA256 of the parcel"
     )]
     pub sha: String,
     #[clap(
         short = 'o',
         long = "output",
         default_value = "./parcel.dat",
-        about = "The location where to output the parcel to"
+        help = "The location where to output the parcel to"
     )]
     pub output: PathBuf,
 }
@@ -293,20 +293,20 @@ pub struct GetInvoice {
     #[clap(
         index = 1,
         value_name = "BINDLE",
-        about = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
+        help = "The name of the bindle, e.g. example.com/mybindle/1.2.3"
     )]
     pub bindle_id: String,
     #[clap(
         short = 'o',
         long = "output",
         default_value = "./invoice.toml",
-        about = "The location where to output the invoice to"
+        help = "The location where to output the invoice to"
     )]
     pub output: PathBuf,
     #[clap(
         short = 'y',
         long = "yanked",
-        about = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
+        help = "Whether or not to fetch a yanked bindle. If you attempt to fetch a yanked bindle without this set, it will error"
     )]
     pub yanked: bool,
 }
@@ -316,19 +316,19 @@ pub struct GenerateLabel {
     #[clap(
         index = 1,
         value_name = "FILE",
-        about = "The path to a file. This will generate a label for the file at that path"
+        help = "The path to a file. This will generate a label for the file at that path"
     )]
     pub path: PathBuf,
     #[clap(
         short = 'n',
         long = "name",
-        about = "The name of the parcel, defaults to the name + extension of the file"
+        help = "The name of the parcel, defaults to the name + extension of the file"
     )]
     pub name: Option<String>,
     #[clap(
         short = 'm',
         long = "media-type",
-        about = "The media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
+        help = "The media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
     )]
     pub media_type: Option<String>,
 }
@@ -338,13 +338,13 @@ pub struct CreateKey {
     #[clap(
         index = 1,
         value_name = "LABEL",
-        about = "The name of the key, such as 'Matt <me@example.com>'"
+        help = "The name of the key, such as 'Matt <me@example.com>'"
     )]
     pub label: String,
     #[clap(
         short = 'f',
         long = "secrets-file",
-        about = "The path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
+        help = "The path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
     )]
     pub secret_file: Option<PathBuf>,
 }
@@ -355,14 +355,14 @@ pub struct PrintKey {
         short = 'f',
         long = "secrets-file",
         value_name = "KEYFILE_PATH",
-        about = "The path to the private key file. If not set, the default location will be checked."
+        help = "The path to the private key file. If not set, the default location will be checked."
     )]
     pub secret_file: Option<PathBuf>,
     #[clap(
         short = 'l',
         long = "label",
         value_name = "LABEL",
-        about = "The label to search for. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
+        help = "The label to search for. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
     )]
     pub label: Option<String>,
 }
@@ -372,25 +372,25 @@ pub struct SignInvoice {
     #[clap(
         index = 1,
         value_name = "INVOICE",
-        about = "the path to the invoice to sign"
+        help = "the path to the invoice to sign"
     )]
     pub invoice: String,
     #[clap(
         short = 'f',
         long = "secrets-file",
-        about = "the path to the file where secret keys are stored. Use 'create-key' to create a new key"
+        help = "the path to the file where secret keys are stored. Use 'create-key' to create a new key"
     )]
     pub secret_file: Option<PathBuf>,
     #[clap(
         short = 'r',
         long = "role",
-        about = "the role to sign with. Values are: c[reator], a[pprover], h[ost], p[roxy]. If no role is specified, 'creator' is used"
+        help = "the role to sign with. Values are: c[reator], a[pprover], h[ost], p[roxy]. If no role is specified, 'creator' is used"
     )]
     pub role: Option<String>,
     #[clap(
         short = 'o',
         long = "out",
-        about = "the location to write the modified invoice. By default, it will write to invoice-HASH.toml, where HASH is computed on name and version"
+        help = "the location to write the modified invoice. By default, it will write to invoice-HASH.toml, where HASH is computed on name and version"
     )]
     pub destination: Option<String>,
 }
@@ -401,7 +401,7 @@ pub struct PushInvoice {
         index = 1,
         value_name = "FILE",
         default_value = "./invoice.toml",
-        about = "The path to the invoice TOML file"
+        help = "The path to the invoice TOML file"
     )]
     pub path: PathBuf,
 }
@@ -413,19 +413,19 @@ pub struct PushFile {
     #[clap(
         index = 2,
         value_name = "FILE",
-        about = "The path to the file that should be pushed as a parcel"
+        help = "The path to the file that should be pushed as a parcel"
     )]
     pub path: PathBuf,
     #[clap(
         short = 'n',
         long = "name",
-        about = "the name of the parcel, defaults to the name + extension of the file"
+        help = "the name of the parcel, defaults to the name + extension of the file"
     )]
     pub name: Option<String>,
     #[clap(
         short = 'm',
         long = "media-type",
-        about = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
+        help = "the media (mime) type of the file. If not provided, the tool will attempt to guess the mime type. If guessing fails, the default is `application/octet-stream`"
     )]
     pub media_type: Option<String>,
 }
