@@ -26,14 +26,14 @@ async fn main() {
         .about(DESCRIPTION)
         .arg(
             Arg::new("src")
-                .about("path to directory with package.json")
+                .help("path to directory with package.json")
                 .short('s')
                 .long("src")
                 .takes_value(true),
         )
         .arg(
             Arg::new("bindir")
-                .about("path to bindle directory")
+                .help("path to bindle directory")
                 .short('b')
                 .long("bindle")
                 .takes_value(true),

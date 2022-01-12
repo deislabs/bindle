@@ -27,7 +27,7 @@ on Linux, MacOS, and Windows (in PowerShell):
 
 1. Download your desired version from [the releases
    page](https://github.com/deislabs/bindles/releases)
-1. Unpack it (`tar -xzf bindle-v0.6.0-linux-amd64.tar.gz`)
+1. Unpack it (`tar -xzf bindle-v0.7.0-linux-amd64.tar.gz`)
 1. Move the bindle and bindle CLIs to their desired
    destinations somewhere in your `$PATH` (e.g. `mv bindle bindle-server /usr/local/bin/` on Unix-like
    systems or `mv *.exe C:\Windows\system32\` on Windows)

@@ -29,14 +29,14 @@ async fn main() {
         .about(DESCRIPTION)
         .arg(
             Arg::new("cargo")
-                .about("path to directory with cargo.toml")
+                .help("path to directory with cargo.toml")
                 .short('c')
                 .long("cargo")
                 .takes_value(true),
         )
         .arg(
             Arg::new("bindir")
-                .about("path to bindle directory")
+                .help("path to bindle directory")
                 .short('b')
                 .long("bindle")
                 .takes_value(true),
