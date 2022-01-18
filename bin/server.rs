@@ -145,7 +145,7 @@ struct Opts {
     #[clap(
         name = "unauthenticated",
         long = "unauthenticated",
-        help = "Run server in develepment mode"
+        help = "Run server in development mode"
     )]
     #[serde(default)]
     unauthenticated: bool,
