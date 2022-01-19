@@ -699,7 +699,7 @@ library = "true"
 
 Above, we have used the `group` technique to declare two entrpoints, where the runtime must choose exactly one. One entrypoint has a `ui_kit` requirement and the other does not.
 
-When sg1 executes the bundle above, it will read through the `entrypoint` group, determining that it cannot execute `weather-ui.wasm` (because of the `ui_kit` requirement), but determining that it can run `weather-cli.wasm`.
+When sg1 executes the bindle above, it will read through the `entrypoint` group, determining that it cannot execute `weather-ui.wasm` (because of the `ui_kit` requirement), but determining that it can run `weather-cli.wasm`.
 
 Sg1 will then fetch `weather-cli.wasm` and `libalmanac.wasm` and execute those two locally.
 

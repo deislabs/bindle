@@ -38,14 +38,14 @@ label.name = "foo.js"
 label.size = 248098
 label.origin = "footastic 1.2.3"
 ```
-(Source)[../test/data/simple-invoice.toml]
+[Source](../test/data/simple-invoice.toml)
 
 The above bindle declares its `bindle` description, and then declares a manifest containing three parcels.
 
 ## Top-level Fields
 
 - `bindleVersion` is required, and should be `1.0.0` for this version of the specification.
-- `yanked` is a boolean field that indicates whether a Bindle has been yanked. This field appears outside of the `bindle` because it is mutable, though it can only be toggled on. Once set to true, a Bindle MUST NOT be un-yanked. A yanked bundle should never be served in an index or search, but MAY be accessed directly.
+- `yanked` is a boolean field that indicates whether a Bindle has been yanked. This field appears outside of the `bindle` because it is mutable, though it can only be toggled on. Once set to true, a Bindle MUST NOT be un-yanked. A yanked bindle should never be served in an index or search, but MAY be accessed directly.
 - `yanked_reason` (OPTIONAL) is a string field in which a human-readable reason can be given for yanking the invoice.
 
 ## `bindle` Fields
@@ -68,7 +68,7 @@ The `annotations` section contains arbitrary name/value pairs. Implementors of t
 
 The annotations section is OPTIONAL.
 
-Implementations MUST NOT add fields anywhere else in the invoice except here and in the `annotations` field of a bundle label.
+Implementations MUST NOT add fields anywhere else in the invoice except here and in the `annotations` field of a bindle label.
 
 ### Reserved Annotations
 
@@ -202,7 +202,7 @@ label.mediaType = "application/x-javascript"
 label.name = "third"
 conditions.memberOf = ["utility"]
 ```
-(Source)[../test/data/full-invoice.toml]
+[Source](../test/data/full-invoice.toml)
 
 In the example above, three groups are declared:
 

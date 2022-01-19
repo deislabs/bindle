@@ -17,7 +17,7 @@ pub const INVOICE_FILE: &str = "invoice.toml";
 /// The name of the parcels directory
 pub use crate::provider::file::{PARCEL_DAT, PARCEL_DIRECTORY as PARCEL_DIR};
 
-/// A struct containing paths to all of the key components of a standalone bundle
+/// A struct containing paths to all of the key components of a standalone bindle
 pub struct StandaloneRead {
     pub invoice_file: PathBuf,
     pub parcel_dir: PathBuf,
