@@ -6,7 +6,7 @@ This section of the Bindle specification defines how naming and referencing work
 
 A bindle has a name. For example, if we were to write a `hello world` bindle, it may have the name `hello_world`.
 
-When a bindle is concretized into an invoice, it MUST have a name and a version. Version MUST be a valid [https://semver.org](SemVer 2 version).
+When a bindle is concretized into an invoice, it MUST have a name and a version. Version MUST be a valid [SemVer 2 version](https://semver.org).
 
 A bindle name can be one or more characters from the set of unicode alphabetic and numeric characters, as well as the characters `_` and `/`.
 
