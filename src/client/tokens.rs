@@ -223,8 +223,8 @@ impl OidcToken {
 
         println!(
             "Open this URL in your browser:\n{}\nand then enter the code when prompted: {}",
-            device_code_details.verification_uri().to_string(),
-            device_code_details.user_code().secret().to_string()
+            **device_code_details.verification_uri(),
+            device_code_details.user_code().secret()
         );
 
         let oauth_client: Oauth2Client<

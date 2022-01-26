@@ -570,11 +570,7 @@ fn role_from_name(name: String) -> Result<SignatureRole> {
 
 async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<SecretKeyEntry> {
     let keys = SecretKeyFile::load_file(&fpath).await.map_err(|e| {
-        ClientError::Other(format!(
-            "Error loading file {}: {}",
-            fpath.display(),
-            e.to_string()
-        ))
+        ClientError::Other(format!("Error loading file {}: {}", fpath.display(), e))
     })?;
 
     keys.get_first_matching(role)
