@@ -501,7 +501,7 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
     if let Some(p) = opts.export {
-        let standalone = StandaloneWrite::new(p, &inv.bindle.id)?;
+        let standalone = StandaloneWrite::new(p, &inv.bindle.id).await?;
         standalone
             .write(
                 inv,

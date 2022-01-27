@@ -15,6 +15,7 @@ async fn test_successful_write() {
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
+        .await
         .expect("Unable to create new standalone write");
 
     let expected_len = scaffold.parcel_files.len();
@@ -43,6 +44,7 @@ async fn test_successful_write_stream() {
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
+        .await
         .expect("Unable to create new standalone write");
 
     let expected_len = scaffold.parcel_files.len();
@@ -124,6 +126,7 @@ async fn test_invalid_standalone_write() {
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
+        .await
         .expect("Unable to create new standalone write");
 
     let mut parcels: HashMap<String, Cursor<Vec<u8>>> = scaffold
