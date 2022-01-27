@@ -366,6 +366,23 @@ async fn run() -> std::result::Result<(), ClientError> {
             OidcToken::login(&opts.server_url, token_file).await?;
             println!("Login successful");
         }
+        SubCommand::Package(opts) => {
+            let standalone = StandaloneWrite::new(opts.path, opts.bindle_id).await?;
+            let sha = standalone
+                .path()
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            println!(
+                "Packaging standalone bindle directory {}",
+                standalone.path().display()
+            );
+            standalone.tarball(&opts.export_dir).await?;
+            println!(
+                "Wrote standalone bindle tarball to {}",
+                opts.export_dir.join(format!("{}.tar.gz", sha)).display()
+            )
+        }
     }
 
     Ok(())
@@ -429,9 +446,20 @@ async fn push_all<T: TokenManager + Send + Sync + Clone + 'static>(
     client: Client<T>,
     opts: Push,
 ) -> Result<()> {
-    let standalone = StandaloneRead::new(opts.path, &opts.bindle_id).await?;
+    let parsed_id = bindle::Id::try_from(opts.bindle_id).map_err(ClientError::from)?;
+    let tarball_path = opts.path.join(format!("{}.tar.gz", parsed_id.sha()));
+
+    let standalone = if tokio::fs::metadata(&tarball_path)
+        .await
+        .map(|m| m.is_file())
+        .unwrap_or(false)
+    {
+        StandaloneRead::new_from_tarball(tarball_path).await?
+    } else {
+        StandaloneRead::new(opts.path, &parsed_id).await?
+    };
     standalone.push(&client).await?;
-    println!("Pushed bindle {}", opts.bindle_id);
+    println!("Pushed bindle {}", parsed_id);
     Ok(())
 }
 
@@ -501,7 +529,11 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
         .into_iter()
         .collect::<Result<Vec<_>>>()?;
     if let Some(p) = opts.export {
-        let standalone = StandaloneWrite::new(p, &inv.bindle.id).await?;
+        // Create a tempdir for collecting the files
+        let tempdir = tokio::task::spawn_blocking(tempfile::tempdir)
+            .await
+            .map_err(|e| ClientError::Other(e.to_string()))??;
+        let standalone = StandaloneWrite::new(tempdir.path(), &inv.bindle.id).await?;
         standalone
             .write(
                 inv,
@@ -513,6 +545,7 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
                     .into_inner(),
             )
             .await?;
+        standalone.tarball(p).await?;
     }
 
     Ok(())

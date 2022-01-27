@@ -128,6 +128,11 @@ pub enum SubCommand {
         about = "Logs in to a bindle server, saving the token locally"
     )]
     Login(Login),
+    #[clap(
+        name = "package",
+        about = "Packages up a standalone bindle directory into a tarball"
+    )]
+    Package(Package),
 }
 
 #[derive(Parser)]
@@ -158,14 +163,14 @@ pub struct Push {
     #[clap(
         index = 1,
         value_name = "BINDLE",
-        help = "The name of the bindle, e.g. foo/bar/baz/1.2.3"
+        help = "The name of the bindle, e.g. foo/bar/baz/1.2.3. The sha of this ID should correspond to the standalone tarball or directory you wish to push"
     )]
     pub bindle_id: String,
     #[clap(
         short = 'p',
         long = "path",
         default_value = "./",
-        help = "A path where the standalone bindle directory is located"
+        help = "A path where the standalone bindle directory or tarball is located"
     )]
     pub path: PathBuf,
 }
@@ -187,7 +192,7 @@ pub struct Get {
     #[clap(
         short = 'e',
         long = "export",
-        help = "If specified, export the bindle as a standlone bindle in the given directory"
+        help = "If specified, export the bindle as a standlone bindle tarball in the given directory"
     )]
     pub export: Option<PathBuf>,
 }
@@ -432,3 +437,28 @@ pub struct PushFile {
 
 #[derive(Parser)]
 pub struct Login {}
+
+#[derive(Parser)]
+pub struct Package {
+    #[clap(
+        index = 1,
+        value_name = "BINDLE",
+        help = "The name of the bindle, e.g. foo/bar/baz/1.2.3. The sha of this ID should correspond to the standalone bindle directory you wish to package"
+    )]
+    pub bindle_id: String,
+    #[clap(
+        short = 'p',
+        long = "path",
+        default_value = "./",
+        help = "A path where the standalone bindle directory is located"
+    )]
+    pub path: PathBuf,
+
+    #[clap(
+        short = 'e',
+        long = "export-dir",
+        default_value = "./",
+        help = "The directory where the packaged standalone bindle should be written"
+    )]
+    pub export_dir: PathBuf,
+}

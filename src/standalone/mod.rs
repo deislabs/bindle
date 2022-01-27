@@ -9,7 +9,7 @@ use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio_stream::{Stream, StreamExt};
 use tokio_tar::Archive;
 use tokio_util::codec::{BytesCodec, FramedRead};
-use tracing::{debug, error, info, instrument, trace};
+use tracing::{debug, info, instrument, trace};
 
 use crate::client::{tokens::TokenManager, Client, ClientError, Result};
 use crate::Id;
@@ -302,9 +302,6 @@ impl StandaloneWrite {
 
     /// Creates a tarball, consuming the `StandaloneWrite` and outputting the tarball at the given
     /// path
-    ///
-    /// This will remove the directory originally created to write out the data once the tarball is
-    /// successfully created
     #[instrument(level = "debug", skip(self, output_dir), fields(output_dir = %output_dir.as_ref().display()))]
     pub async fn tarball(self, output_dir: impl AsRef<Path>) -> Result<()> {
         // First, check if there is anything in the directory, if it is empty, then we abort
@@ -335,11 +332,6 @@ impl StandaloneWrite {
         encoder.flush().await?;
         encoder.shutdown().await?;
 
-        // Now delete the directory
-        if let Err(e) = tokio::fs::remove_dir_all(self.base_path).await {
-            // Only log the error if the directory delete fails
-            error!(error = ?e, "Tarball was created successfully, but an error occurred when cleaning up the standalone bindle directory");
-        }
         Ok(())
     }
 
