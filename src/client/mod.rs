@@ -276,11 +276,10 @@ impl<T: tokens::TokenManager> Client<T> {
     {
         let parsed_id = id.try_into().map_err(|e| e.into())?;
         tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
-        let req = self.client.delete(self.base_url.join(&format!(
-            "{}/{}",
-            INVOICE_ENDPOINT,
-            parsed_id.to_string()
-        ))?);
+        let req = self.client.delete(
+            self.base_url
+                .join(&format!("{}/{}", INVOICE_ENDPOINT, parsed_id))?,
+        );
         let req = self.token_manager.apply_auth_header(req).await?;
         trace!(?req);
         let resp = req.send().await?;
@@ -461,9 +460,7 @@ impl<T: tokens::TokenManager> Client<T> {
         tracing::span::Span::current().record("invoice_id", &tracing::field::display(&parsed_id));
         let req = self.client.get(self.base_url.join(&format!(
             "{}/{}/{}",
-            RELATIONSHIP_ENDPOINT,
-            "missing",
-            parsed_id.to_string()
+            RELATIONSHIP_ENDPOINT, "missing", parsed_id
         ))?);
         let req = self.token_manager.apply_auth_header(req).await?;
         trace!(?req);
