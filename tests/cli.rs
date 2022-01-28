@@ -1,15 +1,9 @@
 // Tests for the CLI
 mod test_util;
-use test_util::TestController;
+use test_util::*;
 
 use bindle::client::{tokens::TokenManager, Client};
 use bindle::testing;
-
-const ENV_BINDLE_URL: &str = "BINDLE_URL";
-#[cfg(not(target_family = "windows"))]
-const BINARY_NAME: &str = "bindle-server";
-#[cfg(target_family = "windows")]
-const BINARY_NAME: &str = "bindle-server.exe";
 
 // Inserts data into the test server for fetching
 async fn setup_data<T: TokenManager>(client: &Client<T>) {
@@ -39,6 +33,31 @@ async fn setup_data<T: TokenManager>(client: &Client<T>) {
 
 #[tokio::test]
 async fn test_push() {
+    let controller = TestController::new(BINARY_NAME).await;
+    let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
+    let path = std::path::PathBuf::from(root).join("test/data/standalone");
+    // TODO: Figure out how to dedup these outputs. I tried doing something but `args` returns an `&mut` which complicates things
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "push",
+            "-p",
+            path.to_str().unwrap(),
+            "enterprise.com/warpcore/1.0.0",
+        ])
+        .env(ENV_BINDLE_URL, &controller.base_url)
+        .output()
+        .expect("Should be able to run command");
+    assert_status(output, "Should be able to push a full bindle");
+}
+
+#[tokio::test]
+async fn test_push_tarball() {
     let controller = TestController::new(BINARY_NAME).await;
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
@@ -173,12 +192,12 @@ async fn test_get() {
         tokio::fs::metadata(
             tempdir
                 .path()
-                .join("1927aefa8fdc8327499e918300e2e49ecb271321530cc5881fcd069ca8372dcd")
+                .join("1927aefa8fdc8327499e918300e2e49ecb271321530cc5881fcd069ca8372dcd.tar.gz")
         )
         .await
         .expect("Unable to read exported bindle")
-        .is_dir(),
-        "Expected exported bindle directory"
+        .is_file(),
+        "Expected exported bindle tarball"
     )
 }
 
@@ -350,6 +369,48 @@ async fn test_no_bindles() {
             .ends_with("No matching bindles were found"),
         "Should get no bindles found message"
     );
+}
+
+#[tokio::test]
+async fn test_package() {
+    let tempdir = tempfile::tempdir().expect("Unable to create tempdir");
+    let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
+    let path = std::path::PathBuf::from(root).join("test/data/standalone");
+    // TODO: Figure out how to dedup these outputs. I tried doing something but `args` returns an `&mut` which complicates things
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "package",
+            "-p",
+            path.to_str().unwrap(),
+            "-e",
+            tempdir.path().to_str().unwrap(),
+            "enterprise.com/warpcore/1.0.0",
+        ])
+        .env(ENV_BINDLE_URL, "https://127.0.0.1:8080/v1/")
+        .output()
+        .expect("Should be able to run command");
+    assert_status(
+        output,
+        "Should be able to package a standalone bindle directory",
+    );
+
+    assert!(
+        tokio::fs::metadata(
+            tempdir
+                .path()
+                .join("1927aefa8fdc8327499e918300e2e49ecb271321530cc5881fcd069ca8372dcd.tar.gz")
+        )
+        .await
+        .expect("Unable to read packaged bindle")
+        .is_file(),
+        "Expected packaged bindle tarball"
+    )
 }
 
 fn assert_status(output: std::process::Output, message: &str) {

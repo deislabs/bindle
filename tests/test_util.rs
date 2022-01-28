@@ -2,6 +2,15 @@ use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 
 use bindle::client::{tokens::NoToken, Client};
 
+#[allow(dead_code)]
+pub const ENV_BINDLE_URL: &str = "BINDLE_URL";
+#[allow(dead_code)]
+#[cfg(not(target_family = "windows"))]
+pub const BINARY_NAME: &str = "bindle-server";
+#[allow(dead_code)]
+#[cfg(target_family = "windows")]
+pub const BINARY_NAME: &str = "bindle-server.exe";
+
 pub struct TestController {
     pub client: Client<NoToken>,
     pub base_url: String,

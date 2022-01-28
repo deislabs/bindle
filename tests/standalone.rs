@@ -1,3 +1,6 @@
+mod test_util;
+use test_util::*;
+
 use bindle::testing;
 
 use std::collections::HashMap;
@@ -15,6 +18,7 @@ async fn test_successful_write() {
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
+        .await
         .expect("Unable to create new standalone write");
 
     let expected_len = scaffold.parcel_files.len();
@@ -43,6 +47,7 @@ async fn test_successful_write_stream() {
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
+        .await
         .expect("Unable to create new standalone write");
 
     let expected_len = scaffold.parcel_files.len();
@@ -124,6 +129,7 @@ async fn test_invalid_standalone_write() {
     let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
     let standalone = StandaloneWrite::new(&tempdir, &scaffold.invoice.bindle.id)
+        .await
         .expect("Unable to create new standalone write");
 
     let mut parcels: HashMap<String, Cursor<Vec<u8>>> = scaffold
@@ -145,59 +151,7 @@ async fn test_invalid_standalone_write() {
 
 #[tokio::test]
 async fn test_push() {
-    let tempdir = tempfile::tempdir().expect("unable to create tempdir");
-
-    // Build all the binaries and wait for it to complete
-    let build_result = tokio::task::spawn_blocking(|| {
-        std::process::Command::new("cargo")
-            .args(&["build", "--features", "cli"])
-            .output()
-    })
-    .await
-    .unwrap()
-    .expect("unable to run build command");
-
-    assert!(
-        build_result.status.success(),
-        "Error trying to build server {}",
-        String::from_utf8(build_result.stderr).unwrap()
-    );
-
-    let address = "127.0.0.1:8080";
-    let mut handle = std::process::Command::new("cargo")
-        .args(&[
-            "run",
-            "--features",
-            "cli",
-            "--bin",
-            "bindle-server",
-            "--",
-            "--unauthenticated",
-            "-i",
-            address,
-            "-d",
-            tempdir.path().to_string_lossy().to_string().as_str(),
-        ])
-        .spawn()
-        .expect("unable to start bindle server");
-
-    // Wait until we can connect to the server so we know it is available
-    let mut wait_count = 1;
-    let parsed: std::net::SocketAddrV4 = address.parse().unwrap();
-    loop {
-        // Magic number: 10 + 1, since we are starting at 1 for humans
-        if wait_count >= 11 {
-            panic!("Ran out of retries waiting for server to start");
-        }
-        match tokio::net::TcpStream::connect(&parsed).await {
-            Ok(_) => break,
-            Err(e) => {
-                eprintln!("Waiting for server to come up, attempt {}. Will retry in 1 second. Got error {:?}", wait_count, e);
-                wait_count += 1;
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-        }
-    }
+    let controller = TestController::new(BINARY_NAME).await;
 
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
@@ -205,9 +159,8 @@ async fn test_push() {
         .await
         .expect("Should be able to read standalone bindle");
 
-    let client =
-        bindle::client::Client::new("http://127.0.0.1:8080/v1/", bindle::client::tokens::NoToken)
-            .expect("Invalid client config");
+    let client = bindle::client::Client::new(&controller.base_url, bindle::client::tokens::NoToken)
+        .expect("Invalid client config");
 
     read.push(&client)
         .await
@@ -215,6 +168,26 @@ async fn test_push() {
 
     // TODO: Future improvements here could be how we check that things were pushed properly, but
     // this is enough of a sanity check for now
+}
 
-    handle.kill().expect("unable to kill server process");
+#[tokio::test]
+async fn test_push_tarball() {
+    let controller = TestController::new(BINARY_NAME).await;
+
+    let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
+    let path = std::path::PathBuf::from(root)
+        .join("test/data/standalone/1927aefa8fdc8327499e918300e2e49ecb271321530cc5881fcd069ca8372dcd.tar.gz");
+    let read = StandaloneRead::new_from_tarball(path)
+        .await
+        .expect("Should be able to read standalone bindle");
+
+    let client = bindle::client::Client::new(&controller.base_url, bindle::client::tokens::NoToken)
+        .expect("Invalid client config");
+
+    read.push(&client)
+        .await
+        .expect("Should be able to push successfully");
+
+    // TODO: Future improvements here could be how we check that things were pushed properly, but
+    // this is enough of a sanity check for now
 }

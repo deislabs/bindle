@@ -110,8 +110,9 @@ async fn main() {
     }
 
     // Write invoice
-    let standalone =
-        bindle::standalone::StandaloneWrite::new(bindle_path, &invoice.bindle.id).unwrap();
+    let standalone = bindle::standalone::StandaloneWrite::new(bindle_path, &invoice.bindle.id)
+        .await
+        .unwrap();
     standalone
         .write(invoice, parcels)
         .await

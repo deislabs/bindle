@@ -76,6 +76,8 @@ bcrypt = "0.10.1"
 either = "1.6.1"
 time = { version = "0.3", features = ["serde"], optional = true }
 atty = {version = "0.2", optional = true}
+async-compression = { version = "0.3", default-features = false, features = ["tokio", "gzip"]}
+tokio-tar = "0.3"
 
 # NOTE: This is a workaround due to a dependency issue in oauth2: https://github.com/tkaitchuck/ahash/issues/95#issuecomment-903560879
 indexmap = "~1.6.2"

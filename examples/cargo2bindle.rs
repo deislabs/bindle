@@ -141,6 +141,7 @@ async fn main() {
 
     // Write invoice
     let standalone = bindle::standalone::StandaloneWrite::new(bindle_dir, &invoice.bindle.id)
+        .await
         .expect("Invalid invoice");
     standalone
         .write(invoice, Arc::try_unwrap(parcel_map).unwrap().into_inner())
