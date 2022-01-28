@@ -146,7 +146,7 @@ jobs:
 
       - name: Cargo login
         env:
-          CRATES_TOKEN: ${{ secrets.crates-token }}
+          CRATES_TOKEN: ${{ secrets.cratesToken }}
         run: cargo login ${{ env.CRATES_TOKEN }}
         shell: bash
 
