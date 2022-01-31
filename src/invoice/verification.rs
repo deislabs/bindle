@@ -143,7 +143,7 @@ impl VerificationStrategy {
 
         let pubkey =
             PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let ed_sig = EdSignature::from_bytes(sig_block.as_slice())
+        let ed_sig = EdSignature::try_from(sig_block.as_slice())
             .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
         pubkey
             .verify_strict(cleartext, &ed_sig)

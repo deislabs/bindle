@@ -204,7 +204,7 @@ impl KeyEntry {
             }
             Some(txt) => {
                 let decoded_txt = base64::decode(txt)?;
-                let sig = EdSignature::from_bytes(decoded_txt.as_slice())?;
+                let sig = EdSignature::try_from(decoded_txt.as_slice())?;
                 key.verify_strict(self.label.as_bytes(), &sig)?;
                 Ok(())
             }
