@@ -138,7 +138,7 @@ async fn run() -> std::result::Result<(), ClientError> {
     let cache = DumbCache::new(bindle_client.clone(), local);
 
     // We don't verify locally yet, but we will need the keyring to do so
-    let _keyring = load_keyring(opts.keyring)
+    let _keyring = KeyRing::load(opts.keyring.unwrap_or_default())
         .await
         .unwrap_or_else(|_| KeyRing::default());
 
@@ -549,16 +549,6 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
     }
 
     Ok(())
-}
-
-async fn load_keyring(keyring: Option<PathBuf>) -> anyhow::Result<KeyRing> {
-    // This takes an Option<PathBuf> because we want to wrap all of the flag handling in this
-    // function, including setting the default if the kyering is None.
-    let dir = keyring
-        .unwrap_or_else(default_config_dir)
-        .join("keyring.toml");
-    let kr = bindle::client::load::toml(dir).await?;
-    Ok(kr)
 }
 
 fn map_storage_error(e: ProviderError) -> ClientError {

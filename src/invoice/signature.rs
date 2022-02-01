@@ -134,6 +134,47 @@ impl KeyRing {
             key: keys,
         }
     }
+
+    /// Loads a keyring from disk, deserializing it from the given file
+    pub async fn load(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let raw_data = tokio::fs::read(&path).await.map_err(|e| {
+            anyhow::anyhow!(
+                "failed to read TOML file {}: {}",
+                path.as_ref().display(),
+                e
+            )
+        })?;
+        let res: KeyRing = toml::from_slice(&raw_data)?;
+        Ok(res)
+    }
+
+    /// Saves the keyring to the given path as serialized TOML, overwriting any existing content in
+    /// the file
+    pub async fn save(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        #[cfg(target_family = "unix")]
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // Overwrite all data
+            .mode(0o600)
+            .open(path)
+            .await?;
+
+        // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
+        // creator/owner with read/write permissions and everything else excluded) and figure out
+        // how to set those
+        #[cfg(target_family = "windows")]
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // Overwrite all data
+            .open(path)
+            .await?;
+
+        file.write_all(&toml::to_vec(self)?).await?;
+        Ok(())
+    }
+
     pub fn contains(&self, key: &PublicKey) -> bool {
         // This could definitely be optimized.
         for k in self.key.iter() {

@@ -184,8 +184,8 @@ async fn main() -> anyhow::Result<()> {
     // a keyring does not exist.
     //
     // All other cases are considered errors worthy of failing.
-    let keyring: KeyRing = match std::fs::metadata(&keyring_file) {
-        Ok(md) if md.is_file() => load_toml(keyring_file).await?,
+    let keyring: KeyRing = match tokio::fs::metadata(&keyring_file).await {
+        Ok(md) if md.is_file() => KeyRing::load(keyring_file).await?,
         Ok(_) => {
             anyhow::bail!("Expected {} to be a regular file", keyring_file.display());
         }
