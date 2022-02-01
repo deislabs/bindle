@@ -134,6 +134,7 @@ jobs:
   crate:
     name: Publish crate
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     steps:
       - uses: actions/checkout@v2
