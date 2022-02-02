@@ -150,6 +150,7 @@ async fn test_get() {
             "enterprise.com/warpcore/1.0.0",
         ])
         .env(ENV_BINDLE_URL, &controller.base_url)
+        .env(ENV_BINDLE_KEYRING, &controller.keyring_path)
         .output()
         .expect("Should be able to run command");
 
@@ -170,6 +171,7 @@ async fn test_get() {
             "enterprise.com/warpcore/1.0.0",
         ])
         .env(ENV_BINDLE_URL, &controller.base_url)
+        .env(ENV_BINDLE_KEYRING, &controller.keyring_path)
         .output()
         .expect("Should be able to run command");
 
@@ -193,6 +195,7 @@ async fn test_get() {
             "enterprise.com/warpcore/1.0.0",
         ])
         .env(ENV_BINDLE_URL, &controller.base_url)
+        .env(ENV_BINDLE_KEYRING, &controller.keyring_path)
         .output()
         .expect("Should be able to run command");
 
@@ -233,6 +236,7 @@ async fn test_get_invoice() {
             "enterprise.com/warpcore/1.0.0",
         ])
         .env(ENV_BINDLE_URL, &controller.base_url)
+        .env(ENV_BINDLE_KEYRING, &controller.keyring_path)
         .output()
         .expect("Should be able to run command");
 

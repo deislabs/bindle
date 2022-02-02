@@ -255,7 +255,7 @@ impl Default for MockKeyStore {
     fn default() -> Self {
         MockKeyStore {
             mock_secret_key: SecretKeyEntry::new(
-                "Test <test@example.com>".to_owned(),
+                "Test <test@example.com>",
                 vec![SignatureRole::Host],
             ),
         }

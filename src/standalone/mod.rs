@@ -227,7 +227,10 @@ async fn create_or_get_invoice<T: TokenManager>(
             } else {
                 Some(missing)
             };
-            Ok(crate::InvoiceCreateResponse { invoice, missing })
+            Ok(crate::InvoiceCreateResponse {
+                invoice: invoice.into(),
+                missing,
+            })
         }
         Err(e) => Err(e),
     }

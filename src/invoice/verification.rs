@@ -271,7 +271,8 @@ impl VerificationStrategy {
     }
 }
 
-/// An invoice whose signatures have been verified. Can be converted borrowed as a plain [`Invoice`]
+/// An invoice whose signatures have been verified. Can be converted or borrowed as a plain
+/// [`Invoice`]
 pub struct VerifiedInvoice<T: Into<crate::Invoice>>(T);
 
 impl<T: Into<crate::Invoice>> Verified for VerifiedInvoice<T> {}
@@ -528,12 +529,10 @@ mod test {
         "#;
         let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
 
-        let key_creator =
-            SecretKeyEntry::new("Test Creator".to_owned(), vec![SignatureRole::Creator]);
-        let key_approver =
-            SecretKeyEntry::new("Test Approver".to_owned(), vec![SignatureRole::Approver]);
-        let key_host = SecretKeyEntry::new("Test Host".to_owned(), vec![SignatureRole::Host]);
-        let key_proxy = SecretKeyEntry::new("Test Proxy".to_owned(), vec![SignatureRole::Proxy]);
+        let key_creator = SecretKeyEntry::new("Test Creator", vec![SignatureRole::Creator]);
+        let key_approver = SecretKeyEntry::new("Test Approver", vec![SignatureRole::Approver]);
+        let key_host = SecretKeyEntry::new("Test Host", vec![SignatureRole::Host]);
+        let key_proxy = SecretKeyEntry::new("Test Proxy", vec![SignatureRole::Proxy]);
         let keyring_keys = vec![
             key_approver.clone().try_into().expect("convert to pubkey"),
             key_host.clone().try_into().expect("convert to pubkey"),
@@ -675,8 +674,7 @@ mod test {
                 .expect("signed as creator");
 
             // Mock an unknown key and don't add it to keyring
-            let key_anon =
-                SecretKeyEntry::new("Unknown key".to_owned(), vec![SignatureRole::Approver]);
+            let key_anon = SecretKeyEntry::new("Unknown key", vec![SignatureRole::Approver]);
             inv.sign(SignatureRole::Approver, &key_anon)
                 .expect("signed with unknown key");
 

@@ -159,10 +159,7 @@ async fn test_push() {
         .await
         .expect("Should be able to read standalone bindle");
 
-    let client = bindle::client::Client::new(&controller.base_url, bindle::client::tokens::NoToken)
-        .expect("Invalid client config");
-
-    read.push(&client)
+    read.push(&controller.client)
         .await
         .expect("Should be able to push successfully");
 
@@ -181,10 +178,7 @@ async fn test_push_tarball() {
         .await
         .expect("Should be able to read standalone bindle");
 
-    let client = bindle::client::Client::new(&controller.base_url, bindle::client::tokens::NoToken)
-        .expect("Invalid client config");
-
-    read.push(&client)
+    read.push(&controller.client)
         .await
         .expect("Should be able to push successfully");
 

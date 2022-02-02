@@ -165,6 +165,7 @@ impl<T: AsRef<Path> + Sync> KeyRingSaver for T {
             .await?;
 
         file.write_all(&toml::to_vec(keyring)?).await?;
+        file.flush().await?;
         Ok(())
     }
 }
@@ -341,12 +342,12 @@ pub struct SecretKeyEntry {
 }
 
 impl SecretKeyEntry {
-    pub fn new(label: String, roles: Vec<SignatureRole>) -> Self {
+    pub fn new(label: &str, roles: Vec<SignatureRole>) -> Self {
         let mut rng = rand::rngs::OsRng {};
         let rawkey = Keypair::generate(&mut rng);
         let keypair = base64::encode(rawkey.to_bytes());
         Self {
-            label,
+            label: label.to_owned(),
             keypair,
             roles,
         }
@@ -489,10 +490,8 @@ mod test {
     async fn test_secret_keys() {
         let mut kr = SecretKeyFile::default();
         assert_eq!(kr.key.len(), 0);
-        kr.key.push(SecretKeyEntry::new(
-            "test".to_owned(),
-            vec![SignatureRole::Proxy],
-        ));
+        kr.key
+            .push(SecretKeyEntry::new("test", vec![SignatureRole::Proxy]));
         assert_eq!(kr.key.len(), 1);
 
         let outdir = tempfile::tempdir().expect("created a temp dir");

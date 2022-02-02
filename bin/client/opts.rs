@@ -1,3 +1,4 @@
+use bindle::VerificationStrategy;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -66,6 +67,13 @@ pub struct Opts {
         takes_value = false
     )]
     pub insecure: bool,
+
+    #[clap(
+        long = "strategy",
+        help = "The verification strategy to use when pulling the bindle",
+        default_value = "MultipleAttestationGreedy[Host]"
+    )]
+    pub strategy: VerificationStrategy,
 
     #[clap(subcommand)]
     pub subcmd: SubCommand,

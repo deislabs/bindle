@@ -455,8 +455,8 @@ mod test {
             .expect("If no signature, then this should verify fine");
 
         // Create two signing keys.
-        let signer_name1 = "Matt Butcher <matt@example.com>".to_owned();
-        let signer_name2 = "Not Matt Butcher <not.matt@example.com>".to_owned();
+        let signer_name1 = "Matt Butcher <matt@example.com>";
+        let signer_name2 = "Not Matt Butcher <not.matt@example.com>";
 
         let keypair1 = SecretKeyEntry::new(signer_name1, vec![SignatureRole::Creator]);
         let keypair2 = SecretKeyEntry::new(signer_name2, vec![SignatureRole::Proxy]);

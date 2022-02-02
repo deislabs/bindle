@@ -125,17 +125,6 @@ async fn run() -> std::result::Result<(), ClientError> {
         PickYourAuth::None(NoToken)
     };
 
-    let bindle_client = ClientBuilder::default()
-        .danger_accept_invalid_certs(opts.insecure)
-        .build(&opts.server_url, token)?;
-
-    let local = bindle::provider::file::FileProvider::new(
-        bindle_dir,
-        bindle::search::NoopEngine::default(),
-    )
-    .await;
-    let cache = DumbCache::new(bindle_client.clone(), local);
-
     let keyring_path: PathBuf = opts
         .keyring
         .unwrap_or_else(|| default_config_dir().join("keyring.toml"));
@@ -143,10 +132,24 @@ async fn run() -> std::result::Result<(), ClientError> {
     if let Some(p) = keyring_path.parent() {
         tokio::fs::create_dir_all(p).await?;
     }
-    let mut keyring = keyring_path
-        .load()
-        .await
-        .unwrap_or_else(|_| KeyRing::default());
+    let keyring = Arc::new(
+        keyring_path
+            .load()
+            .await
+            .unwrap_or_else(|_| KeyRing::default()),
+    );
+
+    let bindle_client = ClientBuilder::default()
+        .danger_accept_invalid_certs(opts.insecure)
+        .verification_strategy(opts.strategy)
+        .build(&opts.server_url, token, keyring)?;
+
+    let local = bindle::provider::file::FileProvider::new(
+        bindle_dir,
+        bindle::search::NoopEngine::default(),
+    )
+    .await;
+    let cache = DumbCache::new(bindle_client.clone(), local);
 
     match opts.subcmd {
         SubCommand::Info(info_opts) => {
@@ -362,7 +365,7 @@ async fn run() -> std::result::Result<(), ClientError> {
                         Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
                             println!("File {} does not exist. Creating it.", dir.display());
                             let mut keyfile = SecretKeyFile::default();
-                            let newkey = SecretKeyEntry::new(create_opts.label, roles);
+                            let newkey = SecretKeyEntry::new(&create_opts.label, roles);
                             keyfile.key.push(newkey.clone());
                             keyfile
                                 .save_file(dir)
@@ -381,7 +384,7 @@ async fn run() -> std::result::Result<(), ClientError> {
                             let mut keyfile = SecretKeyFile::load_file(&dir)
                                 .await
                                 .map_err(|e| ClientError::Other(e.to_string()))?;
-                            let newkey = SecretKeyEntry::new(create_opts.label, roles);
+                            let newkey = SecretKeyEntry::new(&create_opts.label, roles);
                             keyfile.key.push(newkey.clone());
                             keyfile
                                 .save_file(dir)
@@ -394,6 +397,10 @@ async fn run() -> std::result::Result<(), ClientError> {
                     };
 
                     if !create_opts.skip_keyring {
+                        let mut keyring = keyring_path
+                            .load()
+                            .await
+                            .unwrap_or_else(|_| KeyRing::default());
                         keyring.add_entry(key.try_into()?);
                         keyring_path
                             .save(&keyring)
@@ -402,6 +409,10 @@ async fn run() -> std::result::Result<(), ClientError> {
                     }
                 }
                 Keys::Add(opts) => {
+                    let mut keyring = keyring_path
+                        .load()
+                        .await
+                        .unwrap_or_else(|_| KeyRing::default());
                     // First, check that the key is actually valid
                     let raw = base64::decode(&opts.key)
                         .map_err(|_| SignatureError::CorruptKey(opts.key.clone()))?;
