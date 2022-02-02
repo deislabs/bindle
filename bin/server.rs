@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::Parser;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use bindle::{
     invoice::signature::{KeyRing, SignatureRole},
@@ -201,8 +201,14 @@ async fn main() -> anyhow::Result<()> {
     // - or config file signing-keys entry
     // - or $XDG_DATA/bindle/signing-keys.toml
     let signing_keys: PathBuf = match config.signing_file {
-        Some(keypath) => keypath,
-        None => ensure_signing_keys().await?,
+        Some(keypath) => {
+            debug!(path = %keypath.display(), "Signing keys file was set, loading...");
+            keypath
+        }
+        None => {
+            debug!("No signing key file set, attempting to load from default");
+            ensure_signing_keys().await?
+        }
     };
 
     // Map doesn't work here because we've already moved data out of opts
@@ -414,7 +420,7 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
                 "Creating a default host signing key and storing it in {}",
                 signing_keyfile.display()
             );
-            let key = SecretKeyEntry::new("Default host key".to_owned(), vec![SignatureRole::Host]);
+            let key = SecretKeyEntry::new("Default host key", vec![SignatureRole::Host]);
             default_keyfile.key.push(key);
             default_keyfile
                 .save_file(&signing_keyfile)

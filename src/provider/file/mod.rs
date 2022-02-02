@@ -670,7 +670,7 @@ mod test {
 
     fn mock_secret_key() -> SecretKeyEntry {
         SecretKeyEntry::new(
-            "Bogo Key".to_owned(),
+            "Bogo Key",
             vec![
                 SignatureRole::Host,
                 SignatureRole::Proxy,

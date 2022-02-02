@@ -7,6 +7,7 @@ pub mod tokens;
 
 use std::convert::TryInto;
 use std::path::Path;
+use std::sync::Arc;
 
 use reqwest::header::{self, HeaderMap};
 use reqwest::Client as HttpClient;
@@ -16,8 +17,9 @@ use tracing::{debug, info, instrument, trace};
 use url::Url;
 
 use crate::provider::{Provider, ProviderError};
-use crate::verification::Verified;
-use crate::{Id, Signed};
+use crate::signature::{KeyRing, SignatureRole};
+use crate::verification::{Verified, VerifiedInvoice};
+use crate::{Id, Invoice, Signed, VerificationStrategy};
 
 pub use error::ClientError;
 
@@ -36,6 +38,9 @@ pub struct Client<T> {
     client: HttpClient,
     base_url: Url,
     token_manager: T,
+    verification_strategy: VerificationStrategy,
+    // In an arc as the keyring could be fairly large and we don't want to clone it everywhere
+    keyring: Arc<KeyRing>,
 }
 
 /// The operation being performed against a Bindle server.
@@ -48,10 +53,22 @@ enum Operation {
 }
 
 /// A builder for for setting up a `Client`. Created using `Client::builder`
-#[derive(Default)]
 pub struct ClientBuilder {
     http2_prior_knowledge: bool,
     danger_accept_invalid_certs: bool,
+    verification_strategy: VerificationStrategy,
+}
+
+impl Default for ClientBuilder {
+    fn default() -> Self {
+        ClientBuilder {
+            http2_prior_knowledge: false,
+            danger_accept_invalid_certs: false,
+            verification_strategy: VerificationStrategy::MultipleAttestationGreedy(vec![
+                SignatureRole::Host,
+            ]),
+        }
+    }
 }
 
 impl ClientBuilder {
@@ -69,12 +86,30 @@ impl ClientBuilder {
         self
     }
 
-    /// Returns a new Client with the given URL and token manager, configured using the set options.
+    /// Sets the verification strategy this client should use.
+    ///
+    /// Defaults to MultipleAttestationGreedy(Host), which will validate that all signatures are
+    /// valid and will verify the signature of the host against the keyring
+    pub fn verification_strategy(mut self, verification_strategy: VerificationStrategy) -> Self {
+        self.verification_strategy = verification_strategy;
+        self
+    }
+
+    /// Returns a new Client with the given URL, token manager, and keyring, configured using the
+    /// set options.
     ///
     /// This URL should be the FQDN plus any namespacing (like `v1`). So if you were running a
     /// bindle server mounted at the v1 endpoint, your URL would look something like
     /// `http://my.bindle.com/v1/`. Will return an error if the URL is not valid
-    pub fn build<T>(self, base_url: &str, token_manager: T) -> Result<Client<T>> {
+    ///
+    /// This requires `KeyRing` to be wrapped in an `Arc` for efficiency sake. `KeyRing`s can be
+    /// quite large and so we require it to be wrapped in an Arc to avoid a large clone cost
+    pub fn build<T>(
+        self,
+        base_url: &str,
+        token_manager: T,
+        keyring: Arc<KeyRing>,
+    ) -> Result<Client<T>> {
         let (base_parsed, headers) = base_url_and_headers(base_url)?;
         let client = HttpClient::builder()
             .and_if(self.http2_prior_knowledge, |b| b.http2_prior_knowledge())
@@ -89,6 +124,8 @@ impl ClientBuilder {
             client,
             base_url: base_parsed,
             token_manager,
+            verification_strategy: self.verification_strategy,
+            keyring,
         })
     }
 }
@@ -113,8 +150,11 @@ impl<T: tokens::TokenManager> Client<T> {
     /// This URL should be the FQDN plus any namespacing (like `v1`). So if you were running a
     /// bindle server mounted at the v1 endpoint, your URL would look something like
     /// `http://my.bindle.com/v1/`. Will return an error if the URL is not valid
-    pub fn new(base_url: &str, token_manager: T) -> Result<Self> {
-        ClientBuilder::default().build(base_url, token_manager)
+    ///
+    /// This requires `KeyRing` to be wrapped in an `Arc` for efficiency sake. `KeyRing`s can be
+    /// quite large and so we require it to be wrapped in an Arc to avoid a large clone cost
+    pub fn new(base_url: &str, token_manager: T, keyring: Arc<KeyRing>) -> Result<Self> {
+        ClientBuilder::default().build(base_url, token_manager, keyring)
     }
 
     /// Returns a [`ClientBuilder`](ClientBuilder) configured with defaults
@@ -200,12 +240,16 @@ impl<T: tokens::TokenManager> Client<T> {
 
     //////////////// Get Invoice ////////////////
 
-    /// Returns the requested invoice from the bindle server if it exists. This can take any form
-    /// that can convert into the `Id` type, but generally speaking, this is the canonical name of
-    /// the bindle (e.g. `example.com/foo/1.0.0`). If you want to fetch a yanked invoice, use the
-    /// [`get_yanked_invoice`](Client::get_yanked_invoice) function
+    /// Returns the requested invoice from the bindle server if it exists.
+    ///
+    /// This can take any form that can convert into the `Id` type, but generally speaking, this is
+    /// the canonical name of the bindle (e.g. `example.com/foo/1.0.0`). If you want to fetch a
+    /// yanked invoice, use the [`get_yanked_invoice`](Client::get_yanked_invoice) function
+    ///
+    /// Once the invoice is fetched, it will be verified using the configured verification strategy
+    /// and keyring for this client
     #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
-    pub async fn get_invoice<I>(&self, id: I) -> Result<crate::Invoice>
+    pub async fn get_invoice<I>(&self, id: I) -> Result<VerifiedInvoice<Invoice>>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
@@ -221,7 +265,7 @@ impl<T: tokens::TokenManager> Client<T> {
 
     /// Same as `get_invoice` but allows you to fetch a yanked invoice
     #[instrument(level = "trace", skip(self, id), fields(invoice_id))]
-    pub async fn get_yanked_invoice<I>(&self, id: I) -> Result<crate::Invoice>
+    pub async fn get_yanked_invoice<I>(&self, id: I) -> Result<VerifiedInvoice<Invoice>>
     where
         I: TryInto<Id>,
         I::Error: Into<ClientError>,
@@ -235,13 +279,14 @@ impl<T: tokens::TokenManager> Client<T> {
         self.get_invoice_request(url).await
     }
 
-    async fn get_invoice_request(&self, url: Url) -> Result<crate::Invoice> {
+    async fn get_invoice_request(&self, url: Url) -> Result<VerifiedInvoice<Invoice>> {
         let req = self.client.get(url);
         let req = self.token_manager.apply_auth_header(req).await?;
         trace!(?req);
         let resp = req.send().await?;
         let resp = unwrap_status(resp, Endpoint::Invoice, Operation::Get).await?;
-        Ok(toml::from_slice(&resp.bytes().await?)?)
+        let inv: Invoice = toml::from_slice(&resp.bytes().await?)?;
+        Ok(self.verification_strategy.verify(inv, &self.keyring)?)
     }
 
     //////////////// Query Invoice ////////////////
@@ -495,6 +540,7 @@ impl<T: tokens::TokenManager + Send + Sync + 'static> Provider for Client<T> {
         self.get_yanked_invoice(parsed_id)
             .await
             .map_err(|e| e.into())
+            .map(|inv| inv.into())
     }
 
     async fn yank_invoice<I>(&self, id: I) -> crate::provider::Result<()>

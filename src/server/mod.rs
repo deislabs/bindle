@@ -302,7 +302,7 @@ mod test {
             KeyRing::default(),
         );
 
-        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
 
         // Insert an invoice
         let scaffold = testing::Scaffold::load("incomplete").await;
@@ -380,7 +380,7 @@ mod test {
         );
         let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
         let valid = testing::Scaffold::from(valid_raw.clone());
-        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
         let verified = VerificationStrategy::MultipleAttestation(vec![])
             .verify(valid.invoice.clone(), &KeyRing::default())
             .unwrap();
@@ -432,7 +432,7 @@ mod test {
         let scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
         let data = std::io::Cursor::new(parcel.data.clone());
-        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
         let verified = VerificationStrategy::MultipleAttestation(vec![])
             .verify(scaffold.invoice.clone(), &KeyRing::default())
             .unwrap();
@@ -469,7 +469,7 @@ mod test {
 
         let scaffold = testing::Scaffold::load("invalid").await;
 
-        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
         let verified = VerificationStrategy::MultipleAttestation(vec![])
             .verify(scaffold.invoice.clone(), &KeyRing::default())
             .unwrap();
@@ -528,7 +528,7 @@ mod test {
         );
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
-        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
 
         for b in bindles_to_insert.into_iter() {
             let current = testing::Scaffold::load(b).await;
@@ -642,7 +642,7 @@ mod test {
         );
 
         let scaffold = testing::Scaffold::load("lotsa_parcels").await;
-        let sk = SecretKeyEntry::new("test".to_owned(), vec![SignatureRole::Host]);
+        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
         let verified = VerificationStrategy::MultipleAttestation(vec![])
             .verify(scaffold.invoice.clone(), &KeyRing::default())
             .unwrap();

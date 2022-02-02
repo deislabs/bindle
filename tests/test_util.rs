@@ -1,6 +1,9 @@
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use bindle::client::{tokens::NoToken, Client};
+use bindle::signature::{KeyRing, KeyRingSaver, SecretKeyEntry, SecretKeyFile, SignatureRole};
 
 #[allow(dead_code)]
 pub const ENV_BINDLE_URL: &str = "BINDLE_URL";
@@ -14,6 +17,8 @@ pub const BINARY_NAME: &str = "bindle-server.exe";
 pub struct TestController {
     pub client: Client<NoToken>,
     pub base_url: String,
+    pub keyring: KeyRing,
+    pub keyring_path: PathBuf,
     server_handle: std::process::Child,
     // Keep a handle to the tempdir so it doesn't drop until the controller drops
     _tempdir: tempfile::TempDir,
@@ -44,6 +49,24 @@ impl TestController {
         let address = format!("127.0.0.1:{}", get_random_port());
 
         let base_url = format!("http://{}/v1/", address);
+        // Create the host key
+        let secret_file_path = tempdir.path().join("secret_keys.toml");
+        let key = SecretKeyEntry::new("test <test@example.com>", vec![SignatureRole::Host]);
+        let mut secret_file = SecretKeyFile::default();
+        secret_file.key.push(key.clone());
+        secret_file
+            .save_file(&secret_file_path)
+            .await
+            .expect("Unable to save host key");
+
+        let mut keyring = KeyRing::default();
+        keyring.add_entry(key.try_into().unwrap());
+
+        let keyring_path = tempdir.path().join("keyring.toml");
+        keyring_path
+            .save(&keyring)
+            .await
+            .expect("Unable to save keyring to disk");
 
         let server_handle = std::process::Command::new(
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,6 +80,7 @@ impl TestController {
             "-i",
             address.as_str(),
         ])
+        .env("BINDLE_SIGNING_KEYS", secret_file_path)
         .spawn()
         .expect("unable to start bindle server");
 
@@ -77,10 +101,13 @@ impl TestController {
             }
         }
 
-        let client = Client::new(&base_url, NoToken).expect("unable to setup bindle client");
+        let client = Client::new(&base_url, NoToken, Arc::new(keyring.clone()))
+            .expect("unable to setup bindle client");
         TestController {
             client,
             base_url,
+            keyring,
+            keyring_path,
             server_handle,
             _tempdir: tempdir,
         }
