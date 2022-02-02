@@ -109,20 +109,10 @@ pub enum SubCommand {
     )]
     GenerateLabel(GenerateLabel),
     #[clap(
-        name = "create-key",
-        about = "Creates a new signing key and places it in the local secret keys. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email address, of the form 'name <email>'."
-    )]
-    CreateKey(CreateKey),
-    #[clap(
         name = "sign-invoice",
         about = "Sign an invoice with one of your secret keys"
     )]
     SignInvoice(SignInvoice),
-    #[clap(
-        name = "print-key",
-        about = "Print the public key entries for keys from the secret key file. If no '--label' is supplied, public keys for all secret keys are returned."
-    )]
-    PrintKey(PrintKey),
     #[clap(
         name = "login",
         about = "Logs in to a bindle server, saving the token locally"
@@ -133,6 +123,27 @@ pub enum SubCommand {
         about = "Packages up a standalone bindle directory into a tarball"
     )]
     Package(Package),
+
+    #[clap(subcommand)]
+    Keys(Keys),
+}
+
+#[derive(Parser)]
+#[clap(about = "Operations for creating and managing signing keys and keychains")]
+pub enum Keys {
+    #[clap(
+        name = "create",
+        about = "Creates a new signing key and places it in the local secret keys. Also adds the public key to your keychain. If no secret file is provided, this will store in the default config directory for Bindle. The LABEL is typically a name and email address, of the form 'name <email>'."
+    )]
+    Create(CreateKey),
+    #[clap(name = "add", about = "Adds a public key to your keychain")]
+    Add(AddKey),
+    #[clap(
+        name = "print",
+        about = "Print the public key entries for keys from the secret key file. If no '--label' is supplied, public keys for all secret keys are returned."
+    )]
+    Print(PrintKey),
+    // TODO(thomastaylor312): We should probably add an endpoint to bindle servers that allow you to download a host key and add a subcommand to help with it
 }
 
 #[derive(Parser)]
@@ -346,12 +357,46 @@ pub struct CreateKey {
         help = "The name of the key, such as 'Matt <me@example.com>'"
     )]
     pub label: String,
+
+    #[clap(
+        long = "roles",
+        help = "The roles for this key. If multiple roles are specified, they should be comma-delimited with no spaces (e.g. creator,approver)",
+        default_value = "creator"
+    )]
+    pub roles: String,
     #[clap(
         short = 'f',
         long = "secrets-file",
         help = "The path to the file where secrets should be stored. If it does not exist, it will be created. If it does exist, the key will be appended."
     )]
     pub secret_file: Option<PathBuf>,
+    #[clap(
+        long = "skip-keyring",
+        help = "Skip writing the public key to the keychain"
+    )]
+    pub skip_keyring: bool,
+}
+
+#[derive(Parser)]
+pub struct AddKey {
+    #[clap(
+        index = 1,
+        value_name = "LABEL",
+        help = "The label to use for the key. This should be of the form 'Boaty McBoatface <boaty@example.com>'"
+    )]
+    pub label: String,
+    #[clap(
+        index = 2,
+        value_name = "ROLES",
+        help = "The roles this key should be used for when verifying. If multiple roles are specified, they should be comma-delimited with no spaces (e.g. creator,approver)"
+    )]
+    pub roles: String,
+    #[clap(
+        index = 3,
+        value_name = "KEY",
+        help = "The base64 encoded public key to add"
+    )]
+    pub key: String,
 }
 
 #[derive(Parser)]

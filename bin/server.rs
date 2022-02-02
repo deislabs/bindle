@@ -8,7 +8,7 @@ use bindle::{
     invoice::signature::{KeyRing, SignatureRole},
     provider, search,
     server::{server, TlsConfig},
-    signature::SecretKeyFile,
+    signature::{KeyRingLoader, SecretKeyFile},
     SecretKeyEntry,
 };
 
@@ -185,7 +185,7 @@ async fn main() -> anyhow::Result<()> {
     //
     // All other cases are considered errors worthy of failing.
     let keyring: KeyRing = match tokio::fs::metadata(&keyring_file).await {
-        Ok(md) if md.is_file() => KeyRing::load(keyring_file).await?,
+        Ok(md) if md.is_file() => keyring_file.load().await?,
         Ok(_) => {
             anyhow::bail!("Expected {} to be a regular file", keyring_file.display());
         }
