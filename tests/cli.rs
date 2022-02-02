@@ -1,9 +1,18 @@
 // Tests for the CLI
 mod test_util;
+use std::ffi::OsStr;
+use std::path::Path;
+
+use bindle::signature::KeyRingLoader;
 use test_util::*;
 
 use bindle::client::{tokens::TokenManager, Client};
-use bindle::testing;
+use bindle::{testing, SignatureRole};
+
+const ENV_BINDLE_KEYRING: &str = "BINDLE_KEYRING";
+const KEYRING_FILE: &str = "keyring.toml";
+const SECRETS_FILE: &str = "secret_keys.toml";
+const TEST_LABEL: &str = "Benjamin Sisko <thesisko@bajor.com>";
 
 // Inserts data into the test server for fetching
 async fn setup_data<T: TokenManager>(client: &Client<T>) {
@@ -243,7 +252,7 @@ async fn test_create_key_and_sign_invoice() {
     // Create a signing key
     {
         let cmd = format!(
-            "run --features cli --bin bindle -- create-key testkey -f {}",
+            "run --features cli --bin bindle -- keys create testkey -f {}",
             tempdir.path().join("testkey.toml").to_str().unwrap()
         );
         let output = std::process::Command::new("cargo")
@@ -411,6 +420,225 @@ async fn test_package() {
         .is_file(),
         "Expected packaged bindle tarball"
     )
+}
+
+#[tokio::test]
+async fn test_key_create_and_keyring() {
+    // Tempdir for keyring and secret-file
+    let tempdir = tempfile::tempdir().expect("Unable to create tempdir");
+    let secrets_file = tempdir.path().join(SECRETS_FILE);
+    let keyring_file = tempdir.path().join(KEYRING_FILE);
+    create_key(&keyring_file, &secrets_file, TEST_LABEL, false);
+
+    assert!(
+        tokio::fs::read_to_string(&secrets_file)
+            .await
+            .expect("Unable to read secrets file")
+            .contains(TEST_LABEL),
+        "Newly created key should be saved in file"
+    );
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert_eq!(
+        keyring.key.len(),
+        1,
+        "Only 1 entry should exist in the keyring"
+    );
+
+    assert_eq!(
+        keyring.key[0].label, TEST_LABEL,
+        "The keyring key should be from the newly created key"
+    );
+
+    // Create one more secret and make sure the keyring now has 2 entries
+    let second_label = "Kira Nerys <kira@bajor.mil>";
+    create_key(&keyring_file, &secrets_file, second_label, false);
+
+    assert!(
+        tokio::fs::read_to_string(&secrets_file)
+            .await
+            .expect("Unable to read secrets file")
+            .contains(second_label),
+        "Newly created key should be saved in file"
+    );
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert_eq!(keyring.key.len(), 2, "Should have 2 entries in keyring");
+
+    assert_eq!(
+        keyring.key[0].label, TEST_LABEL,
+        "Previously created key should still exist"
+    );
+    assert_eq!(
+        keyring.key[1].label, second_label,
+        "Newly created key should exist in keyring"
+    );
+
+    // Create a third and skip the keyring
+    let third_label = "Jadzia Dax <dax@trill.com>";
+
+    create_key(&keyring_file, &secrets_file, third_label, true);
+
+    assert!(
+        tokio::fs::read_to_string(&secrets_file)
+            .await
+            .expect("Unable to read secrets file")
+            .contains(third_label),
+        "Newly created key should be saved in file"
+    );
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert_eq!(
+        keyring.key.len(),
+        2,
+        "Newly created key should not have been added to keyring"
+    );
+
+    for key in keyring.key.iter() {
+        assert_ne!(
+            key.label, third_label,
+            "Newly created key should not exist in keyring"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_keyring_add() {
+    // Tempdir for keyring
+    let tempdir = tempfile::tempdir().expect("Unable to create tempdir");
+    let keyring_file = tempdir.path().join(KEYRING_FILE);
+
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "keys",
+            "add",
+            TEST_LABEL,
+            "approver",
+            "XbhLeOX4BtvUnT+o7xyi2waw5WXGOl3H/l3b5h97Dk4=",
+        ])
+        .env(ENV_BINDLE_URL, "http://localhost:8080/v1")
+        .env(ENV_BINDLE_KEYRING, &keyring_file)
+        .output()
+        .expect("Should be able to run command");
+
+    assert!(output.status.success(), "Should be able to add a key");
+
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert_eq!(keyring.key.len(), 1, "Should have 1 entry in keyring");
+
+    assert_eq!(
+        keyring.key[0].label, TEST_LABEL,
+        "Correct label should have been added"
+    );
+    assert_eq!(keyring.key[0].roles.len(), 1, "Should only have 1 role");
+    assert_eq!(
+        keyring.key[0].roles[0],
+        SignatureRole::Approver,
+        "Should have approver role"
+    );
+    assert_eq!(
+        keyring.key[0].key, "XbhLeOX4BtvUnT+o7xyi2waw5WXGOl3H/l3b5h97Dk4=",
+        "Should have correct key"
+    );
+}
+
+#[tokio::test]
+async fn test_keyring_add_to_existing() {
+    // Tempdir for keyring
+    let tempdir = tempfile::tempdir().expect("Unable to create tempdir");
+    let secrets_file = tempdir.path().join(SECRETS_FILE);
+    let keyring_file = tempdir.path().join(KEYRING_FILE);
+
+    // Create a key to make sure one exists first
+    create_key(&keyring_file, &secrets_file, TEST_LABEL, false);
+
+    let second_label = "Miles O'Brien <everyman@ufp.com>";
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "keys",
+            "add",
+            second_label,
+            "approver",
+            "XbhLeOX4BtvUnT+o7xyi2waw5WXGOl3H/l3b5h97Dk4=",
+        ])
+        .env(ENV_BINDLE_URL, "http://localhost:8080/v1")
+        .env(ENV_BINDLE_KEYRING, &keyring_file)
+        .output()
+        .expect("Should be able to run command");
+
+    assert!(output.status.success(), "Should be able to add a key");
+
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert_eq!(keyring.key.len(), 2, "Should have 2 entries in keyring");
+
+    assert_eq!(
+        keyring.key[1].label, second_label,
+        "New key should have been added"
+    );
+}
+
+fn create_key(
+    keyring_file: impl AsRef<OsStr>,
+    secrets_file: &Path,
+    label: &str,
+    skip_keyring: bool,
+) {
+    let mut args = vec![
+        "run",
+        "--features",
+        "cli",
+        "--bin",
+        "bindle",
+        "--",
+        "keys",
+        "create",
+        "--secrets-file",
+        secrets_file.to_str().unwrap(),
+        "--roles",
+        "creator,approver",
+    ];
+
+    if skip_keyring {
+        args.push("--skip-keyring");
+    }
+
+    args.push(label);
+    let output = std::process::Command::new("cargo")
+        .args(args)
+        .env(ENV_BINDLE_URL, "http://localhost:8080/v1")
+        .env(ENV_BINDLE_KEYRING, keyring_file)
+        .output()
+        .expect("Should be able to run command");
+    assert!(output.status.success(), "Should be able to create a key");
 }
 
 fn assert_status(output: std::process::Output, message: &str) {

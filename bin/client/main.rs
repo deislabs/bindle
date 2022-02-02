@@ -11,8 +11,9 @@ use bindle::invoice::signature::{
 };
 use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
-use bindle::signature::KeyEntry;
+use bindle::signature::{KeyEntry, KeyRingLoader, KeyRingSaver};
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
+use bindle::SignatureError;
 use bindle::{
     cache::{Cache, DumbCache},
     provider::Provider,
@@ -86,11 +87,9 @@ async fn run() -> std::result::Result<(), ClientError> {
             .join("bindle")
     });
     tokio::fs::create_dir_all(&bindle_dir).await?;
-    let token_file = opts.token_file.unwrap_or_else(|| {
-        dirs::config_dir()
-            .expect("Unable to infer cache directory")
-            .join("bindle/.token")
-    });
+    let token_file = opts
+        .token_file
+        .unwrap_or_else(|| default_config_dir().join(".token"));
     // Theoretically, someone could create the token file at /, which would mean this function
     // wouldn't return anything. This isn't an error, so do not attempt to create the directory if
     // so
@@ -137,8 +136,15 @@ async fn run() -> std::result::Result<(), ClientError> {
     .await;
     let cache = DumbCache::new(bindle_client.clone(), local);
 
-    // We don't verify locally yet, but we will need the keyring to do so
-    let _keyring = load_keyring(opts.keyring)
+    let keyring_path: PathBuf = opts
+        .keyring
+        .unwrap_or_else(|| default_config_dir().join("keyring.toml"));
+
+    if let Some(p) = keyring_path.parent() {
+        tokio::fs::create_dir_all(p).await?;
+    }
+    let mut keyring = keyring_path
+        .load()
         .await
         .unwrap_or_else(|_| KeyRing::default());
 
@@ -226,7 +232,8 @@ async fn run() -> std::result::Result<(), ClientError> {
         SubCommand::SignInvoice(sign_opts) => {
             // Role
             let role = if let Some(r) = sign_opts.role {
-                role_from_name(r)?
+                r.parse()
+                    .map_err(|e: &str| ClientError::Other(e.to_owned()))?
             } else {
                 SignatureRole::Creator
             };
@@ -272,95 +279,6 @@ async fn run() -> std::result::Result<(), ClientError> {
             .await?;
             println!("{}", toml::to_string_pretty(&label)?);
         }
-        SubCommand::PrintKey(print_key_opts) => {
-            let dir = match print_key_opts.secret_file {
-                Some(dir) => dir,
-                None => ensure_config_dir().await?.join("secret_keys.toml"),
-            };
-            let keyfile = SecretKeyFile::load_file(dir)
-                .await
-                .map_err(|e| ClientError::Other(e.to_string()))?;
-
-            let matches: Vec<KeyEntry> = match print_key_opts.label {
-                Some(name) => keyfile
-                    .key
-                    .iter()
-                    .filter_map(|k| {
-                        if !k.label.contains(&name) {
-                            return None;
-                        }
-                        match k.try_into() {
-                            //Skip malformed keys.
-                            Err(e) => {
-                                eprintln!("Warning: Malformed key: {} (skipping)", e);
-                                None
-                            }
-                            Ok(ke) => Some(ke),
-                        }
-                    })
-                    .collect(),
-                None => keyfile
-                    .key
-                    .iter()
-                    .filter_map(|k| match k.try_into() {
-                        //Skip malformed keys.
-                        Err(e) => {
-                            eprintln!("Warning: Malformed key: {} (skipping)", e);
-                            None
-                        }
-                        Ok(ke) => Some(ke),
-                    })
-                    .collect(),
-            };
-
-            let keyring = KeyRing::new(matches);
-            let out = toml::to_string(&keyring).map_err(|e| ClientError::Other(e.to_string()))?;
-            println!("{}", out);
-        }
-        SubCommand::CreateKey(create_opts) => {
-            let dir = match create_opts.secret_file {
-                Some(dir) => dir,
-                None => ensure_config_dir().await?.join("secret_keys.toml"),
-            };
-            println!("Writing keys to {}", dir.display());
-
-            match tokio::fs::metadata(&dir).await {
-                Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
-                    println!("File {} does not exist. Creating it.", dir.display());
-                    let mut keyfile = SecretKeyFile::default();
-                    let newkey = SecretKeyEntry::new(
-                        create_opts.label,
-                        vec![bindle::SignatureRole::Creator],
-                    );
-                    keyfile.key.push(newkey);
-                    keyfile
-                        .save_file(dir)
-                        .await
-                        .map_err(|e| ClientError::Other(e.to_string()))?;
-                }
-                Ok(info) => {
-                    if !info.is_file() {
-                        eprint!("Path must point to a file.");
-                        return Err(ClientError::Other(
-                            "Keyfile cannot be directory or symlink".to_owned(),
-                        ));
-                    }
-                    let mut keyfile = SecretKeyFile::load_file(&dir)
-                        .await
-                        .map_err(|e| ClientError::Other(e.to_string()))?;
-                    let newkey = SecretKeyEntry::new(
-                        create_opts.label,
-                        vec![bindle::SignatureRole::Creator],
-                    );
-                    keyfile.key.push(newkey);
-                    keyfile
-                        .save_file(dir)
-                        .await
-                        .map_err(|e| ClientError::Other(e.to_string()))?;
-                }
-                Err(e) => return Err(e.into()),
-            }
-        }
         SubCommand::Login(_login_opts) => {
             // TODO: We'll use login opts when we enable additional login providers
             OidcToken::login(&opts.server_url, token_file).await?;
@@ -382,6 +300,127 @@ async fn run() -> std::result::Result<(), ClientError> {
                 "Wrote standalone bindle tarball to {}",
                 opts.export_dir.join(format!("{}.tar.gz", sha)).display()
             )
+        }
+        SubCommand::Keys(keys) => {
+            match keys {
+                Keys::Print(print_key_opts) => {
+                    let dir = match print_key_opts.secret_file {
+                        Some(dir) => dir,
+                        None => ensure_config_dir().await?.join("secret_keys.toml"),
+                    };
+                    let keyfile = SecretKeyFile::load_file(dir)
+                        .await
+                        .map_err(|e| ClientError::Other(e.to_string()))?;
+
+                    let matches: Vec<KeyEntry> = match print_key_opts.label {
+                        Some(name) => keyfile
+                            .key
+                            .iter()
+                            .filter_map(|k| {
+                                if !k.label.contains(&name) {
+                                    return None;
+                                }
+                                match k.try_into() {
+                                    //Skip malformed keys.
+                                    Err(e) => {
+                                        eprintln!("Warning: Malformed key: {} (skipping)", e);
+                                        None
+                                    }
+                                    Ok(ke) => Some(ke),
+                                }
+                            })
+                            .collect(),
+                        None => keyfile
+                            .key
+                            .iter()
+                            .filter_map(|k| match k.try_into() {
+                                //Skip malformed keys.
+                                Err(e) => {
+                                    eprintln!("Warning: Malformed key: {} (skipping)", e);
+                                    None
+                                }
+                                Ok(ke) => Some(ke),
+                            })
+                            .collect(),
+                    };
+
+                    let keyring = KeyRing::new(matches);
+                    let out =
+                        toml::to_string(&keyring).map_err(|e| ClientError::Other(e.to_string()))?;
+                    println!("{}", out);
+                }
+                Keys::Create(create_opts) => {
+                    let dir = match create_opts.secret_file {
+                        Some(dir) => dir,
+                        None => ensure_config_dir().await?.join("secret_keys.toml"),
+                    };
+                    println!("Writing keys to {}", dir.display());
+
+                    let roles = parse_roles(create_opts.roles)?;
+
+                    let key = match tokio::fs::metadata(&dir).await {
+                        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
+                            println!("File {} does not exist. Creating it.", dir.display());
+                            let mut keyfile = SecretKeyFile::default();
+                            let newkey = SecretKeyEntry::new(create_opts.label, roles);
+                            keyfile.key.push(newkey.clone());
+                            keyfile
+                                .save_file(dir)
+                                .await
+                                .map_err(|e| ClientError::Other(e.to_string()))?;
+
+                            newkey
+                        }
+                        Ok(info) => {
+                            if !info.is_file() {
+                                eprint!("Path must point to a file.");
+                                return Err(ClientError::Other(
+                                    "Keyfile cannot be directory or symlink".to_owned(),
+                                ));
+                            }
+                            let mut keyfile = SecretKeyFile::load_file(&dir)
+                                .await
+                                .map_err(|e| ClientError::Other(e.to_string()))?;
+                            let newkey = SecretKeyEntry::new(create_opts.label, roles);
+                            keyfile.key.push(newkey.clone());
+                            keyfile
+                                .save_file(dir)
+                                .await
+                                .map_err(|e| ClientError::Other(e.to_string()))?;
+
+                            newkey
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
+
+                    if !create_opts.skip_keyring {
+                        keyring.add_entry(key.try_into()?);
+                        keyring_path
+                            .save(&keyring)
+                            .await
+                            .map_err(|e| ClientError::Other(e.to_string()))?;
+                    }
+                }
+                Keys::Add(opts) => {
+                    // First, check that the key is actually valid
+                    let raw = base64::decode(&opts.key)
+                        .map_err(|_| SignatureError::CorruptKey(opts.key.clone()))?;
+                    ed25519_dalek::PublicKey::from_bytes(&raw)
+                        .map_err(|_| SignatureError::CorruptKey(opts.key.clone()))?;
+                    keyring.add_entry(KeyEntry {
+                        label: opts.label,
+                        roles: parse_roles(opts.roles)?,
+                        key: opts.key,
+                        label_signature: None,
+                    });
+
+                    keyring_path
+                        .save(&keyring)
+                        .await
+                        .map_err(|e| ClientError::Other(e.to_string()))?;
+                    println!("Wrote key to keyring file at {}", keyring_path.display())
+                }
+            }
         }
     }
 
@@ -551,16 +590,6 @@ async fn get_all<C: Cache + Send + Sync + Clone>(cache: C, opts: Get) -> Result<
     Ok(())
 }
 
-async fn load_keyring(keyring: Option<PathBuf>) -> anyhow::Result<KeyRing> {
-    // This takes an Option<PathBuf> because we want to wrap all of the flag handling in this
-    // function, including setting the default if the kyering is None.
-    let dir = keyring
-        .unwrap_or_else(default_config_dir)
-        .join("keyring.toml");
-    let kr = bindle::client::load::toml(dir).await?;
-    Ok(kr)
-}
-
 fn map_storage_error(e: ProviderError) -> ClientError {
     match e {
         ProviderError::Io(e) => ClientError::Io(e),
@@ -589,16 +618,6 @@ async fn ensure_config_dir() -> Result<PathBuf> {
     let dir = default_config_dir();
     tokio::fs::create_dir_all(&dir).await?;
     Ok(dir)
-}
-
-fn role_from_name(name: String) -> Result<SignatureRole> {
-    match name.as_str() {
-        "c" | "creator" => Ok(SignatureRole::Creator),
-        "h" | "host" => Ok(SignatureRole::Host),
-        "a" | "approver" => Ok(SignatureRole::Approver),
-        "p" | "proxy" => Ok(SignatureRole::Proxy),
-        _ => Err(ClientError::Other("Unknown role".to_owned())),
-    }
 }
 
 async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<SecretKeyEntry> {
@@ -641,4 +660,15 @@ fn tablify(matches: &bindle::search::Matches) {
     } else {
         println!("No matching bindles were found");
     }
+}
+
+/// Parses a comma delimited list of roles and returns a Vec of those parsed roles
+fn parse_roles(roles: String) -> Result<Vec<SignatureRole>> {
+    roles
+        .split(',')
+        .map(|raw| {
+            raw.parse()
+                .map_err(|e: &str| ClientError::Other(e.to_owned()))
+        })
+        .collect()
 }

@@ -96,12 +96,76 @@ impl FromStr for SignatureRole {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let normalized = s.trim().to_lowercase();
         match normalized.as_str() {
-            "creator" => Ok(Self::Creator),
-            "proxy" => Ok(Self::Proxy),
-            "host" => Ok(Self::Host),
-            "approver" => Ok(Self::Approver),
+            "c" | "creator" => Ok(Self::Creator),
+            "h" | "host" => Ok(Self::Host),
+            "a" | "approver" => Ok(Self::Approver),
+            "p" | "proxy" => Ok(Self::Proxy),
             _ => Err("Invalid SignatureRole, should be one of: Creator, Proxy, Host, Approver"),
         }
+    }
+}
+
+// NOTE (thomastaylor312): These are basically glorified helper traits. We could theoretically
+// define `KeyRing` as a set of traits and then implementors could only dynamically load what is
+// necessary (as keychains could get large a big companies) and that could replace these helpers.
+// This isn't an optimization we need now, but likely do in the future
+
+/// Keyrings could be loaded from in any number of sources. This trait allows implementors to create
+/// custom loader helpers for keyrings
+#[async_trait::async_trait]
+pub trait KeyRingLoader {
+    /// Load the keyring from source, returning the KeyRing
+    async fn load(&self) -> anyhow::Result<KeyRing>;
+}
+
+/// Keyrings could be saved to any number of sources. This trait allows implementors to create
+/// custom saving helpers for keyrings
+#[async_trait::async_trait]
+pub trait KeyRingSaver {
+    /// Save the keyring to the given source
+    async fn save(&self, keyring: &KeyRing) -> anyhow::Result<()>;
+}
+
+#[async_trait::async_trait]
+impl<T: AsRef<Path> + Sync> KeyRingLoader for T {
+    async fn load(&self) -> anyhow::Result<KeyRing> {
+        let raw_data = tokio::fs::read(self).await.map_err(|e| {
+            anyhow::anyhow!(
+                "failed to read TOML file {}: {}",
+                self.as_ref().display(),
+                e
+            )
+        })?;
+        let res: KeyRing = toml::from_slice(&raw_data)?;
+        Ok(res)
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: AsRef<Path> + Sync> KeyRingSaver for T {
+    async fn save(&self, keyring: &KeyRing) -> anyhow::Result<()> {
+        #[cfg(target_family = "unix")]
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // Overwrite all data
+            .mode(0o600)
+            .open(self)
+            .await?;
+
+        // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
+        // creator/owner with read/write permissions and everything else excluded) and figure out
+        // how to set those
+        #[cfg(target_family = "windows")]
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true) // Overwrite all data
+            .open(self)
+            .await?;
+
+        file.write_all(&toml::to_vec(keyring)?).await?;
+        Ok(())
     }
 }
 
@@ -134,6 +198,11 @@ impl KeyRing {
             key: keys,
         }
     }
+
+    pub fn add_entry(&mut self, entry: KeyEntry) {
+        self.key.push(entry)
+    }
+
     pub fn contains(&self, key: &PublicKey) -> bool {
         // This could definitely be optimized.
         for k in self.key.iter() {
