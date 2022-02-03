@@ -1,6 +1,6 @@
 # The Bindle Protocol
 
-Bindle uses HTTP/2 with TLS as a transport protocol. All bodies and responses expect to use the TOML, with the `application/toml` content type. Other content types may be supported (such as the reference server supporting `application/json`), but are not required by the specification
+Bindle uses HTTP/2 with TLS as a transport protocol. All bodies and responses expect to use TOML, with the `application/toml` content type. Other content types may be supported (such as the reference server supporting `application/json`), but are not required by the specification
 
 The HTTP endpoints defined above MAY exist as a subpath on a server, or in the server's root. For example, `https://example.com/v1/_i/foo` and `https://example.com/_i/foo` are both legal paths for the specification below. However, `https://example.com/_i/v1/foo` is not (or, rather, it is a legal URI for a package named `v1/foo`).
 
@@ -22,6 +22,7 @@ HTTP Endpoints:
 - `/login`: Triggers a login flow for the API
   - `GET`: Redirects to the login provider to start an OIDC device login flow. It will trigger a Device Authorization Flow as defined in [RFC8628](https://datatracker.ietf.org/doc/html/rfc8628). The response will be a standard response as defined in [Section 3.2]( https://datatracker.ietf.org/doc/html/rfc8628#section-3.2) with 2 additional parameters: `client_id` will contain the client ID of the OIDC provider, and `token_url` will contain the OAuth2 token authorization endpoint for use in obtaining tokens. This endpoint supports the following query parameters:
     - `provider` (required): The name of the provider to use: For example: `provider=github`.
+- `/bindle-keys`: An OPTIONAL implementation of the [keyring protocol specification](./keyring-protocol-spec.md). The reference implementation only exposes public keys with the `host` role, but other implementations MAY support all types of keys
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_p` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
 

@@ -80,3 +80,4 @@ If that doesn't make sense, you haven't seen Stargazer Tianyan yet.
 - The [Protocol Specification](protocol-spec.md) describes how Bindles are transported from place to place, and how parcels are intelligently fetched based on need.
 - The [Signing Specification](signing-spec.md) describes how Bindles may be signed and verified
 - The [Standalone Bindle Specification](standalone-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact
+- The [Keyring Protocol Specification](keyring-protocol-spec.md) describes an HTTPS protocol for distributing keys
