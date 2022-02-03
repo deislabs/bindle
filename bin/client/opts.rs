@@ -16,7 +16,8 @@ pub struct Opts {
         short = 's',
         long = "server",
         env = "BINDLE_URL",
-        help = "The address of the bindle server. For the default local server, this should be http://localhost:8080/v1"
+        help = "The address of the bindle server, including the top level subpath (e.g. https://my.bindle.com/v1/",
+        default_value = "http://localhost:8080/v1/"
     )]
     pub server_url: String,
     #[clap(
