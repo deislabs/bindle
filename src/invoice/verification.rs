@@ -3,7 +3,7 @@ use crate::invoice::Signed;
 use super::signature::KeyRing;
 use super::{Invoice, Signature, SignatureError, SignatureRole};
 use ed25519_dalek::{PublicKey, Signature as EdSignature};
-use tracing::{debug, info};
+use tracing::debug;
 
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
@@ -193,8 +193,11 @@ impl VerificationStrategy {
         // Either the Creator or an Approver must be in the keyring
         match inv.signature.as_ref() {
             None => {
-                info!(id = %inv.bindle.id, "No signatures on invoice");
-                Ok(VerifiedInvoice(invoice))
+                debug!(id = %inv.bindle.id, "No signatures on invoice");
+                Err(SignatureError::Unverified(
+                    "No signatures found on invoice. At least one signature is required"
+                        .to_string(),
+                ))
             }
             Some(signatures) => {
                 let mut known_key = false;

@@ -3,14 +3,22 @@ bindleVersion = "1.0.0"
 [bindle]
 name = "enterprise.com/holodeck"
 version = "1.0.0"
-authors = ["Enterprise Engineering <engineering@enterprise.ufp.com>"]
 description = "A diversionary room for those long voyages"
+authors = ["Enterprise Engineering <engineering@enterprise.ufp.com>"]
 
 [annotations]
 broken = "yes"
 
 [[parcel]]
-label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
-label.mediaType = "text/plain"
-label.name = "moriarty.txt"
-label.size = 12345
+[parcel.label]
+sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
+mediaType = "text/plain"
+name = "moriarty.txt"
+size = 12345
+
+[[signature]]
+by = "Starfleet Command <starfleet@ufp.com>"
+signature = "AS+BOQ4o1Dd9wxwX8hFfPsosplGvj7DpLq2lP0H1as1gcqmUpEm1/lD0ItOhcD/S+vPKUPes917+D0YpIsOpDQ=="
+key = "Kcs1TSFDkN+dED0Y6Np0fPBqmvUz0EAULIlUsnlU1sw="
+role = "creator"
+at = 1643927146

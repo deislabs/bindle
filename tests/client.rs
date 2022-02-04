@@ -6,7 +6,7 @@ use test_util::TestController;
 
 use std::convert::TryInto;
 
-use bindle::testing;
+use bindle::{signature::SecretKeyStorage, testing, SignatureRole};
 
 use tokio_stream::StreamExt;
 
@@ -164,6 +164,16 @@ async fn test_already_created() {
     // Make sure we can create an invoice where all parcels already exist
     let mut other_inv = scaffold.invoice.clone();
     other_inv.bindle.id = "another.com/bindle/1.0.0".try_into().unwrap();
+    other_inv.signature = None;
+    other_inv
+        .sign(
+            SignatureRole::Creator,
+            scaffold
+                .keys
+                .get_first_matching(&SignatureRole::Creator)
+                .unwrap(),
+        )
+        .unwrap();
     controller
         .client
         .create_invoice(other_inv)

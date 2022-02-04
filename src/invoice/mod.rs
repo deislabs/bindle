@@ -447,13 +447,6 @@ mod test {
 
         let invoice: crate::Invoice = toml::from_str(invoice).expect("a nice clean parse");
 
-        // Base case: No signature, no keyring should pass.
-        assert!(invoice.signature.is_none());
-        let nokeys = KeyRing::default();
-        let verified = VerificationStrategy::default()
-            .verify(invoice, &nokeys)
-            .expect("If no signature, then this should verify fine");
-
         // Create two signing keys.
         let signer_name1 = "Matt Butcher <matt@example.com>";
         let signer_name2 = "Not Matt Butcher <not.matt@example.com>";
@@ -467,7 +460,7 @@ mod test {
 
         // Add two signatures
         let signed = sign(
-            verified,
+            invoice,
             vec![
                 (SignatureRole::Creator, &keypair1),
                 (SignatureRole::Proxy, &keypair2),

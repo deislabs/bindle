@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bindle::client::{tokens::NoToken, Client};
-use bindle::signature::{KeyRing, KeyRingSaver, SecretKeyEntry, SecretKeyFile, SignatureRole};
+use bindle::signature::{
+    KeyRing, KeyRingLoader, KeyRingSaver, SecretKeyEntry, SecretKeyFile, SignatureRole,
+};
 
 #[allow(dead_code)]
 pub const ENV_BINDLE_URL: &str = "BINDLE_URL";
@@ -13,6 +15,9 @@ pub const BINARY_NAME: &str = "bindle-server";
 #[allow(dead_code)]
 #[cfg(target_family = "windows")]
 pub const BINARY_NAME: &str = "bindle-server.exe";
+
+const SECRET_KEY_FILE: &str = "secret_keys.toml";
+const KEYRING_FILE: &str = "keyring.toml";
 
 pub struct TestController {
     pub client: Client<NoToken>,
@@ -49,17 +54,29 @@ impl TestController {
         let address = format!("127.0.0.1:{}", get_random_port());
 
         let base_url = format!("http://{}/v1/", address);
+        let test_data = PathBuf::from(
+            std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory"),
+        )
+        .join("test/data");
+        // Load the base keyring and secret key file
+        let mut secret_file = SecretKeyFile::load_file(test_data.join(SECRET_KEY_FILE))
+            .await
+            .expect("Unable to load secret file");
+        let mut keyring = test_data
+            .join(KEYRING_FILE)
+            .load()
+            .await
+            .expect("Unable to load keyring file");
+
         // Create the host key
         let secret_file_path = tempdir.path().join("secret_keys.toml");
         let key = SecretKeyEntry::new("test <test@example.com>", vec![SignatureRole::Host]);
-        let mut secret_file = SecretKeyFile::default();
         secret_file.key.push(key.clone());
         secret_file
             .save_file(&secret_file_path)
             .await
             .expect("Unable to save host key");
 
-        let mut keyring = KeyRing::default();
         keyring.add_entry(key.try_into().unwrap());
 
         let keyring_path = tempdir.path().join("keyring.toml");
@@ -79,6 +96,8 @@ impl TestController {
             tempdir.path().to_string_lossy().to_string().as_str(),
             "-i",
             address.as_str(),
+            "--keyring",
+            keyring_path.to_string_lossy().to_string().as_str(),
         ])
         .env("BINDLE_SIGNING_KEYS", secret_file_path)
         .spawn()

@@ -647,9 +647,8 @@ impl Drop for PartFile {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::invoice::signature::{KeyRing, SecretKeyEntry, SignatureRole};
-    use crate::testing;
-    use crate::VerificationStrategy;
+    use crate::verification::NoopVerified;
+    use crate::{testing, NoopSigned};
     use tempfile::tempdir;
     use tokio::io::AsyncReadExt;
 
@@ -668,17 +667,6 @@ mod test {
         );
     }
 
-    fn mock_secret_key() -> SecretKeyEntry {
-        SecretKeyEntry::new(
-            "Bogo Key",
-            vec![
-                SignatureRole::Host,
-                SignatureRole::Proxy,
-                SignatureRole::Creator,
-            ],
-        )
-    }
-
     #[tokio::test]
     async fn test_should_create_yank_invoice() {
         // Create a temporary directory
@@ -691,11 +679,7 @@ mod test {
         .await;
         let inv_name = scaffold.invoice.canonical_name();
 
-        let sk = mock_secret_key();
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         // Create an invoice
         let (_, missing) = store.create_invoice(signed).await.unwrap();
         assert_eq!(1, missing.len());
@@ -732,11 +716,7 @@ mod test {
         )
         .await;
 
-        let sk = mock_secret_key();
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         assert!(store.create_invoice(signed).await.is_err());
     }
 
@@ -751,11 +731,7 @@ mod test {
         )
         .await;
 
-        let sk = mock_secret_key();
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         // Create the invoice so we can create a parcel
         store
             .create_invoice(signed)
@@ -807,11 +783,7 @@ mod test {
 
         let scaffold = testing::Scaffold::load("valid_v1").await;
 
-        let sk = mock_secret_key();
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         // Store an invoice first and then create the parcel for it
         store
             .create_invoice(signed)
@@ -858,11 +830,7 @@ mod test {
         )
         .await;
 
-        let sk = mock_secret_key();
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         store
             .create_invoice(signed)
             .await
@@ -895,18 +863,9 @@ mod test {
         )
         .await;
 
-        let sk = mock_secret_key();
-
-        // We want two copies, since they will each get signed, and we don't want
-        // an error that they are already signed.
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed1 = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed2 = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        // We want two copies to try and write at the same time
+        let signed1 = NoopSigned(NoopVerified(scaffold.invoice.clone()));
+        let signed2 = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         let (first, second) =
             tokio::join!(store.create_invoice(signed1), store.create_invoice(signed2));
 
