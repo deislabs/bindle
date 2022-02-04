@@ -21,7 +21,7 @@ pub struct HttpBasic {
 impl HttpBasic {
     /// Read an htpasswd-formatted file.
     ///
-    /// This only supports SHA1, though we should switch to bcrypt if there is a good lib.
+    /// This only supports bcrypt.
     ///
     /// Example htpassword entry for a bcrypt hash:
     ///
