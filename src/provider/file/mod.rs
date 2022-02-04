@@ -179,7 +179,10 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
                 return Err(ProviderError::Exists);
             }
             trace!(path = %inv_path.display(), "Base path doesn't exist, creating");
-            create_dir_all(inv_path).await?;
+            if let Err(e) = create_dir_all(inv_path).await {
+                error!(error = %e, "Unable to create invoice storage directory");
+                return Err(e.into());
+            }
         }
 
         // Open the destination or error out if it already exists.
@@ -349,7 +352,10 @@ impl<T: crate::search::Search + Send + Sync> Provider for FileProvider<T> {
         }
         // Create box dir
         trace!(path = %par_path.display(), "Creating parcel directory");
-        create_dir_all(par_path).await?;
+        if let Err(e) = create_dir_all(par_path).await {
+            error!(error = %e, "Unable to create parcel storage directory");
+            return Err(e.into());
+        }
 
         // Write data
         let mut part = PartFile::new(self.parcel_data_path(parcel_id)).await?;
