@@ -261,7 +261,6 @@ async fn test_create_key_and_sign_invoice() {
         );
         let output = std::process::Command::new("cargo")
             .args(cmd.split(' '))
-            .env(ENV_BINDLE_URL, "localhost:8080")
             .output()
             .expect("Key should get created");
         assert_status(output, "Key should be generated");
@@ -282,7 +281,6 @@ async fn test_create_key_and_sign_invoice() {
         );
         let output = std::process::Command::new("cargo")
             .args(cmd.split(' '))
-            .env(ENV_BINDLE_URL, "localhost:8080")
             .output()
             .expect("Invoice should get signed");
         assert_status(output, "Invoice should get signed");
@@ -535,7 +533,6 @@ async fn test_keyring_add() {
             "approver",
             "XbhLeOX4BtvUnT+o7xyi2waw5WXGOl3H/l3b5h97Dk4=",
         ])
-        .env(ENV_BINDLE_URL, "http://localhost:8080/v1")
         .env(ENV_BINDLE_KEYRING, &keyring_file)
         .output()
         .expect("Should be able to run command");
@@ -590,7 +587,6 @@ async fn test_keyring_add_to_existing() {
             "approver",
             "XbhLeOX4BtvUnT+o7xyi2waw5WXGOl3H/l3b5h97Dk4=",
         ])
-        .env(ENV_BINDLE_URL, "http://localhost:8080/v1")
         .env(ENV_BINDLE_KEYRING, &keyring_file)
         .output()
         .expect("Should be able to run command");
@@ -638,7 +634,6 @@ fn create_key(
     args.push(label);
     let output = std::process::Command::new("cargo")
         .args(args)
-        .env(ENV_BINDLE_URL, "http://localhost:8080/v1")
         .env(ENV_BINDLE_KEYRING, keyring_file)
         .output()
         .expect("Should be able to run command");
