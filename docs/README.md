@@ -208,7 +208,7 @@ keypair = "KEYDATA_GOES_IN_HERE"
 roles = ["creator"]
 ```
 
-A user only needs on such keypair (though a user is free to have more).
+A user only needs one such keypair (though a user is free to have more).
 This file can be moved from system to system, just like OpenPGP or SSH key sets.
 
 - To create a signing key for a client, use `bindle create-key`

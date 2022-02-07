@@ -259,7 +259,7 @@ async fn run() -> std::result::Result<(), ClientError> {
                 .unwrap_or_else(|| format!("./invoice-{}.toml", inv.canonical_name()));
 
             println!(
-                "Signed as {} with role {} and wrote to {}",
+                "Signed {} with role {} and wrote to {}",
                 sign_opts.invoice, role, outfile
             );
             tokio::fs::write(outfile, toml::to_string(&inv)?).await?;
