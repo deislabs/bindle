@@ -98,13 +98,13 @@ mod test {
 
     use crate::authn::always::AlwaysAuthenticate;
     use crate::authz::always::AlwaysAuthorize;
-    use crate::invoice::{
-        signature::{KeyRing, SecretKeyEntry},
-        SignatureRole, VerificationStrategy,
-    };
+    use crate::invoice::{signature::KeyRing, VerificationStrategy};
     use crate::provider::Provider;
     use crate::search::StrictEngine;
     use crate::testing::{self, MockKeyStore};
+    use crate::verification::NoopVerified;
+    use crate::NoopSigned;
+    use crate::{signature::SecretKeyStorage, SignatureRole};
 
     use rstest::rstest;
     use testing::Scaffold;
@@ -122,6 +122,8 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index, ks) = provider_setup.await;
 
+        let valid_v1 = bindles.get("valid_v1").expect("Missing scaffold");
+
         let api = super::routes::api(
             store,
             index,
@@ -129,12 +131,9 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
-            KeyRing::default(),
+            valid_v1.keyring.clone(),
         );
 
-        // Now that we can't upload parcels before invoices exist, we need to create a bindle that shares some parcels
-
-        let valid_v1 = bindles.get("valid_v1").expect("Missing scaffold");
         // Create an invoice pointing to those parcels and make sure the correct response is returned
         let res = warp::test::request()
             .method("POST")
@@ -183,6 +182,15 @@ mod test {
 
         let mut inv = Scaffold::from(valid_v1.to_owned()).invoice;
         inv.bindle.id = "another.com/bindle/1.0.0".try_into().unwrap();
+        inv.signature = None;
+        inv.sign(
+            SignatureRole::Creator,
+            valid_v1
+                .keys
+                .get_first_matching(&SignatureRole::Creator)
+                .unwrap(),
+        )
+        .unwrap();
         let inv = toml::to_vec(&inv).expect("serialization shouldn't fail");
 
         let res = warp::test::request()
@@ -291,6 +299,7 @@ mod test {
         T: Provider + Clone + Send + Sync + 'static,
     {
         let (store, index, ks) = provider_setup.await;
+        let scaffold = testing::Scaffold::load("incomplete").await;
 
         let api = super::routes::api(
             store.clone(),
@@ -299,19 +308,12 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
-            KeyRing::default(),
+            scaffold.keyring.clone(),
         );
 
-        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
-
         // Insert an invoice
-        let scaffold = testing::Scaffold::load("incomplete").await;
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(signed)
+            .create_invoice(NoopSigned(NoopVerified(scaffold.invoice.clone())))
             .await
             .expect("Should be able to insert invoice");
 
@@ -369,6 +371,9 @@ mod test {
         let bindles = testing::load_all_files().await;
         let (store, index, ks) = provider_setup.await;
 
+        let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
+        let valid = testing::Scaffold::from(valid_raw.clone());
+
         let api = super::routes::api(
             store.clone(),
             index,
@@ -376,17 +381,11 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
-            KeyRing::default(),
+            valid.keyring.clone(),
         );
-        let valid_raw = bindles.get("valid_v1").expect("Missing scaffold");
-        let valid = testing::Scaffold::from(valid_raw.clone());
-        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(valid.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
+
         store
-            .create_invoice(signed)
+            .create_invoice(NoopSigned(NoopVerified(valid.invoice.clone())))
             .await
             .expect("Invoice create failure");
 
@@ -418,6 +417,7 @@ mod test {
         T: Provider + Clone + Send + Sync + 'static,
     {
         let (store, index, keystore) = provider_setup.await;
+        let scaffold = testing::Scaffold::load("valid_v1").await;
 
         let api = super::routes::api(
             store.clone(),
@@ -426,19 +426,13 @@ mod test {
             AlwaysAuthorize,
             keystore.clone(),
             VerificationStrategy::default(),
-            KeyRing::default(),
+            scaffold.keyring.clone(),
         );
         // Insert a parcel
-        let scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").expect("Missing parcel");
         let data = std::io::Cursor::new(parcel.data.clone());
-        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(signed)
+            .create_invoice(NoopSigned(NoopVerified(scaffold.invoice.clone())))
             .await
             .expect("Unable to insert invoice into store");
         store
@@ -469,15 +463,9 @@ mod test {
 
         let scaffold = testing::Scaffold::load("invalid").await;
 
-        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
-
         // Create invoice first
         store
-            .create_invoice(signed)
+            .create_invoice(NoopSigned(NoopVerified(scaffold.invoice.clone())))
             .await
             .expect("Unable to create invoice");
 
@@ -528,16 +516,10 @@ mod test {
         );
         let bindles_to_insert = vec!["incomplete", "valid_v1", "valid_v2"];
 
-        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
-
         for b in bindles_to_insert.into_iter() {
             let current = testing::Scaffold::load(b).await;
-            let verified = VerificationStrategy::MultipleAttestation(vec![])
-                .verify(current.invoice.clone(), &KeyRing::default())
-                .unwrap();
-            let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
             store
-                .create_invoice(signed)
+                .create_invoice(NoopSigned(NoopVerified(current.invoice.clone())))
                 .await
                 .expect("Unable to create invoice");
         }
@@ -630,6 +612,7 @@ mod test {
         T: Provider + Clone + Send + Sync + 'static,
     {
         let (store, index, ks) = provider_setup.await;
+        let scaffold = testing::Scaffold::load("lotsa_parcels").await;
 
         let api = super::routes::api(
             store.clone(),
@@ -638,17 +621,11 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
-            KeyRing::default(),
+            scaffold.keyring.clone(),
         );
 
-        let scaffold = testing::Scaffold::load("lotsa_parcels").await;
-        let sk = SecretKeyEntry::new("test", vec![SignatureRole::Host]);
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::sign(verified, vec![(SignatureRole::Host, &sk)]).unwrap();
         store
-            .create_invoice(signed)
+            .create_invoice(NoopSigned(NoopVerified(scaffold.invoice.clone())))
             .await
             .expect("Unable to load in invoice");
         let parcel = scaffold
@@ -710,6 +687,7 @@ mod test {
         T: Provider + Clone + Send + Sync + 'static,
     {
         let (store, index, ks) = provider_setup.await;
+        let scaffold = testing::RawScaffold::load("valid_v1").await;
 
         let api = super::routes::api(
             store,
@@ -718,10 +696,9 @@ mod test {
             AlwaysAuthorize,
             ks,
             VerificationStrategy::default(),
-            KeyRing::default(),
+            scaffold.keyring.clone(),
         );
 
-        let scaffold = testing::RawScaffold::load("valid_v1").await;
         // Create a valid invoice and make sure the returned invoice is signed
         let res = warp::test::request()
             .method("POST")
@@ -761,6 +738,7 @@ mod test {
         T: Provider + Clone + Send + Sync + 'static,
     {
         let (store, index, ks) = provider_setup.await;
+        let scaffold = testing::RawScaffold::load("valid_v1").await;
 
         let api = super::routes::api(
             store,
@@ -771,10 +749,8 @@ mod test {
             crate::authz::anonymous_get::AnonymousGet,
             ks,
             VerificationStrategy::default(),
-            KeyRing::default(),
+            scaffold.keyring.clone(),
         );
-
-        let scaffold = testing::RawScaffold::load("valid_v1").await;
 
         // Creating the invoice without a token should fail
         let res = warp::test::request()

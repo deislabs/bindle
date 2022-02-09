@@ -11,10 +11,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::invoice::signature::{SecretKeyEntry, SecretKeyStorage, SignatureRole};
+use crate::invoice::signature::{
+    KeyRing, SecretKeyEntry, SecretKeyFile, SecretKeyStorage, SignatureRole,
+};
 use crate::provider::embedded::EmbeddedProvider;
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
+use crate::signature::KeyRingLoader;
 
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
@@ -23,6 +26,9 @@ const SCAFFOLD_DIR: &str = "tests/scaffolds";
 const INVOICE_FILE: &str = "invoice.toml";
 const PARCEL_DIR: &str = "parcels";
 const PARCEL_EXTENSION: &str = "dat";
+const KEYRING_FILE: &str = "keyring.toml";
+const SECRETS_FILE: &str = "secret_keys.toml";
+const KEYS_DIR: &str = "keys";
 
 /// The environment variable name used for setting the scaffolds directory
 pub const SCAFFOLD_DIR_ENV: &str = "BINDLE_SCAFFOLD_DIR";
@@ -53,6 +59,8 @@ pub struct ParcelInfo {
 pub struct RawScaffold {
     pub invoice: Vec<u8>,
     pub parcel_files: HashMap<String, ParcelInfo>,
+    pub keys: SecretKeyFile,
+    pub keyring: KeyRing,
 }
 
 impl RawScaffold {
@@ -69,12 +77,29 @@ impl RawScaffold {
             .await
             .expect("unable to read invoice file");
 
+        let keys_dir = scaffold_dir().join(KEYS_DIR);
+
+        tokio::fs::metadata(&keys_dir)
+            .await
+            .expect("Unable to find keys directory");
+
+        let keys = SecretKeyFile::load_file(keys_dir.join(SECRETS_FILE))
+            .await
+            .expect("Unable to load secret keys file");
+        let keyring = keys_dir
+            .join(KEYRING_FILE)
+            .load()
+            .await
+            .expect("Unable to load keyring file");
+
         let files = match filter_files(&dir).await {
             Some(s) => s,
             None => {
                 return RawScaffold {
                     invoice,
                     parcel_files: HashMap::new(),
+                    keys,
+                    keyring,
                 }
             }
         };
@@ -106,6 +131,8 @@ impl RawScaffold {
                 .await
                 .into_iter()
                 .collect(),
+            keys,
+            keyring,
         }
     }
 }
@@ -118,6 +145,8 @@ impl From<Scaffold> for RawScaffold {
         RawScaffold {
             invoice,
             parcel_files: s.parcel_files,
+            keys: s.keys,
+            keyring: s.keyring,
         }
     }
 }
@@ -128,6 +157,8 @@ impl From<Scaffold> for RawScaffold {
 pub struct Scaffold {
     pub invoice: crate::Invoice,
     pub parcel_files: HashMap<String, ParcelInfo>,
+    pub keys: SecretKeyFile,
+    pub keyring: KeyRing,
 }
 
 impl Scaffold {
@@ -148,6 +179,8 @@ impl From<RawScaffold> for Scaffold {
         Scaffold {
             invoice,
             parcel_files: raw.parcel_files,
+            keys: raw.keys,
+            keyring: raw.keyring,
         }
     }
 }

@@ -212,10 +212,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        provider::Provider, signature::KeyRing, testing, SecretKeyEntry, SignatureRole,
-        VerificationStrategy,
-    };
+    use crate::{provider::Provider, testing};
     use std::{convert::TryFrom, sync::Arc};
 
     use tokio::sync::Mutex;
@@ -411,13 +408,9 @@ mod test {
         // Make sure all the create operations pass through
         let provider = TestProvider::default();
         let cache = LruCache::new(10, provider.clone());
-        let sk = SecretKeyEntry::new("TEST", vec![SignatureRole::Proxy]);
 
         let scaffold = testing::Scaffold::load("valid_v1").await;
-        let verified = VerificationStrategy::MultipleAttestation(vec![])
-            .verify(scaffold.invoice.clone(), &KeyRing::default())
-            .unwrap();
-        let signed = crate::invoice::sign(verified, vec![(SignatureRole::Creator, &sk)]).unwrap();
+        let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         cache
             .create_invoice(signed)
             .await

@@ -3,27 +3,36 @@ bindleVersion = "1.0.0"
 [bindle]
 name = "enterprise.com/cargobay"
 version = "1.0.0"
-authors = ["Miles O'Brien <chief@ufp.com>"]
 description = "The cargo bay manifest"
+authors = ["Miles O'Brien <chief@ufp.com>"]
 
 [annotations]
 engineering_location = "main"
 
 [[parcel]]
-label.sha256 = "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5"
-label.mediaType = "text/plain"
-label.name = "isolinear_chip.txt"
-label.size = 9
+[parcel.label]
+sha256 = "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5"
+mediaType = "text/plain"
+name = "isolinear_chip.txt"
+size = 9
 
 [[parcel]]
-label.sha256 = "51534027079925942fdea13d4d088c7126f3e456364525b67d6ca0858d6587bc"
-label.mediaType = "text/plain"
-label.name = "barrel.txt"
-label.size = 15
+[parcel.label]
+sha256 = "51534027079925942fdea13d4d088c7126f3e456364525b67d6ca0858d6587bc"
+mediaType = "text/plain"
+name = "barrel.txt"
+size = 15
 
 [[parcel]]
-label.sha256 = "a6e41416c2bee47e9b97900ba57de696cccc1920e331f5a0d490726a7938d8c6"
-label.mediaType = "text/plain"
-label.name = "crate.txt"
-label.size = 14
+[parcel.label]
+sha256 = "a6e41416c2bee47e9b97900ba57de696cccc1920e331f5a0d490726a7938d8c6"
+mediaType = "text/plain"
+name = "crate.txt"
+size = 14
 
+[[signature]]
+by = "Starfleet Command <starfleet@ufp.com>"
+signature = "Nw+pLr5BHaGW5INKYYSr2q8lx6KQ91H8coFPvSZZrtI9OcmiXFiRSIfqhCidkFi36NrR4BHAROXfpyONkX4TBA=="
+key = "Kcs1TSFDkN+dED0Y6Np0fPBqmvUz0EAULIlUsnlU1sw="
+role = "creator"
+at = 1643927146

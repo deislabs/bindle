@@ -3,14 +3,22 @@ bindleVersion = "1.0.0"
 [bindle]
 name = "enterprise.com/warpcore"
 version = "1.0.0"
-authors = ["Geordi La Forge <mycoolvisor@ufp.com>"]
 description = "Warp core components"
+authors = ["Geordi La Forge <mycoolvisor@ufp.com>"]
 
 [annotations]
 engineering_location = "main"
 
 [[parcel]]
-label.sha256 = "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5"
-label.mediaType = "text/plain"
-label.name = "isolinear_chip.txt"
-label.size = 9
+[parcel.label]
+sha256 = "23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5"
+mediaType = "text/plain"
+name = "isolinear_chip.txt"
+size = 9
+
+[[signature]]
+by = "Starfleet Command <starfleet@ufp.com>"
+signature = "1oKW+2RXsE/lSXy3y+0MKKZDhnPModgTxfKuMSMMnVEZlgENIE9qOMTUrQga0QxSiAZiFH15fYkcveC8up8FDA=="
+key = "Kcs1TSFDkN+dED0Y6Np0fPBqmvUz0EAULIlUsnlU1sw="
+role = "creator"
+at = 1643928286
