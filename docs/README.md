@@ -211,7 +211,7 @@ roles = ["creator"]
 A user only needs one such keypair (though a user is free to have more).
 This file can be moved from system to system, just like OpenPGP or SSH key sets.
 
-- To create a signing key for a client, use `bindle create-key`
+- To create a signing key for a client, use `bindle keys create`
 - By default, if Bindle does not find an existing keyring, it creates one of these when it first starts.
 
 ## Specification
@@ -221,7 +221,8 @@ This file can be moved from system to system, just like OpenPGP or SSH key sets.
 3. The [parcel spec](parcel-spec.md) defines the parcel format.
 4. The [label spec](label-spec.md) describes the parcel label format.
 5. The [protocol specification](protocol-spec.md) describes the HTTP protocol for storing and retrieving Bindles.
-6. Finally, the [Standalone Bindle Specification](standalone-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact
+6. The [keyring protocol specification](keyring-protocol-spec.md) describes an HTTPS protocol for distributing keys.
+7. Finally, the [Standalone Bindle Specification](standalone-bindle-spec.md) describes a format for packaging up a Bindle into a portable artifact.
 
 ## Additional Docs
 
