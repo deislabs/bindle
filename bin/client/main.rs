@@ -145,7 +145,7 @@ async fn run() -> std::result::Result<(), ClientError> {
         .build(&opts.server_url, token, keyring)?;
 
     let local = bindle::provider::file::FileProvider::new(
-        bindle_dir,
+        bindle_dir.clone(),
         bindle::search::NoopEngine::default(),
     )
     .await;
@@ -432,6 +432,12 @@ async fn run() -> std::result::Result<(), ClientError> {
                     println!("Wrote key to keyring file at {}", keyring_path.display())
                 }
             }
+        }
+        SubCommand::Clean(_clean_opts) => {
+            // Cleans up the local bindles directory.
+            println!("Cleaning up bindles in {:?}...",bindle_dir);
+            tokio::fs::remove_dir_all(bindle_dir).await?;
+            println!("Clean up successful");
         }
     }
 
