@@ -8,6 +8,8 @@
 //!
 //! This provider is currently experimental, with the goal of replacing the `FileProvider` as the
 //! default provider in the future.
+//!
+//! This will only be available if the `provider` feature is enabled
 
 use std::convert::TryInto;
 use std::path::Path;
