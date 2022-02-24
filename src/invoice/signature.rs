@@ -144,26 +144,16 @@ impl<T: AsRef<Path> + Sync> KeyRingLoader for T {
 #[async_trait::async_trait]
 impl<T: AsRef<Path> + Sync> KeyRingSaver for T {
     async fn save(&self, keyring: &KeyRing) -> anyhow::Result<()> {
-        #[cfg(target_family = "unix")]
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true) // Overwrite all data
-            .mode(0o600)
-            .open(self)
-            .await?;
+        let mut opts = OpenOptions::new();
+        opts.create(true).write(true).truncate(true);
 
         // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
         // creator/owner with read/write permissions and everything else excluded) and figure out
         // how to set those
-        #[cfg(target_family = "windows")]
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true) // Overwrite all data
-            .open(self)
-            .await?;
+        #[cfg(target_family = "unix")]
+        opts.mode(0o600);
 
+        let mut file = opts.open(self).await?;
         file.write_all(&toml::to_vec(keyring)?).await?;
         file.flush().await?;
         Ok(())
@@ -409,24 +399,16 @@ impl SecretKeyFile {
     /// Save the present keyfile to the named path.
     pub async fn save_file(&self, dest: impl AsRef<Path>) -> anyhow::Result<()> {
         let out = toml::to_vec(self)?;
-        #[cfg(target_family = "unix")]
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .mode(0o600)
-            .open(dest)
-            .await?;
+        let mut opts = OpenOptions::new();
+        opts.create(true).write(true);
 
         // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
         // creator/owner with read/write permissions and everything else excluded) and figure out
         // how to set those
-        #[cfg(target_family = "windows")]
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(dest)
-            .await?;
+        #[cfg(target_family = "unix")]
+        opts.mode(0o600);
 
+        let mut file = opts.open(dest).await?;
         file.write_all(&out).await?;
         file.flush().await?;
         Ok(())
