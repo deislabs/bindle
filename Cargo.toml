@@ -27,9 +27,13 @@ maintenance = { status = "actively-developed" }
 
 [features]
 default = ["server", "client", "caching", "test-tools"]
-server = ["warp", "openid"]
-client = ["mime_guess", "dirs", "time"]
-caching = []
+server = ["warp", "openid", "hyper", "mime", "either", "_common"]
+client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
+# Internal use only feature that groups all of the optional deps we need for both server and client
+_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest"]
+# Activates provider implementations
+providers = ["lru", "serde_cbor", "sled"]
+caching = ["lru"]
 test-tools = []
 cli = ["clap", "tracing-subscriber", "atty"]
 
@@ -38,46 +42,46 @@ all-features = true
 
 [dependencies]
 anyhow = "1.0.44"
-toml = "0.5.8"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.68"
-tempfile = "3.2.0"
-sha2 = "0.10"
-thiserror = "1.0.29"
-semver = { version = "1.0.4", features = ["serde"] }
-tokio = { version = "1.11.0", features = ["full"] }
-tokio-util = { version = "0.6.8", features = ["io"] }
-tokio-stream = { version = "0.1.7", features = ["fs"] }
-warp = { version = "0.3", features = ["tls"], optional = true }
-bytes = "1.1.0"
+async-compression = { version = "0.3", default-features = false, features = ["tokio", "gzip"], optional = true }
 async-trait = "0.1.51"
-futures = "0.3.17"
+atty = { version = "0.2", optional = true }
+base64 = "0.13.0"
+bcrypt = "0.11"
+bytes = "1.1.0"
 clap = { version = "3", features = ["derive", "env", "cargo"], optional = true }
-reqwest = { version = "0.11.4", features = ["stream"] }
-hyper = "0.14.12"
-url = "2.2.2"
-tracing-subscriber = { version = "0.3.7", features = ["env-filter"], optional = true }
 dirs = { version = "4.0.0", optional = true }
+ed25519-dalek = "1.0.1"
+either = { version = "1.6.1", optional = true }
+futures = "0.3.17"
+hyper = { version = "0.14.12", optional = true }
+jsonwebtoken = "8.0.0-beta.6"
+lru = { version = "0.7", optional = true }
+mime = { version = "0.3.16", optional = true }
 mime_guess = { version = "2.0.3", optional = true }
-lru = "0.7"
+oauth2 = { version = "4.1.0", features = ["reqwest"], optional = true }
+openid = { version = "0.9.3", optional = true }
 # We need the older version of rand for dalek
 rand = "0.7"
-ed25519-dalek = "1.0.1"
-base64 = "0.13.0"
+reqwest = { version = "0.11.4", features = ["stream"], optional = true }
+semver = { version = "1.0.4", features = ["serde"] }
+serde = { version = "1.0.130", features = ["derive"] }
+serde_cbor = { version = "0.11.2", optional = true }
+serde_json = "1.0.68"
+sha2 = "0.10"
+sled = { version = "0.34.7", optional = true }
+tempfile = "3.2.0"
+thiserror = "1.0.29"
+time = { version = "0.3", features = ["serde"], optional = true }
+tokio = { version = "1.11.0", default-features = false, features = ["fs", "sync", "io-util"] }
+tokio-stream = { version = "0.1.7", features = ["fs"] }
+tokio-tar = { version = "0.3", optional = true }
+tokio-util = { version = "0.6.8", features = ["io"], optional = true }
+toml = "0.5.8"
 tracing = { version = "0.1.27", features = ["log"] }
 tracing-futures = "0.2.5"
-mime = "0.3.16"
-sled = "0.34.7"
-serde_cbor = "0.11.2"
-oauth2 = { version = "4.1.0", features = ["reqwest"] }
-jsonwebtoken = "8.0.0-beta.6"
-openid = { version = "0.9.3", optional = true }
-bcrypt = "0.10.1"
-either = "1.6.1"
-time = { version = "0.3", features = ["serde"], optional = true }
-atty = {version = "0.2", optional = true}
-async-compression = { version = "0.3", default-features = false, features = ["tokio", "gzip"]}
-tokio-tar = "0.3"
+tracing-subscriber = { version = "0.3.7", features = ["env-filter"], optional = true }
+url = "2.2.2"
+warp = { version = "0.3", features = ["tls"], optional = true }
 
 # NOTE: This is a workaround due to a dependency issue in oauth2: https://github.com/tkaitchuck/ahash/issues/95#issuecomment-903560879
 indexmap = "~1.6.2"

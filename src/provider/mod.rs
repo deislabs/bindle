@@ -21,7 +21,9 @@
 //! will generally contain another Provider implementation or an HTTP client to talk to another
 //! server upstream
 
+#[cfg(feature = "providers")]
 pub mod embedded;
+#[cfg(feature = "providers")]
 pub mod file;
 
 use std::convert::TryInto;
@@ -208,6 +210,7 @@ impl From<std::convert::Infallible> for ProviderError {
 // TODO(thomastaylor312): We should probably have a more generic form of
 // deserialization/serialization errors that aren't tied to TOML as backends can serialize how they
 // want. For now there is this workaround
+#[cfg(feature = "providers")]
 impl From<serde_cbor::Error> for ProviderError {
     fn from(e: serde_cbor::Error) -> Self {
         if e.is_io() {

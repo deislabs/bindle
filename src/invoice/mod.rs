@@ -11,8 +11,12 @@ mod sealed;
 pub mod signature;
 pub mod verification;
 
+#[cfg(feature = "client")]
 #[doc(inline)]
-pub(crate) use api::{DeviceAuthorizationExtraFields, LoginParams};
+pub(crate) use api::DeviceAuthorizationExtraFields;
+#[cfg(any(feature = "client", feature = "server"))]
+#[doc(inline)]
+pub(crate) use api::LoginParams;
 #[doc(inline)]
 pub use api::{ErrorResponse, InvoiceCreateResponse, MissingParcelsResponse, QueryOptions};
 #[doc(inline)]

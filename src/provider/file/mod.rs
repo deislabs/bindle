@@ -1,6 +1,10 @@
-//! A file system `Storage` implementation. The format on disk is
+//! A file system `Provider` implementation.
+//!
+//! The format on disk is
 //! [documented](https://github.com/deislabs/bindle/blob/master/docs/file-layout.md) in the main
 //! Bindle repo.
+//!
+//! This will only be available if the `provider` feature is enabled
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

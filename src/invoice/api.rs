@@ -73,4 +73,5 @@ pub(crate) struct DeviceAuthorizationExtraFields {
     pub token_url: String,
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 impl oauth2::devicecode::ExtraDeviceAuthorizationFields for DeviceAuthorizationExtraFields {}
