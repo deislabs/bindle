@@ -1,4 +1,4 @@
-//! A filtering library for extracing parcels from a bindle.
+//! A filtering library for extracting parcels from a bindle.
 //!
 //! A bindle's invoice may contain many different parcels. And those parcels may have
 //! groups and features associated with them. This library provides a way to filter a list

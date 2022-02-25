@@ -68,7 +68,7 @@ async fn main() {
     let sha = format!("{:x}", hasher.into_inner().unwrap().finalize());
     file.seek(SeekFrom::Start(0))
         .await
-        .expect("failed to seek to begining of WASM file");
+        .expect("failed to seek to beginning of WASM file");
 
     let mut parcels = HashMap::new();
     parcels.insert(sha.clone(), file);

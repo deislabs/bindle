@@ -212,7 +212,7 @@ pub struct Get {
     #[clap(
         short = 'e',
         long = "export",
-        help = "If specified, export the bindle as a standlone bindle tarball in the given directory"
+        help = "If specified, export the bindle as a standalone bindle tarball in the given directory"
     )]
     pub export: Option<PathBuf>,
 }

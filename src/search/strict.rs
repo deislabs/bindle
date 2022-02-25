@@ -101,11 +101,11 @@ mod test {
         searcher
             .index(&inv)
             .await
-            .expect("succesfully indexed my/bindle/1.2.3");
+            .expect("successfully indexed my/bindle/1.2.3");
         searcher
             .index(&inv2)
             .await
-            .expect("succesfully indexed my/bindle/1.3.0");
+            .expect("successfully indexed my/bindle/1.3.0");
         assert_eq!(2, searcher.index.read().await.len());
 
         // Search for one result
@@ -124,14 +124,14 @@ mod test {
 
         assert_eq!(2, matches.invoices.len());
 
-        // Search for non-existant bindle
+        // Search for non-existent bindle
         let matches = searcher
             .query("my/bindle2", "1.2.3", SearchOptions::default())
             .await
             .expect("found some matches");
         assert!(matches.invoices.is_empty());
 
-        // Search for non-existant version
+        // Search for non-existent version
         let matches = searcher
             .query("my/bindle", "1.2.99", SearchOptions::default())
             .await

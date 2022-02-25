@@ -20,7 +20,7 @@ pub trait Cache: Provider {}
 /// A custom result type representing a possible cache miss. As all underlying caches implement
 /// `Storage`, this contains a storage error that is guaranteed not to be a cache miss (e.g.
 /// NotFound). The Option indicates whether a value was returned. This value is obtained by
-/// coverting a normal storage result using `into_cache_result`
+/// converting a normal storage result using `into_cache_result`
 pub(crate) type CacheResult<T> = Result<Option<T>, crate::provider::ProviderError>;
 
 /// Converts a storage result into a `CacheResult`
