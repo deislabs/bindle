@@ -12,7 +12,7 @@ HTTP Endpoints:
 - `/_i`
     - `POST`: Create a new bindle. If all of the parcels specified in the bindle exist, a 201 status will be returned. If 1 or more of the parcels are missing, a 202 status will be returned with a reference to the missing parcels
 - `/_i/{bindle-name}@{parcel-id}`: The path to a Bindle name and parcel ID, where `{parcel-id}` is an exact SHA of a parcel and `{bindle-name}` follows the same rules as outlined above. Parcels can only be accessed if the client has the proper permissions to access the given bindle and, as such, cannot be accessed directly
-    - `GET`: Directly fetch a parcel's opaque data.
+    - `GET`: Directly fetch a parcel's opaque data. Clients must follow HTTP redirects from this endpoint.
     - `HEAD`: Send just the headers of a GET request
     - `POST`: Create a parcel if it does not already exist. This may be disallowed. The data included in the body must have the same SHA as indicated by the `{parcel-id}` and must exist within the invoice
 - `/_q`: The query endpoint
