@@ -652,10 +652,10 @@ async fn unwrap_status(
         (StatusCode::CONFLICT, Endpoint::Invoice) => Err(ClientError::InvoiceAlreadyExists),
         (StatusCode::CONFLICT, Endpoint::Parcel) => Err(ClientError::ParcelAlreadyExists),
         (StatusCode::UNAUTHORIZED, _) => Err(ClientError::Unauthorized),
-        (StatusCode::BAD_REQUEST, _) => Err(ClientError::ServerError(Some(
-            "The request could not be handled by the server. Verify your Bindle server URL"
-                .to_owned(),
-        ))),
+        (StatusCode::BAD_REQUEST, _) => Err(ClientError::ServerError(Some(format!(
+            "Bad request: {}",
+            parse_error_from_body(resp).await.unwrap_or_default()
+        )))),
         // You can't range match on u16 so we use a guard
         (_, _) if resp.status().is_server_error() => {
             Err(ClientError::ServerError(parse_error_from_body(resp).await))
