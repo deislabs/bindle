@@ -55,7 +55,6 @@ Here are links to the common builds:
   architecture)](https://bindle.blob.core.windows.net/releases/bindle-canary-macos-amd64.tar.gz)
 - [64-bit Windows](https://bindle.blob.core.windows.net/releases/bindle-canary-windows-amd64.tar.gz)
 
-
 ## Using Bindle
 
 The `bindle` program is the client. The `bindle-server` program is the HTTP server.
@@ -63,7 +62,7 @@ The `bindle` program is the client. The `bindle-server` program is the HTTP serv
 Before using the `bindle` client, set the `BINDLE_URL` environment variable:
 
 ```console
-$ export BINDLE_URL="http://localhost:8080/v1/" 
+$ export BINDLE_URL="http://localhost:8080/v1/"
 ```
 
 To bootstrap a new bindle instance:
@@ -72,14 +71,18 @@ To bootstrap a new bindle instance:
    skip this step and bindles will be stored in the `/tmp` directory
 2. Start your `bindle-server`, pointing it to your bindle directory.
 3. Create an `invoice.toml`
-4. Use the `bindle` client to push the invoice to the server
+4. Sign the `invoice.toml`
+5. Use the `bindle` client to push the invoice to the server
 
 Here's a concrete version of the above for UNIX-like systems:
+
 ```console
 $ mkdir -p $HOME/.bindle/bindles
 # This step is optional, but will give you a bit more log output if you are curious
 $ export RUST_LOG=error,warp=info,bindle=debug
-$ bindle-server --directory ${HOME}/.bindle/bindles
+# This step is to create signing key for client
+$ bindle keys create "VishnuJin<me@example.com>"
+$ bindle-server --directory ${HOME}/.bindle/bindles --unauthenticated
 
 # In another terminal window
 $ cat <<EOF > invoice.toml
@@ -94,8 +97,10 @@ description = "My first bindle"
 [annotations]
 myname = "myvalue"
 EOF
-$ export BINDLE_URL="http://localhost:8080/v1/" 
-$ bindle push-invoice invoice.toml
+$ export BINDLE_URL="http://localhost:8080/v1/"
+# signing the invoice
+$ bindle sign-invoice -o signed-invoice.toml invoice.toml
+$ bindle push-invoice signed-invoice.toml
 Invoice mybindle/0.1.0 created
 ```
 
@@ -131,8 +136,8 @@ To use HTTP Basic authentication, you must generate an `htpasswd` file using Bcr
 
 ```console
 $ htpasswd -Bc htpasswd admin
-New password: 
-Re-type new password: 
+New password:
+Re-type new password:
 Adding password for user admin
 ```
 
