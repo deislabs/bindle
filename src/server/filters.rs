@@ -7,11 +7,12 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use tracing::{debug, instrument, trace, warn};
 use tracing_futures::Instrument;
+use warp::mtls::Certificates;
 use warp::reject::{custom, Reject, Rejection};
 use warp::Filter;
 
 use super::TOML_MIME_TYPE;
-use crate::authn::Authenticator;
+use crate::authn::{Authenticator, AuthData};
 use crate::authz::always::Anonymous;
 use crate::authz::Authorizer;
 
@@ -102,20 +103,22 @@ fn authenticate<Authn: Authenticator + Clone + Send + Sync>(
     warp::any()
         .map(move || authn.clone())
         .and(warp::header::optional::<String>("Authorization"))
+        .and(warp::mtls::peer_certificates())
         .and_then(_authenticate)
 }
 
-#[instrument(level = "trace", skip(authn, auth_data), name = "authentication")]
+#[instrument(level = "trace", skip(authn, auth_header, peer_certs), name = "authentication")]
 async fn _authenticate<A: Authenticator + Clone + Send>(
     authn: A,
-    auth_data: Option<String>,
+    auth_header: Option<String>,
+    peer_certs: Option<Certificates>
 ) -> Result<Either<Anonymous, A::Item>, Rejection> {
-    let data = match auth_data {
-        Some(s) => s,
+    if let (None, None) = (&auth_header, &peer_certs) {
         // If we had no auth data, that means this is anonymous
-        None => return Ok(Either::Left(Anonymous)),
-    };
-    match authn.authenticate(&data).await {
+        return Ok(Either::Left(Anonymous));
+    }
+    let auth_data = AuthData{ auth_header, peer_certs };
+    match authn.authenticate(&auth_data).await {
         Ok(a) => Ok(Either::Right(a)),
         Err(e) => {
             debug!(error = %e, "Authentication error");

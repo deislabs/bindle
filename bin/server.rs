@@ -17,6 +17,8 @@ enum AuthType {
     Oidc(String, String, String),
     /// Use an HTPassword file at the given path
     HttpBasic(PathBuf),
+    /// Use mutual TLS authentication with the given CA certificate file
+    Tls,
     /// Do not perform auth.
     None,
 }
@@ -143,6 +145,15 @@ struct Opts {
     oidc_issuer_url: Option<String>,
 
     #[clap(
+        name = "tls-auth-ca",
+        long = "tls-auth-ca",
+        env = "BINDLE_TLS_AUTH_CA",
+        requires = "cert_path",
+        help = "If set, enable client certificate TLS auth, with certificates validated by the given CA certificate path."
+    )]
+    tls_auth_ca_path: Option<PathBuf>,
+
+    #[clap(
         name = "unauthenticated",
         long = "unauthenticated",
         help = "Run server in development mode"
@@ -220,6 +231,7 @@ async fn main() -> anyhow::Result<()> {
             key_path: config
                 .key_path
                 .expect("--key-path should be set if --cert-path was set"),
+            auth_ca_path: config.tls_auth_ca_path.clone(),
         }),
     };
 
@@ -242,22 +254,32 @@ async fn main() -> anyhow::Result<()> {
         bindle_directory.display()
     );
 
-    let auth_method = if config.oidc_client_id.is_some() {
+    let mut auth_methods = vec![];
+    if config.oidc_client_id.is_some() {
         // We can unwrap safely here because Clap checks that all args exist and we already
         // checked that one of them exists
-        AuthType::Oidc(
+        auth_methods.push(AuthType::Oidc(
             config.oidc_client_id.unwrap(),
             config.oidc_issuer_url.unwrap(),
             config.oidc_device_url.unwrap(),
-        )
-    } else if let Some(htpasswd) = config.htpasswd_file {
-        AuthType::HttpBasic(htpasswd)
-    } else if config.unauthenticated {
-        AuthType::None
-    } else {
-        anyhow::bail!(
-            "An authentication method must be specified.  Use --unauthenticated to run server without authentication"
-        );
+        ));
+    }
+    if let Some(htpasswd) = config.htpasswd_file {
+        auth_methods.push(AuthType::HttpBasic(htpasswd));
+    }
+    if config.tls_auth_ca_path.is_some() {
+        auth_methods.push(AuthType::Tls);
+    }
+    if config.unauthenticated {
+        auth_methods.push(AuthType::None);
+    }
+    let auth_method = match auth_methods.len() {
+        1 => auth_methods.into_iter().next().unwrap(),
+        0 => anyhow::bail!(
+             "An authentication method must be specified.  Use --unauthenticated to run server without authentication"
+         ),
+         // TODO: support multiple simultaneous auth methods
+         _ => anyhow::bail!("Only one authentication method may be specified."),
     };
 
     // TODO: This is really gnarly, but the associated type on `Authenticator` makes turning it into
@@ -385,6 +407,45 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        // DB with TLS auth
+        (true, AuthType::Tls) => {
+            warn!("Using EmbeddedProvider. This is currently experimental");
+            info!("Auth mode: TLS client certificates");
+            let store =
+                provider::embedded::EmbeddedProvider::new(&bindle_directory, index.clone()).await?;
+            let authn = bindle::authn::tls::TlsAuthenticator::new();
+            server(
+                store,
+                index,
+                authn,
+                bindle::authz::anonymous_get::AnonymousGet,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
+        // File system with TLS auth
+        (false, AuthType::Tls) => {
+            info!("Using FileProvider");
+            info!("Auth mode: TLS client certificates");
+            let store = provider::file::FileProvider::new(&bindle_directory, index.clone()).await;
+            let authn = bindle::authn::tls::TlsAuthenticator::new();
+            server(
+                store,
+                index,
+                authn,
+                bindle::authz::anonymous_get::AnonymousGet,
+                addr,
+                tls,
+                secret_store,
+                strategy,
+                keyring,
+            )
+            .await
+        }
     }
 }
 
@@ -472,6 +533,7 @@ async fn merged_opts() -> anyhow::Result<Opts> {
         signing_file: opts.signing_file.or(config.signing_file),
         use_embedded_db: opts.use_embedded_db || config.use_embedded_db,
         verification_strategy: opts.verification_strategy.or(config.verification_strategy),
+        tls_auth_ca_path: opts.tls_auth_ca_path.or(config.tls_auth_ca_path),
     })
 }
 

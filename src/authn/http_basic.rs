@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
-use super::Authenticator;
+use super::{Authenticator, AuthData};
 use crate::authz::Authorizable;
 
 /// HTTP header prefix
@@ -81,12 +81,13 @@ impl HttpBasic {
 impl Authenticator for HttpBasic {
     type Item = HttpUser;
 
-    async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item> {
-        if auth_data.is_empty() {
+    async fn authenticate(&self, auth_data: &AuthData) -> anyhow::Result<Self::Item> {
+        let auth_header = auth_data.auth_header.as_deref().unwrap_or_default();
+        if auth_header.is_empty() {
             anyhow::bail!("Username and password are required")
         }
 
-        let (username, password) = parse_basic(auth_data)?;
+        let (username, password) = parse_basic(auth_header)?;
         match self.check_credentials(&username, &password) {
             true => Ok(HttpUser { username }),
             false => anyhow::bail!("Authentication failed"),
@@ -117,12 +118,8 @@ pub struct HttpUser {
 }
 
 impl Authorizable for HttpUser {
-    fn principal(&self) -> String {
-        self.username.clone()
-    }
-
-    fn groups(&self) -> Vec<String> {
-        Vec::with_capacity(0)
+    fn principal(&self) -> &str {
+        self.username.as_ref()
     }
 }
 

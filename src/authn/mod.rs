@@ -4,8 +4,17 @@
 pub mod always;
 pub mod http_basic;
 pub mod oidc;
+pub mod tls;
+
+use warp::mtls::Certificates;
 
 use crate::authz::Authorizable;
+
+#[non_exhaustive]
+pub struct AuthData {
+    pub auth_header: Option<String>,
+    pub peer_certs: Option<Certificates>,
+}
 
 /// A trait that can be implemented by any system able to authenticate a request
 #[async_trait::async_trait]
@@ -16,7 +25,7 @@ pub trait Authenticator {
     /// Authenticate the request given the arbitrary `auth_data`, returning an arbitrary error in
     /// case of a failure. This data will likely be the value of the Authorization header. Anonymous
     /// auth will be indicated by an empty auth_data string
-    async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item>;
+    async fn authenticate(&self, auth_data: &AuthData) -> anyhow::Result<Self::Item>;
 
     // TODO(thomastaylor312): Perhaps we should create a single method that returns another trait
     // implementing type for actually authenticating with a service. That way we can encapsulate all

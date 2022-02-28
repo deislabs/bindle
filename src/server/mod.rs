@@ -24,6 +24,7 @@ pub(crate) const JSON_MIME_TYPE: &str = "application/json";
 pub struct TlsConfig {
     pub cert_path: PathBuf,
     pub key_path: PathBuf,
+    pub auth_ca_path: Option<PathBuf>,
 }
 
 /// Returns a future that runs a server until it receives a SIGINT to stop. If optional TLS
@@ -71,12 +72,17 @@ where
         Some(config) => {
             debug!(
                 ?config.key_path,
-                ?config.cert_path, "Got TLS config, starting server in HTTPS mode",
+                ?config.cert_path,
+                ?config.auth_ca_path, "Got TLS config, starting server in HTTPS mode",
             );
-            server
+            let mut tls_server = server
                 .tls()
                 .key_path(config.key_path)
-                .cert_path(config.cert_path)
+                .cert_path(config.cert_path);
+            if let Some(auth_ca_path) = config.auth_ca_path {
+                tls_server = tls_server.client_auth_optional_path(auth_ca_path);
+            }
+            tls_server
                 .bind_with_graceful_shutdown(addr, shutdown_signal())
                 .1
                 .await

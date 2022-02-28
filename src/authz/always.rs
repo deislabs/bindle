@@ -7,12 +7,8 @@ use super::{Authorizable, Authorizer};
 pub struct Anonymous;
 
 impl Authorizable for Anonymous {
-    fn principal(&self) -> String {
-        String::new()
-    }
-
-    fn groups(&self) -> Vec<String> {
-        Vec::with_capacity(0)
+    fn principal(&self) -> &str {
+        ""
     }
 }
 

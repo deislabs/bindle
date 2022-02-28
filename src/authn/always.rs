@@ -1,4 +1,4 @@
-use super::Authenticator;
+use super::{Authenticator, AuthData};
 use crate::authz::always::Anonymous;
 
 /// An authenticator that simply returns an anonymous user
@@ -9,7 +9,7 @@ pub struct AlwaysAuthenticate;
 impl Authenticator for AlwaysAuthenticate {
     type Item = Anonymous;
 
-    async fn authenticate(&self, _auth_data: &str) -> anyhow::Result<Self::Item> {
+    async fn authenticate(&self, _auth_data: &AuthData) -> anyhow::Result<Self::Item> {
         Ok(Anonymous)
     }
 }

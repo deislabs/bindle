@@ -8,11 +8,13 @@ pub mod anonymous_get;
 /// can be authorized by an [`Authorizer`](Authorizer)
 pub trait Authorizable {
     /// Returns the identity or username of the authenticated user
-    fn principal(&self) -> String;
+    fn principal(&self) -> &str;
 
     /// Returns the groups the authenticated user is a member of, generally embedded on something
     /// like a JWT or fetched from an upstream server
-    fn groups(&self) -> Vec<String>;
+    fn groups(&self) -> &[String] {
+        &[]
+    }
 }
 
 /// A trait for any system that can authorize any [`Authorizable`](Authorizable) type

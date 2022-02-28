@@ -11,7 +11,7 @@ use std::{
     sync::Arc,
 };
 
-use super::Authenticator;
+use super::{Authenticator, AuthData};
 use crate::authz::Authorizable;
 
 const ONE_HOUR: Duration = Duration::from_secs(3600);
@@ -202,11 +202,12 @@ struct Claims {
 impl Authenticator for OidcAuthenticator {
     type Item = OidcUser;
 
-    async fn authenticate(&self, auth_data: &str) -> anyhow::Result<Self::Item> {
+    async fn authenticate(&self, auth_data: &AuthData) -> anyhow::Result<Self::Item> {
+        let auth_header = auth_data.auth_header.as_deref().unwrap_or_default();
         // This is the raw auth data, so we need to chop off the "Bearer" part of the header data
         // with any starting whitespace. I am not using to_lowercase to avoid an extra string
         // allocation
-        let raw_token = auth_data
+        let raw_token = auth_header
             .trim_start_matches("Bearer")
             .trim_start_matches("bearer")
             .trim();
@@ -249,12 +250,12 @@ pub struct OidcUser {
 }
 
 impl Authorizable for OidcUser {
-    fn principal(&self) -> String {
-        self.principal.clone()
+    fn principal(&self) -> &str {
+        self.principal.as_ref()
     }
 
-    fn groups(&self) -> Vec<String> {
-        self.groups.clone()
+    fn groups(&self) -> &[String] {
+        self.groups.as_ref()
     }
 }
 
