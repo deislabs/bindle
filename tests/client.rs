@@ -1,4 +1,4 @@
-//! Tests for the client. These tests are not intended to walk through all the API possibilites (as
+//! Tests for the client. These tests are not intended to walk through all the API possibilities (as
 //! that is taken care of in the API tests), but instead focus on entire user workflows
 
 mod test_util;

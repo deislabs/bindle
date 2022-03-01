@@ -19,7 +19,7 @@ pub async fn raw<P: AsRef<Path>>(
     Ok(FramedRead::new(file, BytesCodec::new()))
 }
 
-/// Loads a file and deserializes it from TOML to an arbirary type. Turbofish may be required to
+/// Loads a file and deserializes it from TOML to an arbitrary type. Turbofish may be required to
 /// specify the type: `bindle::client::load::toml::<bindle::Label>("/my/path.toml").await;`
 #[instrument(level = "trace", skip(file_path), fields(path = %file_path.as_ref().display()))]
 pub async fn toml<T>(file_path: impl AsRef<Path>) -> Result<T>

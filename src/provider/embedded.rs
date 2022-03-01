@@ -37,7 +37,7 @@ const PARCEL_DB_NAME: &str = "parcels";
 // in the API. But I also can't find a way to fetch this configured value
 const BLOCKING_THREAD_COUNT: usize = 512;
 
-/// An embedded database backend for storing and retrieving bindles and parcles.
+/// An embedded database backend for storing and retrieving bindles and parcels.
 ///
 /// Given a storage directory, EmbeddedProvider brings its own storage layout for keeping track of
 /// Bindles.

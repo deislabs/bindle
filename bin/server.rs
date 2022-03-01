@@ -480,7 +480,7 @@ where
     T: serde::de::DeserializeOwned,
 {
     // MPB: The original version did an unwrap_or_default() on the read_to_string.
-    // I removed this because I think we want an error to propogate if the file
+    // I removed this because I think we want an error to propagate if the file
     // cannot be read.
     let raw_data = tokio::fs::read(&file)
         .await
