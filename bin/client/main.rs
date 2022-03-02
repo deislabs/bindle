@@ -145,7 +145,7 @@ async fn run() -> std::result::Result<(), ClientError> {
         .build(&opts.server_url, token, keyring)?;
 
     let local = bindle::provider::file::FileProvider::new(
-        bindle_dir,
+        &bindle_dir,
         bindle::search::NoopEngine::default(),
     )
     .await;
@@ -432,6 +432,21 @@ async fn run() -> std::result::Result<(), ClientError> {
                     println!("Wrote key to keyring file at {}", keyring_path.display())
                 }
             }
+        }
+        SubCommand::Clean(_clean_opts) => {
+            // Cleans up the local bindles directory.
+            println!("Cleaning up bindles in {}...", bindle_dir.display());
+
+            // although remove_dir_all crate could default to std::fs::remove_dir_all for unix family,
+            // we still prefer tokio::fs implementation for unix
+            #[cfg(target_family = "windows")]
+            tokio::task::spawn_blocking(|| remove_dir_all::remove_dir_all(bindle_dir))
+                .await
+                .map_err(|e| ClientError::Other(e.to_string()))??;
+
+            #[cfg(target_family = "unix")]
+            tokio::fs::remove_dir_all(bindle_dir.clone()).await?;
+            println!("Clean up successful");
         }
     }
 
