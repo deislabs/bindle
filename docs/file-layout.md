@@ -12,6 +12,7 @@ BINDIR/
   |- invoices/
   |   |- INVOICE_SHA
   |       |- invoice.toml
+  |       |- signatures.toml
   |- parcels/
       |- PARCEL_SHA
          |- parcel.dat

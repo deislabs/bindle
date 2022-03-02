@@ -1,9 +1,7 @@
-# Signing Parcels and Parcel Lists
+# Signing Invoices
 
-This portion of the specification discusses the mechanics of signing parcel lists on invoices.
+This portion of the specification discusses the mechanics of signing invoices.
 
-In the [Invoice](invoice-spec.md) specification, there are fields for attaching cryptographic signatures.
-This specification describes the form and function of those fields.
 
 > The term `Bindle` (uppercase) refers to the package storage system. The term `bindle` (lowercase) means a package in the Bindle system.
 
@@ -16,10 +14,10 @@ This specification describes the form and function of those fields.
 
 The basic idea of signing significant items is that by attaching a signature, we can support tooling that has the ability to verify that certain facts about a bindle remain unchanged over time.
 
-Specifically, we want assurances of two things:
+Specifically, we want assurances:
 
-1. That an invoice at a particular version has _exactly_ a particular set of parcels.
-2. That each parcel has _exactly_ the content that the signer intended.
+- That an invoice at a particular version has _exactly_ a particular set of parcels.
+- That each parcel has _exactly_ the content that the signer intended.
 
 For example, by signing a parcel's hash, we can in effect certify that _an entity in possession of the signing key testifies that the parcel had this hash at the time in which the parcel was signed_. That is an important attestation when combined with a few other things (like key trust), because it provides a foundation for making assertions like this:
 
@@ -115,75 +113,48 @@ The UNIX timestamp offers this:
 
 Longer textual formats are subject to parsing and serialization ambiguities, as well in quirks of implementation across languages.
 
-## Signing on the Invoice
+## Signatures File
 
-Signatures are included in the `invoice.toml` for a Bindle.
+Signatures are included in the `signatures.toml` TOML file for a Bindle.
 Signing an invoice is an append-only operation.
 Once a signature has been added, that signature MUST NOT be modified and MUST NOT be deleted.
 This specification provides a number of caveats for handling key rotation.
 Key rotation does not warrant or allow modifying signatures.
 
-The signature does not need to sign the entire content of the invoice.
-Rather, it needs to sign particular relationships.
-For example, the list of parcels that belong to a bindle is both definitive and immutable.
-As such, the list of parcel hashes should be signed to bind an exact parcel to a bindle.
-Other pieces of information should also be signed, such as the name and version of a bindle.
-The exhaustive list (and the format) are discussed below.
-
-> To ensure that no other parts of an invoice have been modified, a host MAY take steps to verify the continued integrity of the `invoice.toml` and SHOULD encrypt all traffic between itself and clients.
-
-Signatures on an `invoice` look like this:
+Each signature authenticates the contents of the `invoice.toml` file and other details asserted by the signer. Signature entries look like this:
 
 ```toml
-bindleVersion = "v1.0.0"
-
-[bindle]
-name = "mybindle"
-version = "0.1.0"
-authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
-description = "My first bindle"
-
 [[signature]]
-by = "Matt Butcher <matt.butcher@example.com>"
-signature = "ddd237895ac..."
+# Untrusted label: Matt Butcher <matt.butcher@example.com>
+info = """
 key = "1c44..."
 role = "creator"
 at = 1611960337
-
-[[parcel]]
-label.sha256 = "e1706ab0a39ac88094b6d54a3f5cdba41fe5a901"
-label.mediaType = "text/html"
-label.name = "myparcel.html"
-
-[[parcel]]
-label.sha256 = "098fa798779ac88094b6d54a3f5cdba41fe5a901"
-label.name = "style.css"
-label.mediaType = "text/css"
-
-[[parcel]]
-label.sha256 = "5b992e90b71d5fadab3cd3777230ef370df75f5b"
-label.mediaType = "application/x-javascript"
-label.name = "foo.js"
-label.size = 248098
+"""
+signature = "ddd237895ac..."
 ```
 
-This format does not change with groups or conditions.
+A `Untrusted label` comment MAY be added to aid in debugging unknown signature keys and SHOULD match the key's keychain label if available. Implementations that add it SHOULD include the `Untrusted label: ` prefix to indicate that the label is not cryptographically verified.
 
-The signature is computed by concatenating the following pieces of data together in a line-separated (`\n`) UTF-8 string: `by`, `name`, `version`, `role`, `at` and the `label.sha256` of each parcel:
+The `info` value is itself a TOML-encoded table of signature information:
+
+- `key`: the key used in the signature
+- `role`: the signer's role
+- `at`: the UNIX timestamp of signature generation
+
+The `signature` value is computed by signing the _signature payload_ and hex-encoding the resulting signature bytes. The signature payload consists of several pieces of data concatenated together:
+
+1. The constant string prefix `BINDLE-SIGNATURE-V1`, which binds the signature to this signature algorithm and payload format
+2. The _signature type_, either `signature` or `yanked_signature` (see below)
+3. The SHA-256 checksum of the `invoice.toml` file contents
+4. The UTF-8 encoded contents of the `info` string
 
 ```
-Matt Butcher <matt.butcher@example.com>
-mybindle
-0.1.0
-creator
-1611960337
-~
-e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
-098fa798779ac88094b6d54a3f5cdba41fe5a901
-5b992e90b71d5fadab3cd3777230ef370df75f5b
+signature-payload = 'BINDLE-SIGNATURE-V1:' || <'signature' or 'yanked_signature'> || <SHA-256(contents of invoice.toml)> || <UTF-8(signature.info)>
+signature = HEX(Ed25519(signer-private-key, signature-payload))
 ```
 
-Note that the sequence `\n~\n` is used as a separator to prevent an attempt to forge a hash using another field.
+> Future revisions to the signing process that change the signature algorithm MUST use a different constant string prefix. The prefix may be updated with other changes to the signature process as well to prevent signature reuse attacks.
 
 ## Verifying
 
@@ -191,19 +162,19 @@ To verify, it is assumed that the client has access to a _keyring_ that contains
 
 Verification of an invoice includes the following steps:
 
-1. Load the invoice
-2. Extract the signature block from the invoice
-3. Reconstruct the cleartext block following the signing rules
-4. For each signature block
+1. Load the signatures file
+2. For each signature block
     a. Extract the public key
     b. Verify that the key has not already been used in another signature block
         - If a key is used to sign the same invoice multiple times, the implementation SHOULD fail
-    c. Verify the signature using the public key and the cleartext data
+    c. Calculate the signature payload as with signing
+    d. Verify the signature using the public key and the signature payload
         - If verification fails for a known signer, the application MUST fail
         - If the verification fails for an unknown signer (whose key does not exist in the keyrings), the application SHOULD emit a warning and MAY fail. Consider, though, that failing could allow an attack to forge known-bad signatures as a denial of service attack.
-    d. Locate the key in the keyring
+    e. Locate the key in the keyring
         - If the key is not located, this is not an error
-5. Apply a key trust strategy (See "Strategies of Key Trust" below)
+    f. If the signature type is `yanked_signature`, treat the invoice as _yanked_
+3. Apply a key trust strategy (See "Strategies of Key Trust" below)
     - At minimum, the strategy should be that the `creator` signature is signed with a known key (Strategy 1).
     - For use on public bindle servers, allowing the `creator or approver` strategy (Strategy 2) is preferred.
 
@@ -250,28 +221,34 @@ Fields on the `[[key]]` object:
 ```toml
 # This identity asserts that it has created the bindle
 [[signature]]
-by = "Matt Butcher <matt.butcher@example.com>"
-signature = "ddd237895ac..."
+# Untrusted label: Matt Butcher <matt.butcher@example.com>
+info = """
 key = "1c44..."
 role = "creator"
 at = 1611960337
+"""
+signature = "ddd237895ac..."
 
 # This identity asserts that it has somehow proxied the bindle.
 # In this case, it is a CI action that pushed the bindle to a host
 [[signature]]
-by = "GitHub Action [https://github.com/exammple.com/hello_repo]"
-signature = "3dd237895ac..."
+# Untrusted label: GitHub Action [https://github.com/exammple.com/hello_repo]
+info = """
 key = "3c44..."
 role = "proxy"
 at = 1611960347
+"""
+signature = "3dd237895ac..."
 
 # This identity asserts that it has hosted the bindle
 [[signature]]
-by = "Bindle Server [https://bindle.example.com]"
-signature = "2dd237895ac..."
+# Untrusted label: Bindle Server [https://bindle.example.com]
+info = """
 key = "2c44..."
 role = "host"
 at = 1611960357
+"""
+signature = "2dd237895ac..."
 ```
  Because of the timestamps, we can reconstruct the timeline and see that the key was
  first signed by the creator, then signed by the proxy, and finally signed by the host.
@@ -355,33 +332,29 @@ For example, if validating `creator` and `approver` under normal Multiple Attest
 
 ## Yanking Bindles
 
-An invoice has the field `yanked` available as a top-level field.
-However, this field is not present in the signed metadata.
-The reason for this is that a yanked package is not, in virtue of its yanking, invalid.
-So simply yanking a bindle MUST NOT result in invalidating the bindle.
-(The reason a yank does not invalidate a Bindle is that the yank merely warns that the authors no longer wish for you to use the bindle, not that the bindle necessarily has a problem.)
+A Bindle can be _yanked_ by appending a `yanked_signature` to the signatures list.
+Yanking a bindle MUST NOT result in invalidating the bundle.
+(The reason a yank does not invalidate a Bindle is that the yank merely warns that the authors or host no longer wish for you to use the bindle, not that the bindle necessarily has a problem.)
 
-Consequently, when a bindle is yanked, the invoice MUST be updated in two ways:
-
-- The top-level `yanked` field MUST be set to true
-- The host key MUST generate a `yanked_signature` composed by signing the following block of data:
+When a bindle is yanked, the host key MUST generate a `yanked_signature` following the same process as regular signature. The `info` field MAY include an optional `yanked_reason` entry.
 
 ```
-Matt Butcher <matt.butcher@example.com>
-mybindle
-0.1.0
-host
-1611960337
-yanked
-~
-A security flaw was found. See CVE-1234 for details.
+[[yanked_signature]]
+# Untrusted label: Matt Butcher <matt.butcher@example.com>
+info = """
+yanked_reason = "A security flaw was found. See CVE-1234 for details."
+key = "1c44..."
+role = "host"
+at = 1611960337
+"""
+signature = "ddd237895ac..."
 ```
 
-This differs from the regular signature block in four important ways:
+This differs from the regular signature block:
+- The _signature type_ is `yanked_signature`
 - The only role that is allowed to sign in this way is the `host` role
 - The timestamp is the time at which the host marked this bindle as yanked
-- The word `yanked` appears below the timestamp. This is a trivial guard against an attack that attempts to repurpose a parcel-less signature as a yank block.
-- After the `~` divider, the optional `yanked_reason` is included. If a `yanked_reason` is provided on the invoice, it MUST be included in the signature block to prevent tampering.
+- The optional `yanked_reason`
 
 To verify a `yanked_signature`, an agent:
 
@@ -389,25 +362,8 @@ To verify a `yanked_signature`, an agent:
     - An agent MAY refuse to treat a bindle as yanked if the key is not known
     - An agent SHOULD notify the user if a bindle is yanked, but the yanking host key is not known
 - MUST verify that the signature is valid (using the same formula described for regular signature validation).
-- SHOULD verify that the timestamp for yanking is not the same as the signature block's `at` timestamp.
-    - This is a trivial protection against attempts to forge a yank block.
 - SHOULD require that the host key used to yank is also the same host key originally used to sign
     - This is complicated by host key rotation. Our recommendation is that on host key rotation, all packages should be re-signed using the new host key so that it is always clear who the host authority is.
-
-
-The format of the `yanked_signature` is the same as the format of a regular signature:
-
-```toml
-bindleVersion = "1.0.0"
-yanked = true
-
-[[yanked_signature]]
-by = "Matt Butcher <matt.butcher@example.com>"
-signature = "ddd237895ac..."
-key = "1c44..."
-role = "host"
-at = 1611960337
-```
 
 Note that this strategy does not prevent a key from being used to generate a known-bad signature so that the validation fails.
 
@@ -421,10 +377,10 @@ to do directly with creator intent. (In other words, the creator is not the auth
 A compromised host could yank all packages, which may have dire initial consequences.
 However, these consequences are probably the correct consequences when a compromise happens, as the result is a denial of service from the host to the agent.
 
-A `yanked` field and the `yankedSignature` could both be removed by a malicious `host`, which would allow a rollback attack.
+A `yanked_signature` could be removed by a malicious `host`, which would allow a rollback attack.
 There is currently not a mitigation from this. (Compromised hosts can also remove regular signature blocks, effectively rendering a signed bindle unsigned.)
 
-> As with regular signature blocks, `yankedSignature` is append-only. When a `host` rotates its keys, it SHOULD append a new `yankedSignature` block, but it MUST NOT remove the old `yankedSignature` block.
+> As with regular signature blocks, `yanked_signature` is append-only. When a `host` rotates its keys, it SHOULD append a new `yanked_signature` block, but it MUST NOT remove the old `yanked_signature` block.
 
 ### Possible Alternatives to Yank Signing
 
@@ -529,7 +485,7 @@ To prevent yank-based freeze/rollback attacks, `yanked_signatures` require that 
 This protects against most forms of freeze/rollback attacks in that (depending on the signature verification strategy) multiple
 keys must be compromised before a freeze/rollback can work.
 
-*However,* at the time of this writing a compromised host key could mark a release as `yanked` and encourage agents to roll back to previous versions. This could result in a rollback attack to a vulnerable version. One potential work-around would be to not roll back unless the `creator` key was also used to sign the yank. However, this would rule out host-only yanks, which we view as necessary to prevent bad-intentioned creators from blocking yanks.
+*However,* at the time of this writing a compromised host key could mark a release as `yanked` and encourage agents to roll back to previous versions. This could result in a rollback attack to a vulnerable version. One potential work-around would be to not roll back unless the `creator` key was also used to sign the yank. However, this would rule out host-only yanks, which we view as necessary to prevent bad-intentioned (or compromised) creators from blocking yanks.
 
 Note that even in such an attack, the compromised host cannot alter a bindle's content without invalidating the other signatures.
 
@@ -546,21 +502,8 @@ This section is non-normative and may be removed.
 
 In the case where an existing package is discovered to have a flaw that should prevent its verification, it is possible (though not always recommended, and never required) to generate an intentionally bad signature to force a verification failure.
 
-The recommended way of doing this is to include the `INVALID` string inside of the hash contents after the timestamp.
+The recommended way of doing this is to set the signature type to `invalid_signature`.
 This makes it possible for an agent to reconstruct the signature and determine whether the signature was intentionally invalidated.
-
-```
-Matt Butcher <matt.butcher@example.com>
-mybindle
-0.1.0
-creator
-1611960337
-INVALID
-~
-e1706ab0a39ac88094b6d54a3f5cdba41fe5a901
-098fa798779ac88094b6d54a3f5cdba41fe5a901
-5b992e90b71d5fadab3cd3777230ef370df75f5b
-```
 
 Note that simply generating an invalid signature does not necessarily mean that agents will respect this signature.
 An implementation may only mind invalid signatures on keys that are in its keyring or that are in a certain role.
@@ -579,7 +522,7 @@ However, there are a few non-normative recommendations:
 
 If a host key is compromised and the window of time of compromise is known, the host SHOULD re-evaluate all packages marked as `yanked` during the compromise window. If the window of time is not known, then a thorough re-evaluation of yanked packages should take place.
 
-If a creator key is compromised, a host SHOULD mark all packages signed by that key as `yanked`. If the compromise's window of time is known, a host MAY choose instead to yank only packages signed during that compromise window.
+If a creator key is compromised, a host SHOULD mark all packages signed by that key as `yanked`. If the compromise's window of time is known, a host MAY choose instead to yank only packages received during that compromise window.
 
 If a proxy or approver key is compromised, a host SHOULD remove all signature blocks made using that key. If a compromise's window of time is known, a host MAY choose instead to remove that signature from only the packages signed during that window.
 
@@ -587,13 +530,3 @@ If at any point the number of trusted signatures on a package is less than one, 
 
 In all of these cases, note that timestamps used inside of signature blocks from compromised keys should not be trusted.
 Timestamps from the system or from other signatures may serve as better points of trust.
-
-## Questions
-
-### Why Don't You Just Hash The Document?
-
-A: Because TOML (and most on-disk formats) can be expressed in ways that are subtly different. Whitespace, quotation marks, and other formatting changes can render the signature ineffective.
-
-Instead of inventing another format or using something like Canonical JSON (with all its quirks), we took a semantic approach: What are the pieces of data that we actually need to protect, and can we handle just those?
-
-

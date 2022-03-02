@@ -5,8 +5,8 @@ Bindle uses HTTP/2 with TLS as a transport protocol. All bodies and responses ex
 The HTTP endpoints defined above MAY exist as a subpath on a server, or in the server's root. For example, `https://example.com/v1/_i/foo` and `https://example.com/_i/foo` are both legal paths for the specification below. However, `https://example.com/_i/v1/foo` is not (or, rather, it is a legal URI for a package named `v1/foo`).
 
 HTTP Endpoints:
-- `/_i/{bindle-name}`: The path to a bindle's invoice. Note that `{bindle-name}` can be pathy. For example, `/_i/example.com/mybindle/1.2.3` is a valid path to a bindle named `example.com/mybindle/1.2.3`.
-    - `GET`: Get a bindle by name. This returns an invoice object.
+- `/_i/{bindle-name}`: The path to a bindle. Note that `{bindle-name}` can be pathy. For example, `/_i/example.com/mybindle/1.2.3` is a valid path to a bindle named `example.com/mybindle/1.2.3`.
+    - `GET`: Get a bindle by name.
     - `HEAD`: Send just the headers of a GET request
     - `DELETE`: Yank a bindle. This will set the `yank` field on a bindle to `true`. This is the only mutation allowed on a Bindle.
 - `/_i`
@@ -25,6 +25,55 @@ HTTP Endpoints:
 - `/bindle-keys`: An OPTIONAL implementation of the [keyring protocol specification](./keyring-protocol-spec.md). The reference implementation only exposes public keys with the `host` role, but other implementations MAY support all types of keys
 
 While bindle names MAY be hierarchical, neither the `_i` nor the `_p` endpoints support listing the contents of a URI. This constraint is for both scalability and security reasons. To list available bindles, agents MUST use the `_q` endpoint if implemented. In absence of the `_q` endpoint, this specification does not support any way to list available bindles. However, implementations MAY support alternative endpoints, provided that the URI for those endpoints does not begin with the `_` character.
+
+## Bindle object
+
+Normally, a Bindle object consists of an `invoice` string (with the exact contents signed by the bindle creator) and one or more `signature` blocks:
+
+```toml
+invoice = """
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "mybindle"
+author = ["Bindle Author <author@example.com>]
+...
+"""
+
+[[signature]]
+# Untrusted label: Bindle Author <author@example.com>
+info = """
+key = "1c44..."
+role = "creator"
+at = 1611960337
+"""
+signature = "ddd237895ac..."
+```
+
+A _yanked_ Bindle object additionally has the top-level entry `yanked = true` and one or more `yanked_signature` blocks:
+
+```toml
+yanked = true
+invoice = """
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "mybindle"
+author = ["Bindle Author <author@example.com>]
+...
+"""
+
+# ... other signatures ...
+
+[[yanked_signature]]
+# Untrusted label: Bindle Host [https://bindle.example.com]
+info = """
+key = "107a..."
+role = "host"
+at = 1613960337
+"""
+signature = "bbb237895ac..."
+```
 
 ## Missing parcels
 
@@ -89,7 +138,6 @@ A bindle that is marked `yanked = true` MUST be treated according to the followi
 - It MUST NOT be accepted by a `POST` operation
 - The `DELETE` operation is a no-up on a yanked Bindle
 - A `GET` request should only be fulfilled if the `yanked=true` query parameter is set. In any other case, it should mark it as "access denied"
-    - If `yanked=true` in the query string, the server SHOULD serve the bindle unaltered, including the `invoice.toml`'s `yanked = true` attribute.
 - The query endpoint MUST NOT return yanked bindles unless the `yanked=true` parameter is set. If that optional parameter is not provided by the implementation, the implementation MUST NOT return yanked bindles in a query.
 
 Parcels cannot be yanked.

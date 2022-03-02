@@ -7,15 +7,14 @@ A standalone Bindle is an artifact containing all the information necessary to r
 ```
 INVOICE_SHA/
   |- invoice.toml
+  |- signatures.toml
   |- parcels/
       |- PARCEL_SHA.dat
 ```
 
-- `INVOICE_SHA` is a directory named with the SHA-256 hash of the invoice. It MUST be the SHA-256 hash created by hashing the canonical invoice name (not the bindle name): NAME/VERSION
-  - `NAME` is the Bindle name in the invoice’s bindle name field. This can be arbitrarily pathy (e.g. `example.com/foo/bar`)
-  - `/` is the literal slash character. This is not OS-dependent (e.g. Windows does not use the `\` character instead).
-  - `VERSION` is the Bindle version in the invoice’s bindle version field.
+- `INVOICE_SHA` is a directory named with the SHA-256 hash of the invoice file contents.
 - `invoice.toml` MUST exist and MUST contain a valid TOML [invoice specification](invoice-spec.md).
+- `signatures.toml` MUST exist and MUST contain a valid TOML [signatures file](signing-spec.md#signatures-file).
 - `PARCEL_SHA` is the SHA-256 hash of the parcel file, represented as a hex string. For example, if you had a text file containing `a red one`, it would be named in the `parcels` directory as `23f310b54076878fd4c36f0c60ec92011a8b406349b98dd37d08577d17397de5.dat`. 
 
 The `parcels` directory MUST exist, but MAY be empty or contain multiple parcels. Each parcel file MUST be named according to the specification described above.

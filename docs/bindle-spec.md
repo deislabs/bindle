@@ -2,18 +2,19 @@
 
 The purpose of the Bindle specification is to describe a format for transporting collections of (potentially large) related files in such a way that they can be safely shared and re-used.
 
-A bindle consists of an `invoice.toml` file and one or more `parcel` objects.
+A bindle consists of `invoice.toml` and `signatures.toml` files and one or more `parcel` objects.
 
 The English word "bindle" refers to a collection or package. A popular portrayal of the bindle is a handkerchief-wrapped bundle hanging off of a stick. (The word itself is likely a corruption of the word "bundle"). This specification describes a format called "bindle" together with an API for storage and retrieval of bindles.
 
 ## Bindles and Parcels
 
-A _bindle_ is a named and versioned container that enumerates its contents in an _invoice_. The contents of a bindle are opaque blobs of data described as _parcels_, where each parcel has a _label_ describing it, and a _parcel.dat_ that contains the opaque data of the parcel.
+A _bindle_ is a named and versioned container that enumerates its contents in an _invoice_, which is authenticated by one or more _signatures_. The contents of a bindle are opaque blobs of data described as _parcels_, where each parcel has a _label_ describing it, and a _parcel.dat_ that contains the opaque data of the parcel.
 
 ```
 BINDLE
   |
-  |- invoice
+  |- invoice.toml
+  |- signatures.toml
   |
   |- parcels
        |- parcel 1
@@ -36,7 +37,7 @@ Bindles are good for expressing the relationship between related chunks of data.
 ### Packaging a website.
 Bindle could be used to model a website by storing each HTML page, image, script, and stylesheet a `parcel`, and then creating an `invoice` that listed each parcel.
 
-As the website changed and evolved, the `invoice` would be versioned (e.g. `v1.0.1`, then `v1.0.2`...). When the website is deployed, the deployment target inspects the `invoice` to see which `parcel`s changed. Then it installs just the changed `parcel`s. This can drastically cut down the amount of data that must be moved around with each website deployment
+As the website changed and evolved, the bindle would be versioned (e.g. `v1.0.1`, then `v1.0.2`...). When the website is deployed, the deployment target inspects the `invoice` to see which `parcel`s changed. Then it installs just the changed `parcel`s. This can drastically cut down the amount of data that must be moved around with each website deployment
 
 ### Packaging Programming Language Dependencies
 

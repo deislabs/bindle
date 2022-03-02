@@ -8,9 +8,9 @@ A bindle has a name. For example, if we were to write a `hello world` bindle, it
 
 When a bindle is concretized into an invoice, it MUST have a name and a version. Version MUST be a valid [SemVer 2 version](https://semver.org).
 
-A bindle name can be one or more characters from the set of unicode alphabetic and numeric characters, as well as the characters `_` and `/`.
+A bindle name can be one or more characters from the set of unicode alphabetic and numeric characters, as well as the characters `-`, `.`, `_` and `/`.
 
-TODO: Are there other characters we should allow? `-` causes problems with algorithms that autoconvert between `_` and `-`, because of ambiguity. `+` and `%` are legal in URLs, and % might be useful as an escape character, per URLs. A bindle name MUST NOT start with the string `bindle:` (the `:` is not a legal character in bindle names).
+TODO: Are there other characters we should allow? `+` and `%` are legal in URLs, and % might be useful as an escape character, per URLs. A bindle name MUST NOT start with the string `bindle:` (the `:` is not a legal character in bindle names).
 
 Example bindle names:
 
