@@ -132,10 +132,7 @@ pub enum SubCommand {
         about = "Packages up a standalone bindle directory into a tarball"
     )]
     Package(Package),
-    #[clap(
-        name="clean",
-        about = "Cleans up the DumpCache bindles"
-    )]
+    #[clap(name = "clean", about = "Cleans up the DumpCache bindles")]
     Clean(Clean),
     #[clap(subcommand)]
     Keys(Keys),
@@ -522,4 +519,4 @@ pub struct Package {
 }
 
 #[derive(Parser)]
-pub struct  Clean {}
+pub struct Clean {}
