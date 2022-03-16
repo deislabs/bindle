@@ -43,6 +43,7 @@ pub struct Client<T> {
     keyring: Arc<KeyRing>,
 }
 
+#[derive(Debug)]
 /// The operation being performed against a Bindle server.
 enum Operation {
     Create,
@@ -665,8 +666,11 @@ async fn unwrap_status(
             message: parse_error_from_body(resp).await,
         }),
         _ => Err(ClientError::Other(format!(
-            "Unknown error: {}",
-            parse_error_from_body(resp).await.unwrap_or_default()
+            "Unknown error response: {:?} to {} returned status {}: {}",
+            operation,
+            resp.url().to_string(),
+            resp.status(),
+            parse_error_from_body(resp).await.unwrap_or_else(|| "(no error message in response)".to_owned())
         ))),
     }
 }
