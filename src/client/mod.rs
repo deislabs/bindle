@@ -670,7 +670,9 @@ async fn unwrap_status(
             operation,
             resp.url().to_string(),
             resp.status(),
-            parse_error_from_body(resp).await.unwrap_or_else(|| "(no error message in response)".to_owned())
+            parse_error_from_body(resp)
+                .await
+                .unwrap_or_else(|| "(no error message in response)".to_owned())
         ))),
     }
 }
