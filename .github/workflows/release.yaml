@@ -130,6 +130,7 @@ jobs:
           source_dir: bindle
           container_name: releases
           connection_string: ${{ secrets.AzureStorageConnectionString }}
+          overwrite: 'true'
   crate:
     name: Publish crate
     runs-on: ubuntu-latest
