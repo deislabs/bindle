@@ -125,12 +125,11 @@ jobs:
           cd bindle
           sha256sum * > checksums-${{ env.RELEASE_VERSION }}.txt
       - name: upload to azure
-        uses: bacongobbler/azure-blob-storage-upload@main
+        uses: bacongobbler/azure-blob-storage-upload@v2.0.0
         with:
           source_dir: bindle
           container_name: releases
           connection_string: ${{ secrets.AzureStorageConnectionString }}
-          sync: false
   crate:
     name: Publish crate
     runs-on: ubuntu-latest
