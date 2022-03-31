@@ -118,7 +118,6 @@ dependencies = [
  "either",
  "futures",
  "hyper",
- "indexmap",
  "jsonwebtoken",
  "lru",
  "mime",
