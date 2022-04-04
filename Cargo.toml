@@ -83,9 +83,6 @@ tracing-subscriber = { version = "0.3.7", features = ["env-filter"], optional = 
 url = "2.2.2"
 warp = { version = "0.3", features = ["tls"], optional = true }
 
-# NOTE: This is a workaround due to a dependency issue in oauth2: https://github.com/tkaitchuck/ahash/issues/95#issuecomment-903560879
-indexmap = "~1.6.2"
-
 [target.'cfg(target_family = "windows")'.dependencies]
 remove_dir_all = "0.7.0"
 
