@@ -21,6 +21,13 @@ jobs:
               targetPath: "target/release/",
             }
           - {
+              os: "ubuntu-latest",
+              arch: "aarch64",
+              extension: "",
+              env: { OPENSSL_DIR: "/usr/local/openssl-aarch64" },
+              targetPath: "target/aarch64-unknown-linux-gnu/release/",
+            }
+          - {
               os: "macos-latest",
               arch: "amd64",
               extension: "",
@@ -68,14 +75,37 @@ jobs:
           default: true
           components: clippy, rustfmt
 
+      - name: setup for cross-compile builds
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-latest'
+        run: |
+          sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          cd /tmp
+          git clone https://github.com/openssl/openssl
+          cd openssl
+          git checkout OpenSSL_1_1_1l
+          sudo mkdir -p $OPENSSL_DIR
+          ./Configure linux-aarch64 --prefix=$OPENSSL_DIR --openssldir=$OPENSSL_DIR shared
+          make CC=aarch64-linux-gnu-gcc
+          sudo make install
+          rustup target add aarch64-unknown-linux-gnu
+
       - name: Install latest Rust stable toolchain
         uses: actions-rs/toolchain@v1
-        if: matrix.config.arch == 'aarch64'
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'macos-latest'
         with:
           toolchain: stable
           default: true
           components: clippy, rustfmt
           target: aarch64-apple-darwin
+
+      - name: Install latest Rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-latest'
+        with:
+          toolchain: stable
+          default: true
+          components: clippy, rustfmt
+          target: aarch64-unknown-linux-gnu
 
       - name: build release
         uses: actions-rs/cargo@v1
@@ -86,10 +116,17 @@ jobs:
 
       - name: build release
         uses: actions-rs/cargo@v1
-        if: matrix.config.arch == 'aarch64'
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'macos-latest'
         with:
           command: build
           args: "--all-features --release --target aarch64-apple-darwin"
+
+      - name: build release
+        uses: actions-rs/cargo@v1
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-latest'
+        with:
+          command: build
+          args: "--all-features --release --target aarch64-unknown-linux-gnu"
 
       - name: package release assets
         shell: bash
