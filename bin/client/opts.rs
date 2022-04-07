@@ -419,12 +419,11 @@ pub struct PrintKey {
     )]
     pub secret_file: Option<PathBuf>,
     #[clap(
-        short = 'l',
-        long = "label",
-        value_name = "LABEL",
-        help = "The label to search for. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
+        short = 'm',
+        long = "label-matching",
+        help = "selects the keys that (partially) matches the given label. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
     )]
-    pub label: Option<String>,
+    pub label_matching: Option<String>,
 }
 
 #[derive(Parser)]

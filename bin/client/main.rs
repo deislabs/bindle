@@ -324,7 +324,7 @@ async fn run() -> std::result::Result<(), ClientError> {
                         .await
                         .map_err(|e| ClientError::Other(e.to_string()))?;
 
-                    let matches: Vec<KeyEntry> = match print_key_opts.label {
+                    let matches: Vec<KeyEntry> = match print_key_opts.label_matching {
                         Some(name) => keyfile
                             .key
                             .iter()
