@@ -448,6 +448,19 @@ pub struct SignInvoice {
     )]
     pub role: Option<String>,
     #[clap(
+        short = 'l',
+        long = "label",
+        conflicts_with = "label-matching",
+        help = "selects the key with the exact given label"
+    )]
+    pub label: Option<String>,
+    #[clap(
+        short = 'm',
+        long = "label-matching",
+        help = "selects the key that (partially) matches the given label. If supplied, this will sign with the key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
+    )]
+    pub label_matching: Option<String>,
+    #[clap(
         short = 'o',
         long = "out",
         help = "the location to write the modified invoice. By default, it will write to invoice-HASH.toml, where HASH is computed on name and version"

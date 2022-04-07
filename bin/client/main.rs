@@ -11,7 +11,7 @@ use bindle::invoice::signature::{
 };
 use bindle::invoice::Invoice;
 use bindle::provider::ProviderError;
-use bindle::signature::{KeyEntry, KeyRingLoader, KeyRingSaver};
+use bindle::signature::{KeyEntry, KeyRingLoader, KeyRingSaver, LabelMatch};
 use bindle::standalone::{StandaloneRead, StandaloneWrite};
 use bindle::SignatureError;
 use bindle::{
@@ -246,8 +246,17 @@ async fn run() -> std::result::Result<(), ClientError> {
                 None => ensure_config_dir().await?.join("secret_keys.toml"),
             };
 
+            let match_type = match (sign_opts.label, sign_opts.label_matching) {
+                (Some(label), None) => Some(LabelMatch::FullMatch(label)),
+                (None, Some(label_matching)) => Some(LabelMatch::PartialMatch(label_matching)),
+                (None, None) => None,
+                _ => {
+                    unreachable!("both label and label-matching cannot be present at the same time")
+                }
+            };
+
             // Signing key
-            let key = first_matching_key(keyfile, &role).await?;
+            let key = first_matching_key(keyfile, &role, match_type.as_ref()).await?;
 
             // Load the invoice and sign it.
             let mut inv: Invoice = bindle::client::load::toml(sign_opts.invoice.as_str()).await?;
@@ -259,8 +268,8 @@ async fn run() -> std::result::Result<(), ClientError> {
                 .unwrap_or_else(|| format!("./invoice-{}.toml", inv.canonical_name()));
 
             println!(
-                "Signed {} with role {} and wrote to {}",
-                sign_opts.invoice, role, outfile
+                "Signed {} with role as '{}', label as '{}' and wrote to {}",
+                sign_opts.invoice, role, key.label, outfile
             );
             tokio::fs::write(outfile, toml::to_string(&inv)?).await?;
         }
@@ -646,12 +655,16 @@ async fn ensure_config_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
-async fn first_matching_key(fpath: PathBuf, role: &SignatureRole) -> Result<SecretKeyEntry> {
+async fn first_matching_key(
+    fpath: PathBuf,
+    role: &SignatureRole,
+    label_match: Option<&LabelMatch>,
+) -> Result<SecretKeyEntry> {
     let keys = SecretKeyFile::load_file(&fpath).await.map_err(|e| {
         ClientError::Other(format!("Error loading file {}: {}", fpath.display(), e))
     })?;
 
-    keys.get_first_matching(role)
+    keys.get_first_matching(role, label_match)
         .map(|k| k.to_owned())
         .ok_or_else(|| ClientError::Other("No satisfactory key found".to_owned()))
 }

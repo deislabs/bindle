@@ -17,7 +17,7 @@ use crate::invoice::signature::{
 use crate::provider::embedded::EmbeddedProvider;
 use crate::provider::file::FileProvider;
 use crate::search::StrictEngine;
-use crate::signature::KeyRingLoader;
+use crate::signature::{KeyRingLoader, LabelMatch};
 
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
@@ -296,7 +296,11 @@ impl Default for MockKeyStore {
 }
 
 impl SecretKeyStorage for MockKeyStore {
-    fn get_first_matching(&self, _role: &SignatureRole) -> Option<&SecretKeyEntry> {
+    fn get_first_matching(
+        &self,
+        _role: &SignatureRole,
+        _match_type: Option<&LabelMatch>,
+    ) -> Option<&SecretKeyEntry> {
         Some(&self.mock_secret_key)
     }
 }

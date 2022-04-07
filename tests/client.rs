@@ -170,7 +170,7 @@ async fn test_already_created() {
             SignatureRole::Creator,
             scaffold
                 .keys
-                .get_first_matching(&SignatureRole::Creator)
+                .get_first_matching(&SignatureRole::Creator, None)
                 .unwrap(),
         )
         .unwrap();
