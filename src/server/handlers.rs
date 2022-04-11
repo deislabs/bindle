@@ -74,7 +74,7 @@ pub mod v1 {
         // with my private key, and THEN go on to store.create_invoice()
 
         let role = SignatureRole::Host;
-        let sk = match secret_store.get_first_matching(&role) {
+        let sk = match secret_store.get_first_matching(&role, None) {
             None => {
                 return Ok(reply::into_reply(ProviderError::FailedSigning(
                     SignatureError::NoSuitableKey,

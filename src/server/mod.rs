@@ -187,7 +187,7 @@ mod test {
             SignatureRole::Creator,
             valid_v1
                 .keys
-                .get_first_matching(&SignatureRole::Creator)
+                .get_first_matching(&SignatureRole::Creator, None)
                 .unwrap(),
         )
         .unwrap();

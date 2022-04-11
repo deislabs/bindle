@@ -419,12 +419,11 @@ pub struct PrintKey {
     )]
     pub secret_file: Option<PathBuf>,
     #[clap(
-        short = 'l',
-        long = "label",
-        value_name = "LABEL",
-        help = "The label to search for. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
+        short = 'm',
+        long = "label-matching",
+        help = "selects the keys that (partially) matches the given label. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
     )]
-    pub label: Option<String>,
+    pub label_matching: Option<String>,
 }
 
 #[derive(Parser)]
@@ -447,6 +446,19 @@ pub struct SignInvoice {
         help = "the role to sign with. Values are: c[reator], a[pprover], h[ost], p[roxy]. If no role is specified, 'creator' is used"
     )]
     pub role: Option<String>,
+    #[clap(
+        short = 'l',
+        long = "label",
+        conflicts_with = "label-matching",
+        help = "selects the key with the exact given label"
+    )]
+    pub label: Option<String>,
+    #[clap(
+        short = 'm',
+        long = "label-matching",
+        help = "selects the key that (partially) matches the given label. If supplied, this will sign with the key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
+    )]
+    pub label_matching: Option<String>,
     #[clap(
         short = 'o',
         long = "out",
