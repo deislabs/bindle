@@ -121,7 +121,7 @@ pub mod v1 {
             S: Search + Clone + Send + Sync,
         {
             warp::path("_q")
-                .and(warp::get())
+                .and(warp::get().or(warp::head()).unify())
                 .and(warp::query::<crate::QueryOptions>())
                 .and(warp::any().map(move || index.clone()))
                 .and(warp::header::optional::<String>("accept"))
