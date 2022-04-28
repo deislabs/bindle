@@ -190,7 +190,7 @@ impl From<RawScaffold> for Scaffold {
 pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine, MockKeyStore) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
-    let store = FileProvider::new(temp.path().to_owned(), index.clone()).await;
+    let store = FileProvider::new(temp.path(), index.clone()).await;
     let kstore = MockKeyStore::new();
     (store, index, kstore)
 }
@@ -200,7 +200,7 @@ pub async fn setup() -> (FileProvider<StrictEngine>, StrictEngine, MockKeyStore)
 pub async fn setup_embedded() -> (EmbeddedProvider<StrictEngine>, StrictEngine, MockKeyStore) {
     let temp = tempdir().expect("unable to create tempdir");
     let index = StrictEngine::default();
-    let store = EmbeddedProvider::new(temp.path().to_owned(), index.clone())
+    let store = EmbeddedProvider::new(temp.path(), index.clone())
         .await
         .expect("Unable to configure embedded provider");
     let kstore = MockKeyStore::new();
@@ -302,5 +302,13 @@ impl SecretKeyStorage for MockKeyStore {
         _match_type: Option<&LabelMatch>,
     ) -> Option<&SecretKeyEntry> {
         Some(&self.mock_secret_key)
+    }
+
+    fn get_all_matching(
+        &self,
+        _role: &SignatureRole,
+        _match_type: Option<&LabelMatch>,
+    ) -> Vec<&SecretKeyEntry> {
+        vec![&self.mock_secret_key]
     }
 }

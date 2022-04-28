@@ -668,7 +668,7 @@ async fn unwrap_status(
         _ => Err(ClientError::Other(format!(
             "Unknown error response: {:?} to {} returned status {}: {}",
             operation,
-            resp.url().to_string(),
+            resp.url().to_owned(),
             resp.status(),
             parse_error_from_body(resp)
                 .await

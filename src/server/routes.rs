@@ -40,7 +40,7 @@ where
                 .boxed()
                 .or(v1::invoice::create_json(
                     store.clone(),
-                    secret_store,
+                    secret_store.clone(),
                     verification_strategy,
                     wrapped_keyring,
                 ))
@@ -64,6 +64,8 @@ where
                     authn.auth_url().to_owned(),
                     authn.token_url().to_owned(),
                 ))
+                .boxed()
+                .or(v1::keyring::host_keys(secret_store))
                 .boxed(),
         )
         .or(health)
@@ -276,6 +278,27 @@ pub mod v1 {
                 .and(with_store(store))
                 .and(warp::header::optional::<String>("accept"))
                 .and_then(get_missing)
+        }
+    }
+
+    pub mod keyring {
+        use super::*;
+
+        use crate::server::routes::with_secret_store;
+        use crate::signature::SecretKeyStorage;
+
+        pub fn host_keys<S>(
+            secret_store: S,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        where
+            S: SecretKeyStorage + Clone + Send + Sync,
+        {
+            warp::path("bindle-keys")
+                .and(warp::get().or(warp::head()).unify())
+                .and(warp::query::<crate::KeyOptions>())
+                .and(with_secret_store(secret_store))
+                .and(warp::header::optional::<String>("accept"))
+                .and_then(bindle_keys)
         }
     }
 }

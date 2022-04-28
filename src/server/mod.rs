@@ -822,4 +822,85 @@ mod test {
             String::from_utf8_lossy(res.body())
         );
     }
+
+    #[tokio::test]
+    async fn test_bindle_keys() {
+        let (store, index, keystore) = testing::setup_embedded().await;
+        let api = super::routes::api(
+            store.clone(),
+            index,
+            AlwaysAuthenticate,
+            AlwaysAuthorize,
+            keystore.clone(),
+            VerificationStrategy::default(),
+            KeyRing::default(),
+        );
+
+        // Creating the invoice without a token should fail
+        let res = warp::test::request()
+            .method("GET")
+            .header("Content-Type", "application/toml")
+            .path("/v1/bindle-keys")
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::OK,
+            "A get request with no query params should succeed. Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+
+        let keyring: crate::invoice::signature::KeyRing =
+            toml::from_slice(res.body()).expect("should be valid keyring response TOML");
+
+        // Sanity check that it just creates the 1 key and it has the right type
+        assert_eq!(keyring.key.len(), 1, "Should only return 1 host key");
+        assert_eq!(
+            keyring.key[0].roles,
+            vec![SignatureRole::Host],
+            "Returned keys should only have host roles"
+        );
+
+        // Now assert the same thing when specifying a query param
+        let res = warp::test::request()
+            .method("GET")
+            .header("Content-Type", "application/toml")
+            .path("/v1/bindle-keys?roles=host")
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::OK,
+            "A get request with query params should succeed. Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+
+        let keyring: crate::invoice::signature::KeyRing =
+            toml::from_slice(res.body()).expect("should be valid keyring response TOML");
+
+        // Sanity check that it just creates the 1 key and it has the right type
+        assert_eq!(keyring.key.len(), 1, "Should only return 1 host key");
+        assert_eq!(
+            keyring.key[0].roles,
+            vec![SignatureRole::Host],
+            "Returned keys should only have host roles"
+        );
+
+        // And now make sure we get an error if non-host roles are specified
+        let res = warp::test::request()
+            .method("GET")
+            .header("Content-Type", "application/toml")
+            .path("/v1/bindle-keys?roles=host,creator")
+            .reply(&api)
+            .await;
+
+        assert_eq!(
+            res.status(),
+            warp::http::StatusCode::BAD_REQUEST,
+            "A get request with non host roles should fail. Body: {}",
+            String::from_utf8_lossy(res.body())
+        );
+    }
 }
