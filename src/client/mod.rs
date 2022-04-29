@@ -30,6 +30,7 @@ pub const INVOICE_ENDPOINT: &str = "_i";
 pub const QUERY_ENDPOINT: &str = "_q";
 pub const RELATIONSHIP_ENDPOINT: &str = "_r";
 pub const LOGIN_ENDPOINT: &str = "login";
+pub const BINDLE_KEYS_ENDPOINT: &str = "bindle-keys";
 const TOML_MIME_TYPE: &str = "application/toml";
 
 /// A client type for interacting with a Bindle server
@@ -41,16 +42,6 @@ pub struct Client<T> {
     verification_strategy: VerificationStrategy,
     // In an arc as the keyring could be fairly large and we don't want to clone it everywhere
     keyring: Arc<KeyRing>,
-}
-
-#[derive(Debug)]
-/// The operation being performed against a Bindle server.
-enum Operation {
-    Create,
-    Yank,
-    Get,
-    Query,
-    Login,
 }
 
 /// A builder for for setting up a `Client`. Created using `Client::builder`
@@ -175,7 +166,7 @@ impl<T: tokens::TokenManager> Client<T> {
         method: reqwest::Method,
         path: &str,
         body: Option<impl Into<reqwest::Body>>,
-    ) -> anyhow::Result<reqwest::Response> {
+    ) -> Result<reqwest::Response> {
         let req = self.client.request(method, self.base_url.join(path)?);
         let req = self.token_manager.apply_auth_header(req).await?;
         let req = match body {
@@ -514,6 +505,18 @@ impl<T: tokens::TokenManager> Client<T> {
         let resp = unwrap_status(resp, Endpoint::Invoice, Operation::Get).await?;
         Ok(toml::from_slice::<crate::MissingParcelsResponse>(&resp.bytes().await?)?.missing)
     }
+
+    //////////////// Bindle Keys Endpoints ////////////////
+
+    /// Fetches all the host public keys specified for the bindle server
+    #[instrument(level = "trace", skip(self))]
+    pub async fn get_host_keys(&self) -> Result<KeyRing> {
+        let resp = self
+            .raw(reqwest::Method::GET, BINDLE_KEYS_ENDPOINT, None::<&str>)
+            .await?;
+        let resp = unwrap_status(resp, Endpoint::BindleKeys, Operation::Get).await?;
+        Ok(toml::from_slice::<KeyRing>(&resp.bytes().await?)?)
+    }
 }
 
 // We implement provider for client because often times (such as in the CLI) we are composing the
@@ -622,6 +625,16 @@ impl<T: tokens::TokenManager + Send + Sync + 'static> Provider for Client<T> {
 
 // A helper function and related enum to make some reusable code for unwrapping a status code and returning the right error
 
+#[derive(Debug)]
+/// The operation being performed against a Bindle server.
+enum Operation {
+    Create,
+    Yank,
+    Get,
+    Query,
+    Login,
+}
+
 enum Endpoint {
     Invoice,
     Parcel,
@@ -629,6 +642,7 @@ enum Endpoint {
     // NOTE: This endpoint currently does nothing, but if we need more specific errors, we can use
     // this down the line
     Login,
+    BindleKeys,
 }
 
 async fn unwrap_status(
@@ -653,6 +667,10 @@ async fn unwrap_status(
         (StatusCode::CONFLICT, Endpoint::Invoice) => Err(ClientError::InvoiceAlreadyExists),
         (StatusCode::CONFLICT, Endpoint::Parcel) => Err(ClientError::ParcelAlreadyExists),
         (StatusCode::UNAUTHORIZED, _) => Err(ClientError::Unauthorized),
+        (StatusCode::BAD_REQUEST, Endpoint::BindleKeys) => Err(ClientError::InvalidRequest {
+            status_code: resp.status(),
+            message: parse_error_from_body(resp).await,
+        }),
         (StatusCode::BAD_REQUEST, _) => Err(ClientError::ServerError(Some(format!(
             "Bad request: {}",
             parse_error_from_body(resp).await.unwrap_or_default()

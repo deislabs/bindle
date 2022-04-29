@@ -248,3 +248,18 @@ async fn test_charset() {
         .await
         .expect("Content-Type with charset shouldn't fail");
 }
+
+#[tokio::test]
+async fn test_bindle_keys() {
+    let controller = TestController::new(BINARY_NAME).await;
+
+    let keyring = controller
+        .client
+        .get_host_keys()
+        .await
+        .expect("Should be able to fetch host keys using client");
+    assert!(
+        !keyring.key.is_empty(),
+        "Keyring should contain at least one key"
+    );
+}
