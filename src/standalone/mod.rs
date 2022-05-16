@@ -4,6 +4,7 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
 use async_compression::tokio::{bufread::GzipDecoder, write::GzipEncoder};
+use futures::{future, stream, TryStreamExt};
 use tokio::fs::{read_dir, File};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio_stream::{Stream, StreamExt};
@@ -13,6 +14,9 @@ use tracing::{debug, info, instrument, trace};
 
 use crate::client::{tokens::TokenManager, Client, ClientError, Result};
 use crate::Id;
+
+/// Maximum number of assets to upload in parallel
+const MAX_PARALLEL_UPLOADS: usize = 16;
 
 /// The name of the invoice file
 pub const INVOICE_FILE: &str = "invoice.toml";
@@ -152,11 +156,9 @@ impl StandaloneRead {
                 Ok(())
             });
 
-        futures::future::join_all(parcel_futures)
+        futures::StreamExt::buffer_unordered(stream::iter(parcel_futures), MAX_PARALLEL_UPLOADS)
+            .try_for_each(future::ok)
             .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()?;
-        Ok(())
     }
 
     /// Retrieve the invoice from the standalone bindle.
