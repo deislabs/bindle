@@ -30,7 +30,7 @@ default = ["server", "client", "caching", "test-tools"]
 server = ["warp", "openid", "hyper", "mime", "either", "_common"]
 client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
 # Internal use only feature that groups all of the optional deps we need for both server and client
-_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest"]
+_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest/rustls-tls"]
 # Activates provider implementations
 providers = ["lru", "serde_cbor", "sled"]
 caching = ["lru"]
@@ -62,7 +62,7 @@ oauth2 = { version = "4.1.0", features = ["reqwest"], optional = true }
 openid = { version = "0.9.3", optional = true }
 # We need the older version of rand for dalek
 rand = "0.7"
-reqwest = { version = "0.11.4", features = ["stream"], optional = true }
+reqwest = { version = "0.11.4", features = ["stream"], default-features = false, optional = true }
 semver = { version = "1.0.4", features = ["serde"] }
 serde = { version = "1.0.130", features = ["derive"] }
 serde_cbor = { version = "0.11.2", optional = true }
