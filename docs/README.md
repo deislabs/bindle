@@ -26,7 +26,7 @@ compiled releases can be manually downloaded and installed. Please note these in
 on Linux, MacOS, and Windows (in PowerShell):
 
 1. Download your desired version from [the releases
-   page](https://github.com/deislabs/bindles/releases)
+   page](https://github.com/deislabs/bindle/releases)
 1. Unpack it (`tar -xzf bindle-v0.8.0-linux-amd64.tar.gz`)
 1. Move the bindle and bindle CLIs to their desired
    destinations somewhere in your `$PATH` (e.g. `mv bindle bindle-server /usr/local/bin/` on Unix-like
