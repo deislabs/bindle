@@ -26,16 +26,18 @@ exclude = [
 maintenance = { status = "actively-developed" }
 
 [features]
-default = ["server", "client", "caching", "test-tools"]
+default = ["server", "client", "caching", "test-tools", "native-tls"]
 server = ["warp", "openid", "hyper", "mime", "either", "_common"]
 client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
 # Internal use only feature that groups all of the optional deps we need for both server and client
-_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest/rustls-tls"]
+_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest"]
 # Activates provider implementations
 providers = ["lru", "serde_cbor", "sled"]
 caching = ["lru"]
 test-tools = []
 cli = ["clap", "tracing-subscriber", "atty"]
+native-tls = ["reqwest?/default-tls"]
+rustls-tls = ["reqwest?/rustls-tls"]
 
 [package.metadata.docs.rs]
 all-features = true
