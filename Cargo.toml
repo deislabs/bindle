@@ -26,7 +26,7 @@ exclude = [
 maintenance = { status = "actively-developed" }
 
 [features]
-default = ["server", "client", "caching", "test-tools"]
+default = ["server", "client", "caching", "test-tools", "native-tls"]
 server = ["warp", "openid", "hyper", "mime", "either", "_common"]
 client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
 # Internal use only feature that groups all of the optional deps we need for both server and client
@@ -36,6 +36,8 @@ providers = ["lru", "serde_cbor", "sled"]
 caching = ["lru"]
 test-tools = []
 cli = ["clap", "tracing-subscriber", "atty"]
+native-tls = ["reqwest?/default-tls"]
+rustls-tls = ["reqwest?/rustls-tls"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -62,7 +64,7 @@ oauth2 = { version = "4.1.0", features = ["reqwest"], optional = true }
 openid = { version = "0.9.3", optional = true }
 # We need the older version of rand for dalek
 rand = "0.7"
-reqwest = { version = "0.11.4", features = ["stream"], optional = true }
+reqwest = { version = "0.11.4", features = ["stream"], default-features = false, optional = true }
 semver = { version = "1.0.4", features = ["serde"] }
 serde = { version = "1.0.130", features = ["derive"] }
 serde_cbor = { version = "0.11.2", optional = true }
@@ -75,7 +77,7 @@ time = { version = "0.3", features = ["serde"], optional = true }
 tokio = { version = "1.11.0", default-features = false, features = ["fs", "sync", "io-util"] }
 tokio-stream = { version = "0.1.7", features = ["fs"] }
 tokio-tar = { version = "0.3", optional = true }
-tokio-util = { version = "0.6.8", features = ["io"], optional = true }
+tokio-util = { version = "0.7", features = ["io", "codec"], optional = true }
 toml = "0.5.8"
 tracing = { version = "0.1.27", features = ["log"] }
 tracing-futures = "0.2.5"
@@ -87,7 +89,7 @@ warp = { version = "0.3", features = ["tls"], optional = true }
 remove_dir_all = "0.7.0"
 
 [dev-dependencies]
-rstest = "0.12.0"
+rstest = "0.15.0"
 
 [[bin]]
 name = "bindle-server"
