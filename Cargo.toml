@@ -77,7 +77,7 @@ time = { version = "0.3", features = ["serde"], optional = true }
 tokio = { version = "1.11.0", default-features = false, features = ["fs", "sync", "io-util"] }
 tokio-stream = { version = "0.1.7", features = ["fs"] }
 tokio-tar = { version = "0.3", optional = true }
-tokio-util = { version = "0.6.8", features = ["io"], optional = true }
+tokio-util = { version = "0.7", features = ["io", "codec"], optional = true }
 toml = "0.5.8"
 tracing = { version = "0.1.27", features = ["log"] }
 tracing-futures = "0.2.5"
@@ -89,7 +89,7 @@ warp = { version = "0.3", features = ["tls"], optional = true }
 remove_dir_all = "0.7.0"
 
 [dev-dependencies]
-rstest = "0.12.0"
+rstest = "0.15.0"
 
 [[bin]]
 name = "bindle-server"
