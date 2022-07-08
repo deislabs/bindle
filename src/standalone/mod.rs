@@ -108,7 +108,7 @@ impl StandaloneRead {
             )));
         }
 
-        parse_dir(entry.path().to_owned(), Some(tempdir)).await
+        parse_dir(entry.path(), Some(tempdir)).await
     }
 
     /// Push this standalone bindle to a bindle server using the given client. This function will

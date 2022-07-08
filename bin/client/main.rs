@@ -440,6 +440,40 @@ async fn run() -> std::result::Result<(), ClientError> {
                         .map_err(|e| ClientError::Other(e.to_string()))?;
                     println!("Wrote key to keyring file at {}", keyring_path.display())
                 }
+                Keys::Fetch(opts) => {
+                    let new_keys = match opts.key_server {
+                        Some(url) if !opts.use_host => {
+                            println!("Fetching host keys from {}", url);
+                            get_host_keys(url).await?
+                        }
+                        _ => {
+                            println!("Fetching host keys from bindle server");
+                            bindle_client.get_host_keys().await?
+                        }
+                    };
+
+                    let mut keyring = keyring_path
+                        .load()
+                        .await
+                        .unwrap_or_else(|_| KeyRing::default());
+                    let orig_len = keyring.key.len();
+                    // Have to filter before extending so we finish with the borrow of the current keyring
+                    let filtered_keys: Vec<KeyEntry> = new_keys
+                        .key
+                        .into_iter()
+                        .filter(|k| !keyring.key.iter().any(|current| current.key == k.key))
+                        .collect();
+                    keyring.key.extend(filtered_keys);
+                    keyring_path
+                        .save(&keyring)
+                        .await
+                        .map_err(|e| ClientError::Other(e.to_string()))?;
+                    println!(
+                        "Wrote {} keys to keyring file at {}",
+                        keyring.key.len() - orig_len,
+                        keyring_path.display()
+                    )
+                }
             }
         }
         SubCommand::Clean(_clean_opts) => {
@@ -710,4 +744,17 @@ fn parse_roles(roles: String) -> Result<Vec<SignatureRole>> {
                 .map_err(|e: &str| ClientError::Other(e.to_owned()))
         })
         .collect()
+}
+
+async fn get_host_keys(url: url::Url) -> Result<KeyRing> {
+    let resp = reqwest::get(url).await?;
+    if resp.status() != reqwest::StatusCode::OK {
+        return Err(ClientError::Other(format!(
+            "Unable to fetch host keys. Got status code {} with body content:\n{}",
+            resp.status(),
+            String::from_utf8_lossy(&resp.bytes().await?)
+        )));
+    }
+
+    toml::from_slice(&resp.bytes().await?).map_err(ClientError::from)
 }

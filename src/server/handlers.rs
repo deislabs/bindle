@@ -13,8 +13,8 @@ pub mod v1 {
     use super::*;
 
     use crate::{
-        signature::{KeyRing, SecretKeyStorage},
-        LoginParams, QueryOptions, SignatureError,
+        signature::{KeyEntry, KeyRing, SecretKeyStorage},
+        KeyOptions, LoginParams, QueryOptions, SignatureError,
     };
 
     use oauth2::reqwest::async_http_client;
@@ -439,6 +439,56 @@ pub mod v1 {
         ))
     }
 
+    //////////// Bindle Key Functions ////////////
+
+    /// Returns public keys with a `host` label from the keychain. Returns a bad request error if
+    /// other key roles are requested
+    pub async fn bindle_keys<S: SecretKeyStorage>(
+        opts: KeyOptions,
+        secret_store: S,
+        accept_header: Option<String>,
+    ) -> Result<impl warp::Reply, Infallible> {
+        // If we have more than one role or the role is not a host role, let the user know so they
+        // aren't confused when we only return a list of host public keys
+        if opts.roles.len() > 1
+            || (!opts.roles.is_empty() && !opts.roles.contains(&SignatureRole::Host))
+        {
+            return Ok(reply::reply_from_error(
+                "This bindle server implementation only supports returning keys with the role of `host`. Please only specify `host` as a role (or omit the parameter)",
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+
+        let key_entries = match secret_store
+            .get_all_matching(&SignatureRole::Host, None)
+            .into_iter()
+            .map(|s| {
+                let mut entry = KeyEntry::try_from(s)?;
+                // Explicitly set the roles to just contain host as this is likely being added to the
+                // consumer's keychain and we don't want to give it a role it shouldn't have
+                entry.roles = vec![SignatureRole::Host];
+                Ok(entry)
+            })
+            .collect::<Result<Vec<_>, SignatureError>>()
+        {
+            Ok(entries) => entries,
+            Err(e) => {
+                return Ok(reply::reply_from_error(
+                    e,
+                    // This means something is wrong with the encoding of the server's keys
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ));
+            }
+        };
+
+        let keyring = KeyRing::new(key_entries);
+
+        Ok(warp::reply::with_status(
+            reply::serialized_data(&keyring, accept_header.unwrap_or_default()),
+            warp::http::StatusCode::OK,
+        ))
+    }
+
     //////////// Helper Functions ////////////
 
     /// Fetches an invoice from the given store and checks that the given SHA exists within that
@@ -461,8 +511,7 @@ pub mod v1 {
         // Make sure the sha exists in the list
         let label = inv
             .parcel
-            .map(|parcels| parcels.into_iter().find(|p| p.label.sha256 == sha))
-            .flatten()
+            .and_then(|parcels| parcels.into_iter().find(|p| p.label.sha256 == sha))
             .map(|p| p.label);
 
         match label {

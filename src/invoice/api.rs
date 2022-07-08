@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::invoice::{Invoice, Label};
 use crate::search::SearchOptions;
+use crate::SignatureRole;
 
 /// A custom type for responding to invoice creation requests. Because invoices can be created
 /// before parcels are uploaded, this allows the API to inform the user if there are missing parcels
@@ -56,6 +57,47 @@ impl From<QueryOptions> for SearchOptions {
             yanked: qo.yanked.unwrap_or(defaults.yanked),
         }
     }
+}
+
+/// Available query string options for the keyring API
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyOptions {
+    #[serde(default)]
+    #[serde(deserialize_with = "parse_role_list")]
+    pub roles: Vec<SignatureRole>,
+}
+
+struct RoleVisitor(std::marker::PhantomData<fn() -> Vec<SignatureRole>>);
+
+impl<'de> serde::de::Visitor<'de> for RoleVisitor {
+    type Value = Vec<SignatureRole>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a comma delimited list of SignatureRoles")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let roles = v
+            .split(',')
+            .map(|s| {
+                s.parse::<SignatureRole>()
+                    .map_err(|e| serde::de::Error::custom(e))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(roles)
+    }
+}
+
+fn parse_role_list<'de, D>(deserializer: D) -> Result<Vec<SignatureRole>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let visitor = RoleVisitor(std::marker::PhantomData);
+    deserializer.deserialize_str(visitor)
 }
 
 // Keeping these types private for now until we stabilize exactly how we want to handle it

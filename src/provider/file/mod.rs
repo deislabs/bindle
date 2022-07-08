@@ -682,11 +682,7 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let scaffold = testing::Scaffold::load("valid_v1").await;
-        let store = FileProvider::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        )
-        .await;
+        let store = FileProvider::new(root.path(), crate::search::StrictEngine::default()).await;
         let inv_name = scaffold.invoice.canonical_name();
 
         let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
@@ -720,11 +716,7 @@ mod test {
         let root = tempdir().unwrap();
         let mut scaffold = testing::Scaffold::load("valid_v1").await;
         scaffold.invoice.yanked = Some(true);
-        let store = FileProvider::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        )
-        .await;
+        let store = FileProvider::new(root.path(), crate::search::StrictEngine::default()).await;
 
         let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         assert!(store.create_invoice(signed).await.is_err());
@@ -735,11 +727,7 @@ mod test {
         let scaffold = testing::Scaffold::load("valid_v1").await;
         let parcel = scaffold.parcel_files.get("parcel").unwrap();
         let root = tempdir().expect("create tempdir");
-        let store = FileProvider::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        )
-        .await;
+        let store = FileProvider::new(root.path(), crate::search::StrictEngine::default()).await;
 
         let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         // Create the invoice so we can create a parcel
@@ -785,11 +773,7 @@ mod test {
     #[tokio::test]
     async fn test_should_store_and_retrieve_bindle() {
         let root = tempdir().expect("create tempdir");
-        let store = FileProvider::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        )
-        .await;
+        let store = FileProvider::new(root.path(), crate::search::StrictEngine::default()).await;
 
         let scaffold = testing::Scaffold::load("valid_v1").await;
 
@@ -834,11 +818,7 @@ mod test {
         // Completely invalid size
         parcels[0].label.size = 100000;
         scaffold.invoice.parcel = Some(parcels);
-        let store = FileProvider::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        )
-        .await;
+        let store = FileProvider::new(root.path(), crate::search::StrictEngine::default()).await;
 
         let signed = NoopSigned(NoopVerified(scaffold.invoice.clone()));
         store
@@ -867,11 +847,7 @@ mod test {
         // Create a temporary directory
         let root = tempdir().unwrap();
         let scaffold = testing::Scaffold::load("valid_v1").await;
-        let store = FileProvider::new(
-            root.path().to_owned(),
-            crate::search::StrictEngine::default(),
-        )
-        .await;
+        let store = FileProvider::new(root.path(), crate::search::StrictEngine::default()).await;
 
         // We want two copies to try and write at the same time
         let signed1 = NoopSigned(NoopVerified(scaffold.invoice.clone()));

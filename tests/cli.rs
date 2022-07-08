@@ -606,6 +606,88 @@ async fn test_keyring_add_to_existing() {
     );
 }
 
+#[tokio::test]
+async fn test_fetch_host_keys() {
+    // Tempdir for keyring
+    let tempdir = tempfile::tempdir().expect("Unable to create tempdir");
+    let keyring_file = tempdir.path().join(KEYRING_FILE);
+
+    let controller = TestController::new(BINARY_NAME).await;
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "keys",
+            "fetch",
+        ])
+        .env(ENV_BINDLE_URL, &controller.base_url)
+        .env(ENV_BINDLE_KEYRING, &keyring_file)
+        .output()
+        .expect("Should be able to run command");
+    assert!(
+        output.status.success(),
+        "Should be able to fetch host keys Stdout: {}\n Stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert!(
+        !keyring.key.is_empty(),
+        "Should have at least 1 entry in keyring"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_host_keys_from_specific_host() {
+    // Tempdir for keyring
+    let tempdir = tempfile::tempdir().expect("Unable to create tempdir");
+    let keyring_file = tempdir.path().join(KEYRING_FILE);
+
+    let controller = TestController::new(BINARY_NAME).await;
+    let output = std::process::Command::new("cargo")
+        .args(&[
+            "run",
+            "--features",
+            "cli",
+            "--bin",
+            "bindle",
+            "--",
+            "keys",
+            "fetch",
+            "--key-server",
+            &format!("{}bindle-keys", controller.base_url),
+        ])
+        .env(ENV_BINDLE_URL, "http://not-real.com")
+        .env(ENV_BINDLE_KEYRING, &keyring_file)
+        .output()
+        .expect("Should be able to run command");
+    assert!(
+        output.status.success(),
+        "Should be able to fetch host keys Stdout: {}\n Stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let keyring = keyring_file
+        .load()
+        .await
+        .expect("Should be able to load keyring file");
+
+    assert!(
+        !keyring.key.is_empty(),
+        "Should have at least 1 entry in keyring"
+    );
+}
+
 fn create_key(
     keyring_file: impl AsRef<OsStr>,
     secrets_file: &Path,

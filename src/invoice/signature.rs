@@ -365,16 +365,24 @@ impl SecretKeyEntry {
 /// all of them must provide a way for the system to fetch a key matching the
 /// desired role.
 pub trait SecretKeyStorage {
-    /// Get a key appropriate for signing with the given role and optional match criteria with LabelMatch enum.
+    /// Get a key appropriate for signing with the given role and optional match criteria with
+    /// LabelMatch enum.
     ///
-    /// If no key is found, this will return a None.
-    /// In general, if multiple keys match, the implementation chooses the "best fit"
-    /// and returns that key.
+    /// If no key is found, this will return a None. In general, if multiple keys match, the
+    /// implementation chooses the "best fit" and returns that key.
     fn get_first_matching(
         &self,
         role: &SignatureRole,
         label_match: Option<&LabelMatch>,
     ) -> Option<&SecretKeyEntry>;
+
+    /// Similar to [`get_first_matching`](get_first_matching), but returns all matches rather than
+    /// just the best fit
+    fn get_all_matching(
+        &self,
+        role: &SignatureRole,
+        label_match: Option<&LabelMatch>,
+    ) -> Vec<&SecretKeyEntry>;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -444,6 +452,24 @@ impl SecretKeyStorage for SecretKeyFile {
                     None => true,
                 }
         })
+    }
+
+    fn get_all_matching(
+        &self,
+        role: &SignatureRole,
+        label_match: Option<&LabelMatch>,
+    ) -> Vec<&SecretKeyEntry> {
+        self.key
+            .iter()
+            .filter(|k| {
+                k.roles.contains(role)
+                    && match label_match {
+                        Some(LabelMatch::FullMatch(label)) => k.label.eq(label),
+                        Some(LabelMatch::PartialMatch(label)) => k.label.contains(label),
+                        None => true,
+                    }
+            })
+            .collect()
     }
 }
 

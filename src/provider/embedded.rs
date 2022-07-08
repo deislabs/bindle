@@ -442,7 +442,7 @@ where
         remaining_permits = semaphore.available_permits(),
         "Successfully acquired spawn_blocking permit"
     );
-    Ok(tokio::task::spawn_blocking(f)
+    tokio::task::spawn_blocking(f)
         .await
-        .map_err(|_| ProviderError::Other("Internal error: unable to lock task".into()))?)
+        .map_err(|_| ProviderError::Other("Internal error: unable to lock task".into()))
 }

@@ -153,7 +153,8 @@ pub enum Keys {
         about = "Print the public key entries for keys from the secret key file. If no '--label' is supplied, public keys for all secret keys are returned."
     )]
     Print(PrintKey),
-    // TODO(thomastaylor312): We should probably add an endpoint to bindle servers that allow you to download a host key and add a subcommand to help with it
+    #[clap(name = "fetch", about = "Fetch keys from a /bindle-keys endpoint")]
+    Fetch(FetchKeys),
 }
 
 #[derive(Parser)]
@@ -424,6 +425,25 @@ pub struct PrintKey {
         help = "selects the keys that (partially) matches the given label. If supplied, this will return each key that contains this string in its label. For example, '--label=ample' will match 'label: Examples'."
     )]
     pub label_matching: Option<String>,
+}
+
+#[derive(Parser)]
+pub struct FetchKeys {
+    #[clap(
+        long = "key-server",
+        value_name = "KEY_SERVER",
+        env = "BINDLE_KEY_SERVER",
+        conflicts_with = "use-host",
+        help = "Sets the server address and path to use for fetching keys. Should be a full url path (e.g. https://my.server.com/api/v1/bindle-keys). If this is not set, --host is implied"
+    )]
+    pub key_server: Option<url::Url>,
+    #[clap(
+        long = "host",
+        value_name = "USE_HOST",
+        id = "use-host",
+        help = "Fetches keys from the bindle server set by BINDLE_URL. This is mutually exclusive with --key-server"
+    )]
+    pub use_host: bool,
 }
 
 #[derive(Parser)]
