@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "bindle"
-version = "0.8.0"
+version = "0.9.0-rc.1"
 dependencies = [
  "anyhow",
  "async-compression",
