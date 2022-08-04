@@ -1,6 +1,6 @@
 # Bindle: Aggregate Object Storage
 
-> This repository is a :100: experimental code created by the DeisLab team on a whim. We really don't think you should use this in production.
+> Please note that this is pre-1.0 software, meaning that breaking changes are possible (and even likely) before it hits 1.0. However, these changes are documented and the project is safe to use for real use cases
 
 ## Aggregate Object Storage Means Keeping Related Things Together
 
