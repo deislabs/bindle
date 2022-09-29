@@ -1,5 +1,6 @@
 //! A least recently used cache implementation
 use std::convert::TryInto;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use ::lru::LruCache as Lru;
@@ -38,8 +39,20 @@ pub struct LruCache<Remote: Provider + Clone> {
 impl<Remote: Provider + Clone> LruCache<Remote> {
     /// Return a new LruCache with the given cache size and remote provider for fetching items that
     /// don't exist in the cache. The given cache size will be used to configure the cache size for
-    /// both invoices and parcels
+    /// both invoices and parcels. This will panic if the cache size is 0
     pub fn new(cache_size: usize, remote: Remote) -> Self {
+        let cache_size = NonZeroUsize::new(cache_size).unwrap();
+        Self::_new(cache_size, remote)
+    }
+
+    /// Same as new, but will return an error if the cache_size is 0
+    pub fn new_checked(cache_size: usize, remote: Remote) -> Result<Self> {
+        let cache_size = NonZeroUsize::new(cache_size)
+            .ok_or_else(|| ProviderError::Other("Given cache size was 0".to_string()))?;
+        Ok(Self::_new(cache_size, remote))
+    }
+
+    fn _new(cache_size: NonZeroUsize, remote: Remote) -> Self {
         LruCache {
             invoices: Arc::new(Mutex::new(Lru::new(cache_size))),
             parcels: Arc::new(Mutex::new(Lru::new(cache_size))),

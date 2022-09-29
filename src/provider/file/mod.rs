@@ -36,7 +36,8 @@ const INVOICE_DIRECTORY: &str = "invoices";
 pub const PARCEL_DIRECTORY: &str = "parcels";
 const INVOICE_TOML: &str = "invoice.toml";
 pub const PARCEL_DAT: &str = "parcel.dat";
-const CACHE_SIZE: usize = 50;
+// SAFETY: We control this number since it is a constant
+const CACHE_SIZE: std::num::NonZeroUsize = unsafe { std::num::NonZeroUsize::new_unchecked(50) };
 const PART_EXTENSION: &str = "part";
 
 /// A file system backend for storing and retrieving bindles and parcles.
