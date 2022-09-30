@@ -251,7 +251,7 @@ description = "My first bindle"
 
 [annotations]
 myname = "myvalue"
-
+EOF
 $ export BINDLE_URL="http://localhost:8080/v1/"
 # signing the invoice
 $ bindle sign-invoice invoice.toml -o signed-invoice.toml -l "VishnuJin<me@example.com>" -f $BINDLE_TEMP/client/secret_keys.toml
