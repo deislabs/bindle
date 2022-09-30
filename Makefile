@@ -80,3 +80,7 @@ build-client:
 
 $(CERT_NAME).crt.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout $(CERT_NAME).key.pem -x509 -days 365 -out $(CERT_NAME).crt.pem
+
+.PHONY: build-docker-image
+build-docker-image:
+	docker build -t deislabs/bindle:dev .
