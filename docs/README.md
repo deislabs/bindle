@@ -219,6 +219,62 @@ This file can be moved from system to system, just like OpenPGP or SSH key sets.
 - To create a signing key for a client, use `bindle keys create`
 - By default, if Bindle does not find an existing keyring, it creates one of these when it first starts.
 
+## Running bindle-server in container
+
+1. Run `make build-docker-image` to build `deislabs/bindle:dev` image.
+2. Create a signing key.
+```console
+$ BINDLE_TEMP=$(mktemp -d)
+$ echo $BINDLE_TEMP
+$ export BINDLE_KEYRING=$BINDLE_TEMP/client/keyring.toml
+$ bindle keys create "VishnuJin<me@example.com>" -f $BINDLE_TEMP/client/secret_keys.toml
+```
+3. Setup a folder for server and copy public keyring in it.
+```console
+$ mkdir $BINDLE_TEMP/server
+$ cp $BINDLE_TEMP/client/keyring.toml $BINDLE_TEMP/server/keyring.toml
+```
+4. Start `bindle-server` container.
+```console
+$ docker run --name bindle -d --restart=unless-stopped -e RUST_LOG=debug -v $BINDLE_TEMP/server:/bindle-data -p 8080:8080 deislabs/bindle:dev
+```
+5. Send a signed-invoice.
+```console
+$ cat <<EOF > invoice.toml
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "mybindle"
+version = "0.1.0"
+authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+description = "My first bindle"
+
+[annotations]
+myname = "myvalue"
+
+$ export BINDLE_URL="http://localhost:8080/v1/"
+# signing the invoice
+$ bindle sign-invoice invoice.toml -o signed-invoice.toml -l "VishnuJin<me@example.com>" -f $BINDLE_TEMP/client/secret_keys.toml
+$ bindle push-invoice signed-invoice.toml
+Invoice mybindle/0.1.0 created
+```
+6. Check the signed invoice.
+```console
+$ bindle keys fetch
+$ bindle info mybindle/0.1.0
+# request for mybindle/0.1.0
+bindleVersion = "1.0.0"
+
+[bindle]
+name = "mybindle"
+description = "My first bindle"
+version = "0.1.0"
+authors = ["Matt Butcher <matt.butcher@microsoft.com>"]
+
+[annotations]
+myname = "myvalue"
+```
+
 ## Specification
 
 1. The specification for the Bindle format and design begins with the [Bindle Specification](bindle-spec.md).
