@@ -1,10 +1,10 @@
-FROM rust:1.61 as builder
+FROM rust:1.64 as builder
 
 WORKDIR /app
 COPY . /app
 RUN cargo build --release --all-features --bin bindle-server
 
-FROM rust:1.61-slim-buster
+FROM debian:bullseye-slim
 
 ARG USERNAME=bindle
 ARG USER_UID=1000
