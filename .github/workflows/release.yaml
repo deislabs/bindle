@@ -191,3 +191,45 @@ jobs:
       - name: Cargo publish
         run: cargo publish
         shell: bash
+  docker-image:
+    name: Build and push docker images 
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: lowercase repository owner
+        run: |
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >>$GITHUB_ENV
+
+      - name: set the release version (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: echo "RELEASE_VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+
+      - name: Build and push (tag)
+        uses: docker/build-push-action@v3
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/bindle:latest,ghcr.io/${{ env.OWNER }}/bindle:${{ env.RELEASE_VERSION }}
+
+      - name: Build and push (main)
+        uses: docker/build-push-action@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/bindle:canary
