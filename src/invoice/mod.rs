@@ -19,7 +19,8 @@ pub(crate) use api::DeviceAuthorizationExtraFields;
 pub(crate) use api::LoginParams;
 #[doc(inline)]
 pub use api::{
-    ErrorResponse, InvoiceCreateResponse, KeyOptions, MissingParcelsResponse, QueryOptions,
+    ErrorResponse, HealthResponse, InvoiceCreateResponse, KeyOptions, MissingParcelsResponse,
+    QueryOptions,
 };
 #[doc(inline)]
 pub use bindle_spec::BindleSpec;

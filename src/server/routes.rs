@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use warp::Filter;
 
-use crate::{server::filters, signature::KeyRing};
+use crate::{invoice::HealthResponse, server::filters, signature::KeyRing};
 
 /// A helper function that aggregates all routes into a complete API filter. If you only wish to
 /// serve specific endpoints or versions, you can assemble them with the individual submodules
@@ -22,7 +22,12 @@ where
     Authn: crate::authn::Authenticator + Clone + Send + Sync + 'static,
     Authz: crate::authz::Authorizer + Clone + Send + Sync + 'static,
 {
-    let health = warp::path("healthz").map(|| "OK");
+    let health = warp::path("healthz").map(|| {
+        warp::reply::json(&HealthResponse {
+            status: "OK".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        })
+    });
 
     // Use an Arc to avoid a possibly expensive clone of the keyring on every API call
     let wrapped_keyring = Arc::new(keyring);
