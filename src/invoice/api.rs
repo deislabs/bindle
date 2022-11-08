@@ -25,6 +25,12 @@ pub struct MissingParcelsResponse {
     pub missing: Vec<Label>,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+}
+
 /// A string error message returned from the server
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
