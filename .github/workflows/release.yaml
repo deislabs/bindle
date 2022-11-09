@@ -162,7 +162,7 @@ jobs:
           cd bindle
           sha256sum * > checksums-${{ env.RELEASE_VERSION }}.txt
       - name: upload to azure
-        uses: bacongobbler/azure-blob-storage-upload@v2.0.0
+        uses: bacongobbler/azure-blob-storage-upload@v2.0.1
         with:
           source_dir: bindle
           container_name: releases
