@@ -18,7 +18,7 @@ const TEST_LABEL: &str = "Benjamin Sisko <thesisko@bajor.com>";
 async fn setup_data<T: TokenManager>(client: &Client<T>) {
     // For now let's just put in a simple manifest and one with a lot of parcels
     for name in &["valid_v1", "lotsa_parcels"] {
-        let scaffold = testing::Scaffold::load(*name).await;
+        let scaffold = testing::Scaffold::load(name).await;
         client
             .create_invoice(scaffold.invoice.clone())
             .await
@@ -47,7 +47,7 @@ async fn test_push() {
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
     // TODO: Figure out how to dedup these outputs. I tried doing something but `args` returns an `&mut` which complicates things
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -72,7 +72,7 @@ async fn test_push_tarball() {
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
     // TODO: Figure out how to dedup these outputs. I tried doing something but `args` returns an `&mut` which complicates things
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -96,7 +96,7 @@ async fn test_push_invoice_and_file() {
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("Unable to get project directory");
     let base = std::path::PathBuf::from(root).join("tests/scaffolds/valid_v1");
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -114,7 +114,7 @@ async fn test_push_invoice_and_file() {
 
     // Now try to push a file from the bindle
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -137,7 +137,7 @@ async fn test_get() {
     setup_data(&controller.client).await;
     let cachedir = tempfile::tempdir().expect("unable to set up tempdir");
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -158,7 +158,7 @@ async fn test_get() {
 
     // This is a sanity check test to make sure a second call triggers the code path for successfully fetching from the cache
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -180,7 +180,7 @@ async fn test_get() {
     // Now try and export to a test directory and make sure it is there
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -221,7 +221,7 @@ async fn test_get_invoice() {
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
     let cachedir = tempfile::tempdir().expect("Unable to set up tempdir");
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -302,7 +302,7 @@ async fn test_get_parcel() {
     let tempdir = tempfile::tempdir().expect("Unable to set up tempdir");
     let cachedir = tempfile::tempdir().expect("Unable to set up tempdir");
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -337,7 +337,7 @@ async fn test_yank() {
     setup_data(&controller.client).await;
 
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -358,7 +358,7 @@ async fn test_yank() {
 async fn test_no_bindles() {
     let controller = TestController::new(BINARY_NAME).await;
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -389,7 +389,7 @@ async fn test_package() {
     let path = std::path::PathBuf::from(root).join("test/data/standalone");
     // TODO: Figure out how to dedup these outputs. I tried doing something but `args` returns an `&mut` which complicates things
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -520,7 +520,7 @@ async fn test_keyring_add() {
     let keyring_file = tempdir.path().join(KEYRING_FILE);
 
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -574,7 +574,7 @@ async fn test_keyring_add_to_existing() {
 
     let second_label = "Miles O'Brien <everyman@ufp.com>";
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -614,7 +614,7 @@ async fn test_fetch_host_keys() {
 
     let controller = TestController::new(BINARY_NAME).await;
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",
@@ -654,7 +654,7 @@ async fn test_fetch_host_keys_from_specific_host() {
 
     let controller = TestController::new(BINARY_NAME).await;
     let output = std::process::Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--features",
             "cli",

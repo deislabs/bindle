@@ -3,12 +3,13 @@
 pub use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::fs::OpenOptions;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::io::AsyncWriteExt;
 use tracing::error;
 
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 use std::str::FromStr;
 
@@ -66,7 +67,7 @@ pub enum SignatureError {
 ///
 /// Signatories on a signature must have an associated role, as defined in the
 /// specification.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SignatureRole {
     Creator,
@@ -126,6 +127,7 @@ pub trait KeyRingSaver {
     async fn save(&self, keyring: &KeyRing) -> anyhow::Result<()>;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait::async_trait]
 impl<T: AsRef<Path> + Sync> KeyRingLoader for T {
     async fn load(&self) -> anyhow::Result<KeyRing> {
@@ -141,10 +143,11 @@ impl<T: AsRef<Path> + Sync> KeyRingLoader for T {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait::async_trait]
 impl<T: AsRef<Path> + Sync> KeyRingSaver for T {
     async fn save(&self, keyring: &KeyRing) -> anyhow::Result<()> {
-        let mut opts = OpenOptions::new();
+        let mut opts = tokio::fs::OpenOptions::new();
         opts.create(true).write(true).truncate(true);
 
         // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
@@ -401,6 +404,7 @@ impl Default for SecretKeyFile {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl SecretKeyFile {
     pub async fn load_file(path: impl AsRef<Path>) -> anyhow::Result<SecretKeyFile> {
         let raw = tokio::fs::read(path).await?;
@@ -411,7 +415,7 @@ impl SecretKeyFile {
     /// Save the present keyfile to the named path.
     pub async fn save_file(&self, dest: impl AsRef<Path>) -> anyhow::Result<()> {
         let out = toml::to_vec(self)?;
-        let mut opts = OpenOptions::new();
+        let mut opts = tokio::fs::OpenOptions::new();
         opts.create(true).write(true);
 
         // TODO(thomastaylor312): Figure out what the proper permissions are on windows (probably
@@ -426,6 +430,7 @@ impl SecretKeyFile {
         Ok(())
     }
 }
+
 /// This enumerates the select criteria of the key based on the given Label
 pub enum LabelMatch {
     /// Key will be selected with an exact match of the given label.

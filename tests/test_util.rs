@@ -36,7 +36,7 @@ impl TestController {
     pub async fn new(server_binary_name: &str) -> TestController {
         let build_result = tokio::task::spawn_blocking(|| {
             std::process::Command::new("cargo")
-                .args(&["build", "--features", "cli"])
+                .args(["build", "--features", "cli"])
                 .output()
         })
         .await
@@ -90,7 +90,7 @@ impl TestController {
                 .join("target/debug")
                 .join(server_binary_name),
         )
-        .args(&[
+        .args([
             "--unauthenticated",
             "-d",
             tempdir.path().to_string_lossy().to_string().as_str(),

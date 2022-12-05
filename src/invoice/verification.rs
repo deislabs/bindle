@@ -43,7 +43,7 @@ pub enum VerificationStrategy {
     /// Verifies that all signatures of the given roles are valid and signed by known keys. Will
     /// also validate unknown signers similar to GreedyVerification
     ///
-    /// If the bool is true, unknown signers will also be validated. Be aware that doing so may make
+    /// Unknown signers will also be validated. Be aware that doing so may make
     /// the validation subject to a special form of DOS attack in which someone can generate a
     /// known-bad signature.
     MultipleAttestationGreedy(Vec<SignatureRole>),
