@@ -175,12 +175,8 @@ impl<'a> BindleFilter<'a> {
     /// returned in the filter result if something else does not remove them.
     pub fn activate_feature(&mut self, group: &str, name: &str, value: &str) -> &mut Self {
         // This is a hack to remove duplicate group/name pairs.
-        self.features = self
-            .features
-            .iter()
-            .filter(|i| !(i.name == name && i.group == group))
-            .cloned()
-            .collect();
+        self.features
+            .retain(|i| !(i.name == name && i.group == group));
 
         self.features.push(FeatureReference {
             group: group.to_owned(),

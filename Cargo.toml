@@ -30,7 +30,7 @@ default = ["server", "client", "caching", "test-tools", "native-tls"]
 server = ["warp", "openid", "hyper", "mime", "either", "_common"]
 client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
 # Internal use only feature that groups all of the optional deps we need for both server and client
-_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest"]
+_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest", "tokio-stream/fs"]
 # Activates provider implementations
 providers = ["lru", "serde_cbor", "sled"]
 caching = ["lru"]
@@ -74,8 +74,8 @@ sled = { version = "0.34.7", optional = true }
 tempfile = "3.2.0"
 thiserror = "1.0.29"
 time = { version = "0.3", features = ["serde"], optional = true }
-tokio = { version = "1.11.0", default-features = false, features = ["fs", "sync", "io-util"] }
-tokio-stream = { version = "0.1.7", features = ["fs"] }
+tokio = { version = "1.11.0", default-features = false, features = ["sync", "io-util"] }
+tokio-stream = { version = "0.1.7" }
 tokio-tar = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", features = ["io", "codec"], optional = true }
 toml = "0.5.8"
