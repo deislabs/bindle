@@ -1,6 +1,7 @@
-use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::{net::SocketAddr, path::Path};
 
+use bindle::signature::KeyRingSaver;
 use clap::Parser;
 use tracing::{debug, info, warn};
 
@@ -8,7 +9,7 @@ use bindle::{
     invoice::signature::{KeyRing, SignatureRole},
     provider, search,
     server::{server, TlsConfig},
-    signature::{KeyRingLoader, SecretKeyFile},
+    signature::{KeyEntry, KeyRingLoader, SecretKeyFile},
     SecretKeyEntry,
 };
 
@@ -173,7 +174,6 @@ async fn main() -> anyhow::Result<()> {
             .join("bindle")
     });
 
-    // TODO: Should we ensure a keyring?
     let keyring_file: PathBuf = config
         .keyring_file
         .unwrap_or_else(|| default_config_dir().join("keyring.toml"));
@@ -184,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
     // a keyring does not exist.
     //
     // All other cases are considered errors worthy of failing.
-    let keyring: KeyRing = match tokio::fs::metadata(&keyring_file).await {
+    let mut keyring: KeyRing = match tokio::fs::metadata(&keyring_file).await {
         Ok(md) if md.is_file() => keyring_file.load().await?,
         Ok(_) => {
             anyhow::bail!("Expected {} to be a regular file", keyring_file.display());
@@ -207,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             debug!("No signing key file set, attempting to load from default");
-            ensure_signing_keys().await?
+            ensure_signing_keys(&mut keyring, &keyring_file).await?
         }
     };
 
@@ -235,6 +235,15 @@ async fn main() -> anyhow::Result<()> {
             e
         )
     })?;
+
+    // If there are any keys we use for signing, we should trust them in our keychain
+    keyring.key.extend(
+        secret_store
+            .key
+            .iter()
+            .map(|sk| KeyEntry::try_from(sk.clone()))
+            .collect::<Result<Vec<_>, _>>()?,
+    );
 
     tracing::log::info!(
         "Starting server at {}, and serving bindles from {}",
@@ -405,7 +414,11 @@ async fn ensure_config_dir() -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
-async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
+/// Makes sure signing keys exist for the host. If it generates a key, it will add it to the current keyring and save it to the path
+async fn ensure_signing_keys(
+    keyring: &mut KeyRing,
+    keyring_path: &Path,
+) -> anyhow::Result<PathBuf> {
     let base = ensure_config_dir().await?;
     let signing_keyfile = base.join("signing-keys.toml");
 
@@ -421,7 +434,7 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
                 signing_keyfile.display()
             );
             let key = SecretKeyEntry::new("Default host key", vec![SignatureRole::Host]);
-            default_keyfile.key.push(key);
+            default_keyfile.key.push(key.clone());
             default_keyfile
                 .save_file(&signing_keyfile)
                 .await
@@ -432,6 +445,14 @@ async fn ensure_signing_keys() -> anyhow::Result<PathBuf> {
                         e
                     )
                 })?;
+            keyring.add_entry(key.try_into()?);
+            keyring_path.save(keyring).await.map_err(|e| {
+                anyhow::anyhow!(
+                    "Unable to save newly created key to keyring {}: {}",
+                    keyring_path.display(),
+                    e
+                )
+            })?;
             Ok(signing_keyfile)
         }
         Err(e) => Err(anyhow::anyhow!(
