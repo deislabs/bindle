@@ -313,8 +313,7 @@ mod test {
             *count += 1;
             let info = scaffold
                 .parcel_files
-                .into_iter()
-                .map(|(_, info)| info)
+                .into_values()
                 .find(|info| info.sha == parcel_id)
                 .expect("Unable to find parcel");
             Ok(Box::new(
