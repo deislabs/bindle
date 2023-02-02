@@ -29,8 +29,8 @@ async fn test_successful_write() {
             scaffold.invoice,
             scaffold
                 .parcel_files
-                .into_iter()
-                .map(|(_, parcel)| (parcel.sha, Cursor::new(parcel.data)))
+                .into_values()
+                .map(|parcel| (parcel.sha, Cursor::new(parcel.data)))
                 .collect(),
         )
         .await
@@ -55,8 +55,8 @@ async fn test_successful_write_stream() {
 
     let parcels = scaffold
         .parcel_files
-        .into_iter()
-        .map(|(_, parcel)| {
+        .into_values()
+        .map(|parcel| {
             (
                 parcel.sha,
                 FramedRead::new(std::io::Cursor::new(parcel.data), BytesCodec::default())
@@ -134,8 +134,8 @@ async fn test_invalid_standalone_write() {
 
     let mut parcels: HashMap<String, Cursor<Vec<u8>>> = scaffold
         .parcel_files
-        .into_iter()
-        .map(|(_, parcel)| (parcel.sha, Cursor::new(parcel.data)))
+        .into_values()
+        .map(|parcel| (parcel.sha, Cursor::new(parcel.data)))
         .collect();
 
     parcels.insert(

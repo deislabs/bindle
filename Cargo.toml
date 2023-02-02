@@ -1,6 +1,6 @@
 [package]
 name = "bindle"
-version = "0.9.0-rc.2"
+version = "0.9.0"
 authors = [
     "Matt Butcher <matt.butcher@microsoft.com>",
     "Taylor Thomas <taylor.thomas@microsoft.com>"

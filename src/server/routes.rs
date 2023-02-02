@@ -14,7 +14,7 @@ pub fn api<P, I, Authn, Authz, S>(
     secret_store: S,
     verification_strategy: crate::VerificationStrategy,
     keyring: KeyRing,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
 where
     P: crate::provider::Provider + Clone + Send + Sync + 'static,
     I: crate::search::Search + Clone + Send + Sync + 'static,
@@ -98,7 +98,7 @@ pub mod v1 {
             provider_client_id: String,
             device_auth_url: String,
             token_url: String,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
             warp::path("login")
                 .and(warp::get())
                 .and(warp::query::<LoginParams>())
@@ -123,7 +123,7 @@ pub mod v1 {
 
         pub fn query<S>(
             index: S,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             S: Search + Clone + Send + Sync,
         {
@@ -140,7 +140,7 @@ pub mod v1 {
             secret_store: S,
             verification_strategy: crate::VerificationStrategy,
             keyring: Arc<KeyRing>,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
             S: SecretKeyStorage + Clone + Send + Sync,
@@ -162,7 +162,7 @@ pub mod v1 {
             secret_store: S,
             verification_strategy: crate::VerificationStrategy,
             keyring: Arc<KeyRing>,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
             S: SecretKeyStorage + Clone + Send + Sync,
@@ -183,7 +183,7 @@ pub mod v1 {
         // The GET and HEAD endpoints handle both parcels and invoices through the request router function
         pub fn get<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -197,7 +197,7 @@ pub mod v1 {
 
         pub fn head<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -211,7 +211,7 @@ pub mod v1 {
 
         pub fn yank<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -229,7 +229,7 @@ pub mod v1 {
 
         pub fn create<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -243,7 +243,7 @@ pub mod v1 {
 
         pub fn get<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -255,7 +255,7 @@ pub mod v1 {
 
         pub fn head<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -271,7 +271,7 @@ pub mod v1 {
 
         pub fn get_missing_parcels<P>(
             store: P,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             P: Provider + Clone + Send + Sync,
         {
@@ -294,7 +294,7 @@ pub mod v1 {
 
         pub fn host_keys<S>(
             secret_store: S,
-        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
         where
             S: SecretKeyStorage + Clone + Send + Sync,
         {
