@@ -86,7 +86,7 @@ url = "2.2.2"
 warp = { version = "0.3", features = ["tls"], optional = true }
 
 [target.'cfg(target_family = "windows")'.dependencies]
-remove_dir_all = "0.7.0"
+remove_dir_all = "0.8"
 
 [dev-dependencies]
 rstest = "0.15.0"

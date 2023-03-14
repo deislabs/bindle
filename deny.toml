@@ -51,10 +51,10 @@ ignore = [
     # The `time` advisories, which are included through `chrono`
     "RUSTSEC-2021-0127",
     "RUSTSEC-2020-0071",
-    # The `chrono` advisory, as chrono is currently pulled in through the `openid` crate. All other
-    # imports of `chrono` have been handled. We should remove this if openid updates to just use
-    # plain `time`.
-    "RUSTSEC-2020-0159"
+
+    # We've updated our use of remove_dir_all, but we can't do it for the transitive dep of some of
+    # our other dependencies
+    "RUSTSEC-2023-0018",
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
