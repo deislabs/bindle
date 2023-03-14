@@ -80,7 +80,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: setup for cross-compile builds
-        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-latest'
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-20.04'
         run: |
           sudo apt-get update
           sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -105,7 +105,7 @@ jobs:
 
       - name: Install latest Rust stable toolchain
         uses: actions-rs/toolchain@v1
-        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-latest'
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-20.04'
         with:
           toolchain: stable
           default: true
@@ -128,7 +128,7 @@ jobs:
 
       - name: build release
         uses: actions-rs/cargo@v1
-        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-latest'
+        if: matrix.config.arch == 'aarch64' && matrix.config.os == 'ubuntu-20.04'
         with:
           command: build
           args: "--release --no-default-features --features rustls-tls,cli,server,client,caching --target aarch64-unknown-linux-gnu"
@@ -147,7 +147,7 @@ jobs:
           path: _dist/bindle-${{ env.RELEASE_VERSION }}-${{ env.RUNNER_OS }}-${{ matrix.config.arch }}.tar.gz
   publish:
     name: publish release assets
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     needs: build
     steps:
       - name: set the release version (tag)
