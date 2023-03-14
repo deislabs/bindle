@@ -1,6 +1,6 @@
 [package]
 name = "bindle"
-version = "0.9.0"
+version = "0.9.1"
 authors = [
     "Matt Butcher <matt.butcher@microsoft.com>",
     "Taylor Thomas <taylor.thomas@microsoft.com>"
@@ -27,7 +27,7 @@ maintenance = { status = "actively-developed" }
 
 [features]
 default = ["server", "client", "caching", "test-tools", "native-tls"]
-server = ["warp", "openid", "hyper", "mime", "either", "_common"]
+server = ["warp", "openid", "hyper", "mime", "either", "dirs", "_common"]
 client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
 # Internal use only feature that groups all of the optional deps we need for both server and client
 _common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest", "tokio-stream/fs"]
@@ -36,8 +36,8 @@ providers = ["lru", "serde_cbor", "sled"]
 caching = ["lru"]
 test-tools = []
 cli = ["clap", "tracing-subscriber", "atty"]
-native-tls = ["reqwest?/default-tls"]
-rustls-tls = ["reqwest?/rustls-tls"]
+native-tls = ["reqwest?/default-tls", "openid?/native-tls"]
+rustls-tls = ["reqwest?/rustls-tls", "openid?/rustls"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -61,7 +61,7 @@ lru = { version = "0.8", optional = true }
 mime = { version = "0.3.16", optional = true }
 mime_guess = { version = "2.0.3", optional = true }
 oauth2 = { version = "4.1.0", features = ["reqwest"], optional = true }
-openid = { version = "0.10", optional = true }
+openid = { version = "0.10", default-features = false, optional = true }
 # We need the older version of rand for dalek
 rand = "0.7"
 reqwest = { version = "0.11.4", features = ["stream"], default-features = false, optional = true }
@@ -86,7 +86,7 @@ url = "2.2.2"
 warp = { version = "0.3", features = ["tls"], optional = true }
 
 [target.'cfg(target_family = "windows")'.dependencies]
-remove_dir_all = "0.7.0"
+remove_dir_all = "0.8"
 
 [dev-dependencies]
 rstest = "0.15.0"
