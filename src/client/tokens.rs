@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use base64::Engine;
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     basic::*, devicecode::DeviceAuthorizationResponse, AuthUrl, Client as Oauth2Client, ClientId,
@@ -110,7 +111,8 @@ impl HttpBasic {
 #[async_trait::async_trait]
 impl TokenManager for HttpBasic {
     async fn apply_auth_header(&self, builder: RequestBuilder) -> Result<RequestBuilder> {
-        let data = base64::encode(format!("{}:{}", self.username, self.password));
+        let data = base64::engine::general_purpose::STANDARD
+            .encode(format!("{}:{}", self.username, self.password));
         let mut header_val = HeaderValue::from_str(&format!("Basic {}", data))
             .map_err(|e| ClientError::Other(e.to_string()))?;
         header_val.set_sensitive(true);

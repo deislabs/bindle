@@ -1,5 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
+use base64::Engine;
+
 use super::Authenticator;
 use crate::authz::Authorizable;
 
@@ -99,7 +101,8 @@ fn parse_basic(auth_data: &str) -> anyhow::Result<(String, String)> {
         None => anyhow::bail!("Wrong auth type. Only Basic auth is supported"),
         Some(suffix) => {
             // suffix should be base64 string
-            let decoded = String::from_utf8(base64::decode(suffix)?)?;
+            let decoded =
+                String::from_utf8(base64::engine::general_purpose::STANDARD.decode(suffix)?)?;
             let pair: Vec<&str> = decoded.splitn(2, ':').collect();
             if pair.len() != 2 {
                 anyhow::bail!("Malformed Basic header")

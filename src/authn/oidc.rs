@@ -1,4 +1,5 @@
 //! An authenticator that validates OIDC issued JWTs
+use base64::Engine;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use openid::biscuit::jwk::{AlgorithmParameters, KeyType, PublicKeyUse};
 use serde::Deserialize;
@@ -151,7 +152,7 @@ impl OidcAuthenticator {
                         // that key is malformed (which should be a rare instance because it would mean
                         // misconfiguration on the OIDC provider's part), just skip it
                         let raw =
-                            base64::decode(k.common.x509_chain.unwrap_or_default().pop()?).ok()?;
+                            base64::engine::general_purpose::STANDARD.decode(k.common.x509_chain.unwrap_or_default().pop()?).ok()?;
                         DecodingKey::from_ec_der(&raw)
                     }
                     KeyType::RSA => {
@@ -159,14 +160,8 @@ impl OidcAuthenticator {
                             // NOTE: jsonwebtoken expects a base64 encoded component (big endian) so
                             // we are reencoding it here
                             DecodingKey::from_rsa_components(
-                                &base64::encode_config(
-                                    rsa.n.to_bytes_be(),
-                                    base64::URL_SAFE_NO_PAD,
-                                ),
-                                &base64::encode_config(
-                                    rsa.e.to_bytes_be(),
-                                    base64::URL_SAFE_NO_PAD,
-                                ),
+                                &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(rsa.n.to_bytes_be()),
+                                &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(rsa.e.to_bytes_be()),
                             ).map_or_else(|e| {
                                 tracing::error!(error = %e, "Unable to parse decoding key from discovery client, skipping");
                                 None
