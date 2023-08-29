@@ -52,9 +52,9 @@ ignore = [
     "RUSTSEC-2021-0127",
     "RUSTSEC-2020-0071",
 
-    # We've updated our use of remove_dir_all, but we can't do it for the transitive dep of some of
-    # our other dependencies
-    "RUSTSEC-2023-0018",
+    # This is due to a transitive dep of warp and shouldn't affect us right now as we don't use
+    # client cert auth
+    "RUSTSEC-2023-0052",
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
@@ -75,19 +75,11 @@ unlicensed = "deny"
 # List of explictly allowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
-allow = [
-    "LicenseRef-ring",
-    "MPL-2.0",
-    "Unicode-DFS-2016",
-]
+allow = ["LicenseRef-ring", "MPL-2.0", "Unicode-DFS-2016"]
 # List of explictly disallowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
-deny = [
-    "AGPL-3.0",
-    "WTFPL",
-    "CC0-1.0",
-]
+deny = ["AGPL-3.0", "WTFPL", "CC0-1.0"]
 # Lint level for licenses considered copyleft
 copyleft = "deny"
 # Blanket approval or denial for OSI-approved or FSF Free/Libre licenses
@@ -118,17 +110,13 @@ exceptions = [
 [[licenses.clarify]]
 name = "ring"
 expression = "LicenseRef-ring"
-license-files = [
-    { path = "LICENSE", hash = 0xbd0eed23 },
-]
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 [[licenses.clarify]]
 name = "encoding_rs"
 version = "*"
 expression = "(Apache-2.0 OR MIT) AND BSD-3-Clause"
-license-files = [
-    { path = "COPYRIGHT", hash = 0x39f8ad31 }
-]
+license-files = [{ path = "COPYRIGHT", hash = 0x39f8ad31 }]
 
 [licenses.private]
 # If true, ignores workspace crates that aren't published, or are only
@@ -181,7 +169,7 @@ skip-tree = [
     # Skipping rand because dalek uses the previous version while other libraries use a more recent one
     { name = "rand", version = "^0.8" },
     # lru crate uses an older version
-    { name = "hashbrown", version = "^0.9" }
+    { name = "hashbrown", version = "^0.9" },
 ]
 
 # This section is considered when running `cargo deny check sources`.

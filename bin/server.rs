@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::{net::SocketAddr, path::Path};
 
@@ -158,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_ansi(atty::is(atty::Stream::Stderr))
+        .with_ansi(std::io::stderr().is_terminal())
         .init();
 
     let config = merged_opts().await?;
