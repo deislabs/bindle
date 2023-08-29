@@ -22,6 +22,7 @@ pub use api::{
     ErrorResponse, HealthResponse, InvoiceCreateResponse, KeyOptions, MissingParcelsResponse,
     QueryOptions,
 };
+use base64::Engine;
 #[doc(inline)]
 pub use bindle_spec::BindleSpec;
 #[doc(inline)]
@@ -203,7 +204,8 @@ impl Invoice {
         let key = keyfile.key()?;
         // The spec says it is illegal for the a single key to sign the same invoice
         // more than once.
-        let encoded_key = base64::encode(key.public.to_bytes());
+        let encoded_key =
+            base64::engine::general_purpose::STANDARD.encode(key.verifying_key().as_bytes());
         if let Some(sigs) = self.signature.as_ref() {
             for s in sigs {
                 if s.key == encoded_key {
@@ -223,7 +225,7 @@ impl Invoice {
         let signature_entry = Signature {
             by: signer_name,
             key: encoded_key,
-            signature: base64::encode(signature.to_bytes()),
+            signature: base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
             role: signer_role,
             at: ts.as_secs(),
         };
@@ -270,7 +272,8 @@ fn sign_one(
     let key = keyfile.key()?;
     // The spec says it is illegal for the a single key to sign the same invoice
     // more than once.
-    let encoded_key = base64::encode(key.public.to_bytes());
+    let encoded_key =
+        base64::engine::general_purpose::STANDARD.encode(key.verifying_key().as_bytes());
     if let Some(sigs) = inv.signature.as_ref() {
         for s in sigs {
             if s.key == encoded_key {
@@ -290,7 +293,7 @@ fn sign_one(
     let signature_entry = Signature {
         by: signer_name,
         key: encoded_key,
-        signature: base64::encode(signature.to_bytes()),
+        signature: base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
         role: signer_role,
         at: ts.as_secs(),
     };

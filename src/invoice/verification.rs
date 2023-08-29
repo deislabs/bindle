@@ -2,7 +2,8 @@ use crate::invoice::Signed;
 
 use super::signature::KeyRing;
 use super::{Invoice, Signature, SignatureError, SignatureRole};
-use ed25519_dalek::{PublicKey, Signature as EdSignature};
+use base64::Engine;
+use ed25519_dalek::{Signature as EdSignature, VerifyingKey};
 use tracing::debug;
 
 use std::borrow::{Borrow, BorrowMut};
@@ -136,13 +137,15 @@ fn parse_roles(r: Option<&&str>) -> Result<Vec<SignatureRole>, &'static str> {
 /// A strategy for verifying an invoice.
 impl VerificationStrategy {
     fn verify_signature(&self, sig: &Signature, cleartext: &[u8]) -> Result<(), SignatureError> {
-        let pk = base64::decode(sig.key.as_bytes())
+        let pk = base64::engine::general_purpose::STANDARD
+            .decode(sig.key.as_bytes())
             .map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
-        let sig_block = base64::decode(sig.signature.as_bytes())
+        let sig_block = base64::engine::general_purpose::STANDARD
+            .decode(sig.signature.as_bytes())
             .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
 
-        let pubkey =
-            PublicKey::from_bytes(&pk).map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
+        let pubkey = VerifyingKey::try_from(pk.as_slice())
+            .map_err(|_| SignatureError::CorruptKey(sig.key.clone()))?;
         let ed_sig = EdSignature::try_from(sig_block.as_slice())
             .map_err(|_| SignatureError::CorruptSignature(sig.key.clone()))?;
         pubkey
@@ -231,9 +234,10 @@ impl VerificationStrategy {
                         filled_roles.push(role);
                     }
                     // See if the public key is known to us
-                    let pubkey = base64::decode(&s.key)
+                    let pubkey = base64::engine::general_purpose::STANDARD
+                        .decode(&s.key)
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
-                    let pko = PublicKey::from_bytes(pubkey.as_slice())
+                    let pko = VerifyingKey::try_from(pubkey.as_slice())
                         .map_err(|_| SignatureError::CorruptKey(s.key.to_string()))?;
 
                     debug!("Looking for key");

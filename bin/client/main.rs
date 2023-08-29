@@ -19,6 +19,7 @@ use bindle::{
     provider::Provider,
 };
 
+use base64::Engine;
 use clap::Parser;
 use sha2::Digest;
 use tokio::io::AsyncWriteExt;
@@ -423,9 +424,10 @@ async fn run() -> std::result::Result<(), ClientError> {
                         .await
                         .unwrap_or_else(|_| KeyRing::default());
                     // First, check that the key is actually valid
-                    let raw = base64::decode(&opts.key)
+                    let key = base64::engine::general_purpose::STANDARD
+                        .decode(&opts.key)
                         .map_err(|_| SignatureError::CorruptKey(opts.key.clone()))?;
-                    ed25519_dalek::PublicKey::from_bytes(&raw)
+                    ed25519_dalek::VerifyingKey::try_from(key.as_slice())
                         .map_err(|_| SignatureError::CorruptKey(opts.key.clone()))?;
                     keyring.add_entry(KeyEntry {
                         label: opts.label,

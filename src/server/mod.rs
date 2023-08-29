@@ -106,6 +106,7 @@ mod test {
     use crate::NoopSigned;
     use crate::{signature::SecretKeyStorage, SignatureRole};
 
+    use base64::Engine;
     use rstest::rstest;
     use testing::Scaffold;
     use tokio_util::codec::{BytesCodec, FramedRead};
@@ -774,7 +775,10 @@ mod test {
             .header("Content-Type", "application/toml")
             .header(
                 "Authorization",
-                format!("Basic {}", base64::encode(b"admin:sw0rdf1sh")),
+                format!(
+                    "Basic {}",
+                    base64::engine::general_purpose::STANDARD.encode(b"admin:sw0rdf1sh")
+                ),
             )
             .path("/v1/_i")
             .body(&scaffold.invoice)
@@ -795,7 +799,10 @@ mod test {
             .method("GET")
             .header(
                 "Authorization",
-                format!("Basic {}", base64::encode(b"admin:sw0rdf1sh")),
+                format!(
+                    "Basic {}",
+                    base64::engine::general_purpose::STANDARD.encode(b"admin:sw0rdf1sh")
+                ),
             )
             .path(&format!("/v1/_i/{}", scaffold.invoice.bindle.id))
             .reply(&api)

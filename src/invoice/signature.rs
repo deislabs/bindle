@@ -1,6 +1,14 @@
 //! Contains the Signature type along with associated types and Roles
 
-pub use ed25519_dalek::{Keypair, PublicKey, Signature as EdSignature, Signer};
+use base64::Engine;
+pub use ed25519_dalek::{
+    Signature as EdSignature,
+    Signer,
+    SigningKey as Keypair, // re-export under old name for backwards compatibility
+    SigningKey,
+    VerifyingKey as PublicKey, // re-export under old name for backwards compatibility
+    VerifyingKey,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 #[cfg(not(target_arch = "wasm32"))]
@@ -197,7 +205,7 @@ impl KeyRing {
         self.key.push(entry)
     }
 
-    pub fn contains(&self, key: &PublicKey) -> bool {
+    pub fn contains(&self, key: &VerifyingKey) -> bool {
         // This could definitely be optimized.
         for k in self.key.iter() {
             // Note that we are skipping malformed keys because they don't matter
@@ -246,8 +254,8 @@ impl KeyEntry {
     /// In most cases, it is fine to construct a KeyEntry struct manually. This
     /// constructor merely encapsulates the logic to store the public key in its
     /// canonical encoded format (as a String).
-    pub fn new(label: &str, roles: Vec<SignatureRole>, public_key: PublicKey) -> Self {
-        let key = base64::encode(public_key.to_bytes());
+    pub fn new(label: &str, roles: Vec<SignatureRole>, public_key: VerifyingKey) -> Self {
+        let key = base64::engine::general_purpose::STANDARD.encode(public_key.to_bytes());
         KeyEntry {
             label: label.to_owned(),
             roles,
@@ -255,31 +263,34 @@ impl KeyEntry {
             label_signature: None,
         }
     }
-    pub fn sign_label(&mut self, key: Keypair) {
+    pub fn sign_label(&mut self, key: SigningKey) {
         let sig = key.sign(self.label.as_bytes());
-        self.label_signature = Some(base64::encode(sig.to_bytes()));
+        self.label_signature =
+            Some(base64::engine::general_purpose::STANDARD.encode(sig.to_bytes()));
     }
-    pub fn verify_label(self, key: PublicKey) -> anyhow::Result<()> {
+    pub fn verify_label(self, key: VerifyingKey) -> anyhow::Result<()> {
         match self.label_signature {
             None => {
                 tracing::log::info!("Label was not signed. Skipping.");
                 Ok(())
             }
             Some(txt) => {
-                let decoded_txt = base64::decode(txt)?;
+                let decoded_txt = base64::engine::general_purpose::STANDARD.decode(txt)?;
                 let sig = EdSignature::try_from(decoded_txt.as_slice())?;
                 key.verify_strict(self.label.as_bytes(), &sig)?;
                 Ok(())
             }
         }
     }
-    pub(crate) fn public_key(&self) -> Result<PublicKey, SignatureError> {
-        let rawbytes = base64::decode(&self.key).map_err(|_e| {
-            // We swallow the source error because it could disclose information about
-            // the secret key.
-            SignatureError::CorruptKey("Base64 decoding of the public key failed".to_owned())
-        })?;
-        let pk = PublicKey::from_bytes(rawbytes.as_slice()).map_err(|e| {
+    pub(crate) fn public_key(&self) -> Result<VerifyingKey, SignatureError> {
+        let rawbytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.key)
+            .map_err(|_e| {
+                // We swallow the source error because it could disclose information about
+                // the secret key.
+                SignatureError::CorruptKey("Base64 decoding of the public key failed".to_owned())
+            })?;
+        let pk = VerifyingKey::try_from(rawbytes.as_slice()).map_err(|e| {
             error!(%e, "Error loading public key");
             // Don't leak information about the key, because this could be sent to
             // a remote. A generic error is all the user should see.
@@ -297,7 +308,7 @@ impl TryFrom<SecretKeyEntry> for KeyEntry {
         let mut s = Self {
             label: secret.label,
             roles: secret.roles,
-            key: base64::encode(skey.public.to_bytes()),
+            key: base64::engine::general_purpose::STANDARD.encode(skey.verifying_key().as_bytes()),
             label_signature: None,
         };
         s.sign_label(skey);
@@ -312,7 +323,7 @@ impl TryFrom<&SecretKeyEntry> for KeyEntry {
         let mut s = Self {
             label: secret.label.clone(),
             roles: secret.roles.clone(),
-            key: base64::encode(skey.public.to_bytes()),
+            key: base64::engine::general_purpose::STANDARD.encode(skey.verifying_key().as_bytes()),
             label_signature: None,
         };
         s.sign_label(skey);
@@ -337,8 +348,8 @@ pub struct SecretKeyEntry {
 impl SecretKeyEntry {
     pub fn new(label: &str, roles: Vec<SignatureRole>) -> Self {
         let mut rng = rand::rngs::OsRng {};
-        let rawkey = Keypair::generate(&mut rng);
-        let keypair = base64::encode(rawkey.to_bytes());
+        let rawkey = SigningKey::generate(&mut rng);
+        let keypair = base64::engine::general_purpose::STANDARD.encode(rawkey.to_keypair_bytes());
         Self {
             label: label.to_owned(),
             keypair,
@@ -346,19 +357,25 @@ impl SecretKeyEntry {
         }
     }
 
-    pub(crate) fn key(&self) -> Result<Keypair, SignatureError> {
-        let rawbytes = base64::decode(&self.keypair).map_err(|_e| {
+    pub(crate) fn key(&self) -> Result<SigningKey, SignatureError> {
+        let rawbytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.keypair)
+            .map_err(|_e| {
+                // We swallow the source error because it could disclose information about
+                // the secret key.
+                SignatureError::CorruptKey("Base64 decoding of the keypair failed".to_owned())
+            })?;
+        let rawbytes = rawbytes.try_into().map_err(|_e| {
             // We swallow the source error because it could disclose information about
             // the secret key.
-            SignatureError::CorruptKey("Base64 decoding of the keypair failed".to_owned())
+            SignatureError::CorruptKey("Invalid keypair length".to_owned())
         })?;
-        let keypair = Keypair::from_bytes(&rawbytes).map_err(|e| {
+        SigningKey::from_keypair_bytes(&rawbytes).map_err(|e| {
             tracing::log::error!("Error loading key: {}", e);
             // Don't leak information about the key, because this could be sent to
             // a remote. A generic error is all the user should see.
             SignatureError::CorruptKey("Could not load keypair".to_owned())
-        })?;
-        Ok(keypair)
+        })
     }
 }
 
@@ -481,7 +498,7 @@ impl SecretKeyStorage for SecretKeyFile {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ed25519_dalek::Keypair;
+    use ed25519_dalek::SigningKey;
 
     #[test]
     fn test_parse_role() {
@@ -508,7 +525,7 @@ mod test {
     #[test]
     fn test_sign_label() {
         let mut rng = rand::rngs::OsRng {};
-        let keypair = Keypair::generate(&mut rng);
+        let keypair = SigningKey::generate(&mut rng);
 
         let mut ke = KeyEntry {
             label: "Matt Butcher <matt@example.com>".to_owned(),
@@ -517,7 +534,7 @@ mod test {
             label_signature: None,
         };
 
-        let pubkey = keypair.public;
+        let pubkey = keypair.verifying_key();
         ke.sign_label(keypair);
 
         assert!(ke.label_signature.is_some());
