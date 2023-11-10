@@ -25,7 +25,7 @@ const EXHAUSTIVE_VERIFICATION_ROLES: &[SignatureRole] = &[
 pub trait Verified: super::sealed::Sealed {}
 
 /// This enumerates the verifications strategies described in the signing spec.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum VerificationStrategy {
     /// CreativeIntegrity verifies that (a) the key that signs as Creator is a known key,
     /// and that the signature is valid.
@@ -36,6 +36,7 @@ pub enum VerificationStrategy {
     /// Verify that the Creator key is known and that all signatures are valid.
     ///
     /// This is subject to a DOS attack if a signer can generate intentionally bad signatures.
+    #[default]
     GreedyVerification,
     /// Verify that every key on the invoice is known, and that every signature is valid.
     ExhaustiveVerification,
@@ -48,12 +49,6 @@ pub enum VerificationStrategy {
     /// the validation subject to a special form of DOS attack in which someone can generate a
     /// known-bad signature.
     MultipleAttestationGreedy(Vec<SignatureRole>),
-}
-
-impl Default for VerificationStrategy {
-    fn default() -> Self {
-        VerificationStrategy::GreedyVerification
-    }
 }
 
 /// This implementation will parse the strategy from a string. MultipleAttestation strategies should

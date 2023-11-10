@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -80,7 +81,7 @@ async fn run() -> std::result::Result<(), ClientError> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_ansi(atty::is(atty::Stream::Stderr))
+        .with_ansi(std::io::stderr().is_terminal())
         .init();
     let bindle_dir = opts.bindle_dir.unwrap_or_else(|| {
         dirs::cache_dir()

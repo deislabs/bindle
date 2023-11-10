@@ -1,26 +1,17 @@
 [package]
 name = "bindle"
-version = "0.9.1"
+version = "0.9.2"
 authors = [
     "Matt Butcher <matt.butcher@microsoft.com>",
-    "Taylor Thomas <taylor.thomas@microsoft.com>"
+    "Taylor Thomas <taylor.thomas@microsoft.com>",
 ]
 edition = "2021"
 license-file = "LICENSE.txt"
 description = "An aggregate object storage system for applications"
 repository = "https://github.com/deislabs/bindle"
 readme = "docs/crate-readme.md"
-keywords = [
-    "storage",
-    "package",
-]
-exclude = [
-    "docs/*",
-    ".github/*",
-    ".gitignore",
-    "bin/",
-    "test/"
-]
+keywords = ["storage", "package"]
+exclude = ["docs/*", ".github/*", ".gitignore", "bin/", "test/"]
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -28,14 +19,28 @@ maintenance = { status = "actively-developed" }
 [features]
 default = ["server", "client", "caching", "test-tools", "native-tls"]
 server = ["warp", "openid", "hyper", "mime", "either", "dirs", "_common"]
-client = ["mime_guess", "dirs", "time", "async-compression", "tokio-tar", "_common"]
+client = [
+    "mime_guess",
+    "dirs",
+    "time",
+    "async-compression",
+    "tokio-tar",
+    "_common",
+]
 # Internal use only feature that groups all of the optional deps we need for both server and client
-_common = ["providers", "tokio/full", "tokio-util", "oauth2", "reqwest", "tokio-stream/fs"]
+_common = [
+    "providers",
+    "tokio/full",
+    "tokio-util",
+    "oauth2",
+    "reqwest",
+    "tokio-stream/fs",
+]
 # Activates provider implementations
 providers = ["lru", "serde_cbor", "sled"]
 caching = ["lru"]
 test-tools = []
-cli = ["clap", "tracing-subscriber", "atty"]
+cli = ["clap", "tracing-subscriber"]
 native-tls = ["reqwest?/default-tls", "openid?/native-tls"]
 rustls-tls = ["reqwest?/rustls-tls", "openid?/rustls"]
 
@@ -44,13 +49,19 @@ all-features = true
 
 [dependencies]
 anyhow = "1.0.44"
-async-compression = { version = "0.3", default-features = false, features = ["tokio", "gzip"], optional = true }
+async-compression = { version = "0.3", default-features = false, features = [
+    "tokio",
+    "gzip",
+], optional = true }
 async-trait = "0.1.51"
-atty = { version = "0.2", optional = true }
 base64 = "0.21"
 bcrypt = "0.13"
 bytes = "1.1.0"
-clap = { workspace = true, features = ["derive", "env", "cargo"], optional = true }
+clap = { workspace = true, features = [
+    "derive",
+    "env",
+    "cargo",
+], optional = true }
 dirs = { version = "4.0.0", optional = true }
 ed25519-dalek = { version = "2", features = ["pkcs8", "rand_core"] }
 either = { version = "1.6.1", optional = true }
@@ -63,7 +74,9 @@ mime_guess = { version = "2.0.3", optional = true }
 oauth2 = { version = "4.1.0", features = ["reqwest"], optional = true }
 openid = { version = "0.10", default-features = false, optional = true }
 rand = "0.8"
-reqwest = { version = "0.11.4", features = ["stream"], default-features = false, optional = true }
+reqwest = { version = "0.11.4", features = [
+    "stream",
+], default-features = false, optional = true }
 semver = { version = "1.0.4", features = ["serde"] }
 serde = { version = "1.0.130", features = ["derive"] }
 serde_cbor = { version = "0.11.2", optional = true }
@@ -73,14 +86,19 @@ sled = { version = "0.34.7", optional = true }
 tempfile = "3.2.0"
 thiserror = "1.0.29"
 time = { version = "0.3", features = ["serde"], optional = true }
-tokio = { version = "1.11.0", default-features = false, features = ["sync", "io-util"] }
+tokio = { version = "1.11.0", default-features = false, features = [
+    "sync",
+    "io-util",
+] }
 tokio-stream = { version = "0.1.7" }
 tokio-tar = { version = "0.3", optional = true }
 tokio-util = { version = "0.7", features = ["io", "codec"], optional = true }
 toml = "0.5.8"
 tracing = { version = "0.1.27", features = ["log"] }
 tracing-futures = "0.2.5"
-tracing-subscriber = { version = "0.3.7", features = ["env-filter"], optional = true }
+tracing-subscriber = { version = "0.3.7", features = [
+    "env-filter",
+], optional = true }
 url = "2.2.2"
 warp = { version = "0.3", features = ["tls"], optional = true }
 
